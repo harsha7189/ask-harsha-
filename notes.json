@@ -1,3 +1,9 @@
 {
-  "notes": []
+  "notes": [
+    {
+      "id": "N001",
+      "text": "Harsha's favorite food is Hyderabadi biryani.",
+      "created": "2026-10-18T17:13:19+00:00"
+    }
+  ]
 }
