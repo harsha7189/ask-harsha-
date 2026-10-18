@@ -305,3 +305,30 @@ def test_real_cases_file_loads_for_both_runners():
     general, career = load_cases(mode="general"), load_cases(mode="career", web=False)
     assert len(general) > len(career) and all(not c.get("web") for c in career)
     assert len({c["id"] for c in general}) == len(general)
+
+
+def test_factcheck_endpoint_streams_claims_and_verdicts():
+    import json as _json
+    from types import SimpleNamespace
+    claims = response([text(_json.dumps({"claims": [{"id": 1, "text": "Harsha delivered 26 sprints.", "kind": "harsha", "cites": ["F41"]}]}))], "end_turn")
+    verdict = response([text(_json.dumps({"verdicts": [{"id": 1, "verdict": "confirmed", "explanation": "Matches F41.", "sources": ["F41"]}]}))], "end_turn")
+    c, _ = make([claims, verdict])
+    events = parse_sse(c.post("/api/factcheck/stream", json={"answer": "He delivered 26 consecutive on-time sprints [F41]."}).text)
+    kinds = [k for k, _ in events]
+    assert "claims" in kinds and kinds[-1] == "final"
+    v = [d for k, d in events if k == "verdicts"][0]
+    assert v["verdicts"][0]["verdict"] == "confirmed" and "26 consecutive" in v["record_texts"]["F41"]
+    assert [d for k, d in events if k == "final"][0]["counts"]["confirmed"] == 1
+
+
+def test_factcheck_is_rate_limited_and_budgeted():
+    c, _ = make([], rate_limit=0)
+    assert c.post("/api/factcheck/stream", json={"answer": "x"}, headers={"x-forwarded-for": "7.7.7.7"}).status_code == 429
+    c2, _ = make([], daily_budget_usd=0)
+    assert c2.post("/api/factcheck/stream", json={"answer": "x"}).status_code == 503
+
+
+def test_factcheck_bad_output_sends_error_event():
+    c, _ = make([response([text("no json here")], "end_turn")])
+    events = parse_sse(c.post("/api/factcheck/stream", json={"answer": "Paris is in France."}).text)
+    assert events[-1][0] == "error" and "couldn't finish" in events[-1][1]["message"]

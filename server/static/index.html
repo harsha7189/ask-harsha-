@@ -72,6 +72,30 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .src:hover{border-color:var(--muted)}
 .saved{font-size:12.5px;color:var(--blue);border-left:2px solid var(--blue);padding-left:8px}
 .how{font-size:13px;color:var(--muted)}
+.fcwrap{display:grid;gap:8px;margin-top:10px;white-space:normal}
+.fcbtn{justify-self:start;font-size:12.5px;font-weight:600;color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:var(--raise)}
+.fcbtn:hover{border-color:var(--muted)}
+.fcbtn:disabled{opacity:.6}
+.fc{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px;background:var(--bg)}
+.fchead{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.fchead b{color:var(--fg)}
+.fcspin{width:12px;height:12px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--fg);animation:spin .8s linear infinite;flex:0 0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fcerr{color:var(--warn)}
+.fclist{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.fcrow{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:start}
+.fcmark{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--raise);color:var(--muted)}
+.fcrow.pending .fcmark{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.fcrow.ok .fcmark{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
+.fcrow.bad .fcmark{background:color-mix(in srgb,var(--red-hot) 22%,transparent);color:var(--red-hot)}
+.fcrow.unk .fcmark{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
+.fcbody{display:grid;gap:4px;min-width:0}
+.fcclaim{font-size:14px;color:var(--fg)}
+.fcwhy{font-size:13px;color:var(--muted)}
+.fcwhy b{color:var(--fg);font-weight:600}
+.fcrow.ok .fcwhy b{color:var(--good)}.fcrow.bad .fcwhy b{color:var(--red-hot)}.fcrow.unk .fcwhy b{color:var(--warn)}
+.fcfoot{font-size:12px;color:var(--muted)}
 .how .direct{margin:6px 0 2px;font-size:13px;color:var(--muted)}
 .status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
 .tools{display:grid;gap:8px}
@@ -363,7 +387,59 @@ function showFinal(bot,data,text){
   (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
   bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
+  if(data.label!=='none'&&data.answer)addFactCheck(bot,data.answer);
   history.push({role:'user',content:text},{role:'assistant',content:data.answer});history=history.slice(-12);
+}
+const VERDICT={confirmed:{mark:'✓',cls:'ok',word:'Confirmed'},contradicted:{mark:'✕',cls:'bad',word:'Contradicted'},unverified:{mark:'!',cls:'unk',word:'Unverified'},not_checkable:{mark:'–',cls:'na',word:'Not checkable'}};
+function addFactCheck(bot,answer){
+  const wrap=el('div','fcwrap'),btn=el('button','fcbtn','Fact-check this answer');btn.type='button';
+  wrap.append(btn);bot.append(wrap);
+  btn.onclick=()=>runFactCheck(wrap,btn,answer);
+}
+async function runFactCheck(wrap,btn,answer){
+  btn.disabled=true;btn.textContent='Fact-checking…';
+  const panel=el('div','fc'),head=el('div','fchead'),list=el('ol','fclist'),foot=el('div','fcfoot');
+  head.append(el('span','fcspin'),el('span',null,'Finding the claims…'));panel.append(head,list,foot);
+  wrap.querySelector('.fc')?.remove();wrap.append(panel);scrollDown();
+  const rows={};let done=false;
+  const setHead=t=>{head.textContent='';head.append(el('span','fcspin'),el('span',null,t+'…'))};
+  try{
+    const res=await fetch('/api/factcheck/stream',{method:'POST',headers:headers(),body:JSON.stringify({answer})});
+    const type=res.headers.get('content-type')||'';
+    if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||'The fact check could not start.')}
+    await readSSE(res,(kind,d)=>{
+      if(kind==='status')setHead(d.label);
+      else if(kind==='claims'){
+        if(!d.claims.length){head.textContent="This answer doesn't contain any checkable claims.";done=true;return}
+        d.claims.forEach(c=>{const li=el('li','fcrow pending');const ic=el('span','fcmark','·');const bodyEl=el('div','fcbody');bodyEl.append(el('div','fcclaim',c.text));li.append(ic,bodyEl);list.append(li);rows[c.id]={li,ic,bodyEl}});
+        scrollDown();
+      }
+      else if(kind==='verdicts'){
+        Object.entries(d.record_texts||{}).forEach(([id,t])=>{cache[id]={text:t,kind:id.startsWith('N')?'note':'fact'}});
+        d.verdicts.forEach(v=>{const r=rows[v.id];if(!r)return;const V=VERDICT[v.verdict]||VERDICT.unverified;
+          r.li.className='fcrow '+V.cls;r.ic.textContent=V.mark;r.ic.setAttribute('aria-label',V.word);
+          const ex=el('div','fcwhy');ex.append(el('b',null,V.word+'. '),v.explanation||'');r.bodyEl.append(ex);
+          if(v.sources&&v.sources.length){const sr=el('div','sources');v.sources.forEach(src=>{
+            if(src.type==='web'){let host='';try{host=new URL(src.url).hostname.replace(/^www\./,'')}catch(e){}const a=el('a','src',host||src.url);a.href=src.url;a.target='_blank';a.rel='noopener';sr.append(a)}
+            else{const b=el('button','cite'+(src.id.startsWith('N')?' note':''),src.id);b.type='button';b.onclick=()=>openSource(src.id);sr.append(b)}});r.bodyEl.append(sr)}
+        });
+      }
+      else if(kind==='final'){
+        done=true;const c=d.counts,parts=[];
+        if(c.confirmed)parts.push(`${c.confirmed} confirmed`);if(c.contradicted)parts.push(`${c.contradicted} contradicted`);
+        if(c.unverified)parts.push(`${c.unverified} unverified`);if(c.not_checkable)parts.push(`${c.not_checkable} not checkable`);
+        if(d.claims){head.textContent='';const t=el('span');t.append(el('b',null,'Fact check: '),parts.join(' · '));head.append(t)}
+        foot.textContent=`${(d.cost_usd*100).toFixed(1)}¢ · ${Math.round(d.seconds)}s`+(d.downgraded?` · ${d.downgraded} verdict${d.downgraded===1?'':'s'} marked unverified because no real source backed ${d.downgraded===1?'it':'them'}`:'');
+        btn.remove();
+      }
+      else if(kind==='error'){throw new Error(d.message)}
+    });
+    if(!done)throw new Error('The connection dropped before the check finished.');
+  }catch(e){
+    head.textContent='';head.append(el('span','fcerr',e.message||"Couldn't run the fact check."));
+    btn.disabled=false;btn.textContent='Try the fact check again';
+  }
+  scrollDown();
 }
 async function askOnce(bot,text){  // fallback when streaming isn't available
   const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history})});

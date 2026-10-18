@@ -36,9 +36,12 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from agent import factcheck  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
+
+FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
 from agent.notes import FileNotesStore, GitHubNotesStore, NotesIndex, NotesStore, NotesUnavailable  # noqa: E402
 from agent.prompts import build_general_prompt  # noqa: E402
 from agent.tools import add_notes_tools  # noqa: E402
@@ -100,6 +103,10 @@ class Settings:
 class Turn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=8000)
+
+
+class FactCheckRequest(BaseModel):
+    answer: str = Field(min_length=1, max_length=6000)
 
 
 class ChatRequest(BaseModel):
@@ -384,6 +391,50 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             except Exception as e:
                 upstream_failed(e)
                 q.put(("error", {"message": UPSTREAM_MSG}))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    @app.post("/api/factcheck/stream")
+    def factcheck_stream(req: FactCheckRequest, request: Request):
+        answer = req.answer.strip()
+        if not answer:
+            return error(400, "empty", "There's nothing to check.")
+        ip = client_ip(request)
+        status = owner_status(request)
+        if status == "denied" and too_many_wrong(ip):
+            return error(429, "locked", "Too many wrong passcodes. Try again in an hour.")
+        owner = status == "owner"
+        if not owner and not limiter.allow(ip):
+            wait = limiter.retry_after(ip)
+            return error(429, "rate_limited", f"That's a lot at once. Try again in about {max(1, wait // 60)} minute(s).", {"Retry-After": str(wait)})
+        if budget.exhausted():
+            return error(503, "resting", f"Ask Harsha is resting for today. You can reach Harsha directly at {settings.contact_email}.")
+        q: queue.Queue = queue.Queue()
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+
+        def work():
+            started = time.monotonic()
+            try:
+                res = factcheck.run(get_client(), settings.model, answer, _Lookup(kb, store).by_id, today,
+                                    settings.web_search, FACTCHECK_SEARCH_TOOL, lambda k, d: q.put((k, d)), kb=kb)
+            except factcheck.FactCheckError as e:
+                q.put(("error", {"message": f"The fact check couldn't finish: {e} Please try again."}))
+                return
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": UPSTREAM_MSG}))
+                return
+            cost = budget.add(res.input_tokens, res.output_tokens) + budget.add_flat(res.web_searches * settings.price_per_search)
+            lookup = _Lookup(kb, store).by_id
+            texts = {s["id"]: lookup[s["id"]].text for v in res.verdicts for s in v["sources"] if s["type"] == "record" and s["id"] in lookup}
+            counts = res.counts()
+            log.info(json.dumps({"event": "factcheck", "owner": owner, "claims": len(res.claims), **counts,
+                                 "downgraded": res.downgraded, "web_searches": res.web_searches,
+                                 "tokens_in": res.input_tokens, "tokens_out": res.output_tokens,
+                                 "cost_usd": round(cost, 5), "spent_today_usd": round(budget.spent, 4)}))
+            q.put(("verdicts", {"verdicts": res.verdicts, "record_texts": texts}))
+            q.put(("final", {"counts": counts, "claims": len(res.claims), "cost_usd": round(cost, 4),
+                             "seconds": round(time.monotonic() - started, 1), "downgraded": res.downgraded}))
 
         return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
 

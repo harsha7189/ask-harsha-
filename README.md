@@ -88,6 +88,16 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Fact-check any answer
+
+Every answer has a **Fact-check this answer** button. Tapping it runs a separate check (`agent/factcheck.py`, `POST /api/factcheck/stream`) that:
+
+1. Splits the answer into up to 8 short claims and labels each one: about Harsha, about the world, or opinion.
+2. Checks Harsha claims only against his record and notes, and world claims with fresh web searches.
+3. Shows a verdict per claim (confirmed, contradicted, unverified, not checkable) with a one-line reason and the sources.
+
+The model's verdicts aren't taken on trust. Code throws out any web source the search didn't actually return in this check and any record ID that wasn't provided or looked up, and a "confirmed" or "contradicted" verdict left with no real source is downgraded to "unverified". A check costs a few cents and counts toward the same rate limit and daily budget as a question.
+
 ## Web app (works on any phone)
 
 ```bash
@@ -99,7 +109,7 @@ uvicorn server.app:app --reload        # then open http://localhost:8000
 ## Test it
 
 ```bash
-python -m pytest -q                 # 68 offline tests, no API key, about a second
+python -m pytest -q                 # offline tests, no API key, about a second
 python evals/run_evals.py           # career cases against the CLI agent (the web app's Run evals covers all 17)
 ```
 
@@ -112,5 +122,4 @@ Add or edit entries in `knowledge/profile.json`. Keep IDs unique and keep each f
 ## Ideas for v2
 
 - Embedding retrieval alongside BM25 (hybrid search) and a reranking step
-- Streaming answers word by word in the web app
 - A weekly report of declined questions, to show which facts to add next
