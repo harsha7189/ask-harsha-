@@ -1,0 +1,50 @@
+{
+  "subject": "Harsha Reddy",
+  "updated": "2026-10-17",
+  "note": "Every fact here is something Harsha has stated and can defend. The agent may only answer from these facts. Edit this file to change what the agent knows.",
+  "facts": [
+    {"id": "F01", "topic": "summary", "tags": ["overview", "experience", "years"], "text": "Harsha Reddy is a technical product manager with 3+ years in software product management, covering product strategy, roadmaps, end-to-end requirements, data-driven trade-offs and go-to-market planning."},
+    {"id": "F02", "topic": "summary", "tags": ["location", "relocation", "availability"], "text": "Harsha is open to roles in Austin, TX."},
+
+    {"id": "F10", "topic": "ibm", "tags": ["role", "title", "dates", "salesforce"], "text": "Since July 2024, Harsha has been a Product Manager at IBM on a Salesforce enterprise platform, based in Dallas, TX."},
+    {"id": "F11", "topic": "ibm", "tags": ["scale", "portfolio", "customers"], "text": "The IBM Salesforce enterprise portfolio Harsha works on is $25M+ and serves 500+ enterprise customers."},
+    {"id": "F12", "topic": "ibm", "tags": ["roadmap", "strategy", "stakeholders", "retention"], "text": "At IBM, Harsha developed short-, medium- and long-term roadmaps and won partner-team buy-in through collaboration, documentation and negotiation, protecting $8M+ in retention revenue."},
+    {"id": "F13", "topic": "ibm", "tags": ["requirements", "specs", "delivery"], "text": "At IBM, Harsha gathered and defined product and business requirements and wrote detailed functional specifications to scope, schedule and deploy new feature sets for targeted customer segments across 500+ enterprise accounts."},
+    {"id": "F14", "topic": "ibm", "tags": ["ai", "agent", "launch", "adoption", "agentforce", "gtm"], "text": "Harsha took a net-new AI-agent capability from concept to production and drove 35% adoption across 200+ users in 60 days."},
+    {"id": "F15", "topic": "ibm", "tags": ["agile", "ux", "engineering", "release", "quality"], "text": "Partnering with UX designers and software developers in agile ceremonies, Harsha helped accelerate release cadence 25% with zero critical incidents across 3 releases."},
+    {"id": "F16", "topic": "ibm", "tags": ["data", "metrics", "resolution", "escalations", "defects", "support"], "text": "Using data to find and resolve strategic issues, Harsha's work cut resolution time from 11 to 4 minutes, reduced escalations 40% and cut post-release defects 35%."},
+    {"id": "F17", "topic": "ibm", "tags": ["api", "automation", "service cloud", "customer success"], "text": "Harsha owns the roadmap for API-backed automation on a Salesforce Service Cloud customer success platform."},
+
+    {"id": "F20", "topic": "ibm-video", "tags": ["video", "streaming", "drm", "rights", "moderation"], "text": "Harsha also works on IBM Video Streaming, covering DRM, rights management and content moderation."},
+    {"id": "F21", "topic": "ibm-video", "tags": ["drm", "fairplay", "widevine", "entitlements"], "text": "On IBM Video Streaming, Harsha defined FairPlay and Widevine DRM entitlement rules for protected playback."},
+    {"id": "F22", "topic": "ibm-video", "tags": ["moderation", "watsonx", "speech-to-text", "webhooks"], "text": "Harsha specified watsonx speech-to-text content moderation webhooks for IBM Video Streaming."},
+    {"id": "F23", "topic": "ibm-video", "tags": ["copyright", "fingerprinting", "scale", "media clients"], "text": "Harsha worked on copyright fingerprinting integrations governing 12,000+ monthly video hours across 40+ media clients, reducing unauthorized redistribution and costs."},
+
+    {"id": "F24", "topic": "case-studies", "tags": ["ai", "evaluation", "quality", "accuracy", "recall", "gold set"], "text": "Harsha built a gold evaluation set of 500+ cases to measure AI quality; accuracy rose from 82% to 91% and critical-issue recall rose from 68% to 94%."},
+    {"id": "F25", "topic": "case-studies", "tags": ["ai", "latency", "redis", "caching", "ttl", "ownership"], "text": "On AI-agent latency optimization with Redis caching, Harsha owned the TTL requirement, the API specs and trade-off validation; engineering owned the Redis architecture."},
+    {"id": "F26", "topic": "case-studies", "tags": ["diagnostics", "automation", "retention", "support"], "text": "Harsha specified automated diagnostic context capture for support cases, which protected $8M+ in at-risk retention."},
+    {"id": "F27", "topic": "case-studies", "tags": ["mulesoft", "api", "governance", "lifecycle", "integration", "ownership"], "text": "On MuleSoft Anypoint, Harsha owned API design, governance and lifecycle decisions while engineering owned building the Mule flows. He has hands-on use of API Designer, API Manager, Anypoint Exchange and Runtime Manager."},
+    {"id": "F28", "topic": "case-studies", "tags": ["gtm", "onboarding", "self-service"], "text": "Harsha led go-to-market for a self-service onboarding experience."},
+
+    {"id": "F30", "topic": "education", "tags": ["mba", "degree", "finance"], "text": "Harsha earned an MBA in Business Administration & Finance from Midwestern State University in 2025."},
+    {"id": "F31", "topic": "education", "tags": ["btech", "degree", "computer science", "engineering"], "text": "Harsha holds a B.Tech in Computer Science & Engineering from Sri Indu College of Engineering & Technology."},
+
+    {"id": "F40", "topic": "cybage", "tags": ["role", "title", "dates", "martech", "b2b"], "text": "From December 2020 to March 2023, Harsha was an Associate Product Manager at Cybage Software in Hyderabad, India, on a B2B marketing technology platform with $8M ARR."},
+    {"id": "F41", "topic": "cybage", "tags": ["backlog", "jira", "sprints", "delivery", "arr"], "text": "At Cybage, Harsha owned the Jira backlog end to end and delivered 26 consecutive on-time sprints while protecting $5M+ in active client ARR."},
+    {"id": "F42", "topic": "cybage", "tags": ["cross-functional", "stakeholders", "requirements", "defects"], "text": "At Cybage, Harsha turned needs from Sales, Finance, Legal, Operations and engineering into prioritized, buildable deliverables, cutting delivery rework and post-release defects 35%."},
+    {"id": "F43", "topic": "cybage", "tags": ["gtm", "marketing", "sales enablement", "roas", "cpa", "acquisition"], "text": "At Cybage, Harsha built sales sheets, enablement content and Salesforce/Tableau reporting that lifted ROAS 35%, cut CPA 28% and grew customer acquisition 25%."},
+    {"id": "F44", "topic": "cybage", "tags": ["budget", "launches", "cost savings"], "text": "At Cybage, Harsha coordinated launches across marketing and sales while managing an $18M budget, eliminating $1.2M in avoidable spend."},
+
+    {"id": "F50", "topic": "certifications", "tags": ["cspo", "scrum", "agile"], "text": "Harsha is a Certified Scrum Product Owner (CSPO)."},
+    {"id": "F51", "topic": "certifications", "tags": ["safe", "popm", "agile"], "text": "Harsha holds the SAFe Product Owner / Product Manager (POPM) certification."},
+    {"id": "F52", "topic": "certifications", "tags": ["salesforce", "ai specialist", "admin", "service cloud", "sales cloud"], "text": "Harsha's Salesforce certifications are AI Specialist, Service Cloud Consultant, Sales Cloud Consultant and Certified Administrator."},
+    {"id": "F53", "topic": "certifications", "tags": ["aws", "cloud"], "text": "Harsha is an AWS Certified Cloud Practitioner."},
+    {"id": "F54", "topic": "certifications", "tags": ["six sigma", "process improvement"], "text": "Harsha holds a Six Sigma certification in process improvement."},
+
+    {"id": "F60", "topic": "skills", "tags": ["competencies", "strategy", "requirements", "lifecycle", "gtm"], "text": "Harsha's core competencies are product strategy and roadmaps, requirements and functional specs, the complete product lifecycle, technical trade-offs and prioritization, data-driven decision-making, and GTM and sales enablement."},
+    {"id": "F61", "topic": "skills", "tags": ["tools", "salesforce", "sql", "tableau", "jira", "confluence", "marketo"], "text": "Harsha's tools include Salesforce (Service Cloud, Agentforce, MuleSoft), SQL, Tableau, Excel, Jira, Confluence and Marketo."},
+    {"id": "F62", "topic": "skills", "tags": ["python", "langchain", "mcp", "ai", "technical"], "text": "Harsha has hands-on experience with Python and with LangChain and MCP for building AI agents."},
+
+    {"id": "F70", "topic": "contact", "tags": ["email", "linkedin", "contact", "reach"], "text": "Harsha can be reached at harshareddy7189@gmail.com or on LinkedIn at linkedin.com/in/harshareddy."}
+  ]
+}

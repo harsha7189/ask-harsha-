@@ -1,0 +1,28 @@
+# Render Blueprint: Render reads this file to create the web service.
+services:
+  - type: web
+    name: ask-harsha
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false            # you paste this in the Render dashboard; it is never stored in Git
+      - key: ASK_HARSHA_MODEL
+        value: claude-sonnet-5-5
+      - key: DAILY_BUDGET_USD
+        value: "2"
+      - key: PRICE_IN_PER_MTOK
+        value: "2"
+      - key: PRICE_OUT_PER_MTOK
+        value: "10"
+      - key: RATE_LIMIT_PER_WINDOW
+        value: "12"
+      - key: RATE_WINDOW_SECONDS
+        value: "600"
+      - key: LOG_QUESTIONS
+        value: "false"
+      - key: PYTHON_VERSION
+        value: "3.12.7"

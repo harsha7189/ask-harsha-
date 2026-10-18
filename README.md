@@ -1,0 +1,96 @@
+# Ask Harsha
+
+A command-line AI agent that answers recruiter and hiring-manager questions about Harsha Reddy's experience, built from scratch on the Claude Messages API. There's no agent framework: the tool-calling loop, the retriever and the grounding check are all plain Python you can read in one sitting.
+
+Example session with `--trace` (the answer wording varies run to run; token counts and timing depend on the model):
+
+```
+You: Has he shipped anything with AI?
+  → search_facts({"query": "AI agent launch adoption"})
+  ← facts F14, F25, F62, F52, F24
+Ask Harsha: Yes. He took a net-new AI-agent capability from concept to production and drove
+35% adoption across 200+ users in 60 days [F14]. He also built a 500+ case gold evaluation set,
+which saw accuracy rise from 82% to 91% [F24].
+  [grounded (2 citations) · 2 steps · ...]
+```
+
+## Why it's built this way
+
+The product problem: a portfolio chatbot is only useful if a recruiter can trust it. One invented number is worse than no chatbot. So the design goal is **every claim traceable to a fact Harsha can defend**.
+
+| Decision | What it does | Trade-off |
+|---|---|---|
+| Facts file, not a free-text résumé | Each fact has an ID (`F14`) so answers can cite it | Facts must be curated by hand |
+| BM25 retrieval written from scratch | Keyword ranking with explainable scores, no vector DB | Weaker on paraphrase than embeddings; offset with a small synonym map |
+| Hand-written agent loop | Full control of tool results, errors, step limits and history | More code than a framework |
+| Post-answer grounding check | Verifies citations exist, were actually retrieved, and that every number appears in a retrieved fact | A heuristic: it catches invented numbers and fake citations, not every subtle paraphrase |
+| Evals with decline cases | Measures refusal of unknowns, salary questions and prompt injection, not just right answers | Live evals cost a few cents per run |
+
+## How the loop works
+
+`agent/loop.py`, one user turn:
+
+1. Send the conversation, system prompt and tool specs to `client.messages.create`.
+2. If `stop_reason == "tool_use"`, run each `tool_use` block and reply with one user message of `tool_result` blocks (with `is_error: true` on failures). Repeat.
+3. Any other stop reason ends the turn; the text blocks are the answer.
+4. Run `grounding.check` on the answer.
+
+Guards: a step limit (default 8) against runaway loops, history rollback if an API call fails mid-turn, and assistant turns stored exactly as returned so multi-turn conversations stay valid.
+
+## Project layout
+
+```
+agent/
+  kb.py         facts loader + BM25 retriever
+  tools.py      tool schemas the model sees + the Python that runs them
+  prompts.py    system prompt with the grounding rules
+  loop.py       the agent loop
+  grounding.py  citation and number verification
+knowledge/profile.json   the facts (edit this to change what the agent knows)
+cli.py          interactive chat
+server/         web app: FastAPI API, rate limit + budget guards, phone chat page
+evals/          live eval cases and runner
+tests/          offline tests with a scripted fake model (no API key needed)
+```
+
+## Run it
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # then paste your API key from platform.claude.com
+python cli.py                 # chat
+python cli.py --trace         # chat and show tool calls + grounding check
+python cli.py -q "What did he do at Cybage?"
+```
+
+Inside the chat: `/trace`, `/reset`, `/facts`, `/quit`.
+
+The default model is `claude-sonnet-5-5`. Set `ASK_HARSHA_MODEL=claude-haiku-5-5` in `.env` for the cheapest option.
+
+## Web app (works on any phone)
+
+```bash
+uvicorn server.app:app --reload        # then open http://localhost:8000
+```
+
+`server/` wraps the same agent in a small FastAPI app with a phone-first chat page. Visitors don't need a Claude account and never see your API key. It adds per-visitor rate limiting, a daily spending cap and input limits, and the page can be added to an iPhone home screen. See **DEPLOY.md** to put it online for free on Render.
+
+## Test it
+
+```bash
+python -m pytest -q                 # 41 offline tests, no API key, about a second
+python evals/run_evals.py           # 12 live cases against the real model
+```
+
+The eval cases cover factual answers that must cite the right fact, ownership boundaries ("did he build the Redis architecture himself?" must credit engineering), and three cases that must decline: an invented job, a salary question, and a prompt-injection attempt.
+
+## Updating the facts
+
+Add or edit entries in `knowledge/profile.json`. Keep IDs unique and keep each fact to one defensible claim. The tests check that IDs are unique and that key searches still find the right fact.
+
+## Ideas for v2
+
+- Embedding retrieval alongside BM25 (hybrid search) and a reranking step
+- Streaming answers word by word in the web app
+- A weekly report of declined questions, to show which facts to add next

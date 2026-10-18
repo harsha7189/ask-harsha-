@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ask Harsha</title>
+<meta name="description" content="Ask about Harsha Reddy's product management experience. Every answer is cited from his verified record.">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ask Harsha">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one column, phone first. Fixed header, scrolling conversation, input bar pinned to the bottom above the home indicator. */
+:root{
+  --bg:#0b0b0b; --panel:#171717; --raise:#232323; --line:#2e2e2e;
+  --fg:#f5f5f1; --muted:#a3a3a3; --red:#e50914; --red-hot:#ff2a36; --good:#46d369; --warn:#f2b445;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --gl:max(16px,env(safe-area-inset-left,0px)); --gr:max(16px,env(safe-area-inset-right,0px));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+
+header{flex:0 0 auto;padding:calc(12px + env(safe-area-inset-top,0px)) var(--gr) 12px var(--gl);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:var(--bg)}
+.mark{width:40px;height:40px;border-radius:8px;background:var(--red);display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:26px;line-height:1;flex:0 0 auto}
+.who{min-width:0;flex:1}
+.who h1{margin:0;font-size:17px;font-weight:700;line-height:1.2}
+.who p{margin:0;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reset{font-size:13px;color:var(--muted);padding:8px 4px}
+.reset:hover{color:var(--fg)}
+
+main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.thread{max-width:720px;margin:0 auto;padding:20px var(--gr) 24px var(--gl);display:flex;flex-direction:column;gap:14px}
+.hello{display:grid;gap:10px;padding:8px 0 4px}
+.hello h2{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:clamp(40px,11vw,64px);line-height:.88;letter-spacing:.005em}
+.hello h2 span{color:var(--red)}
+.hello p{margin:0;color:var(--muted);max-width:46ch}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding-top:4px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-size:14px;text-align:left}
+.chip:hover{border-color:var(--muted)}
+.msg{max-width:88%;border-radius:18px;padding:11px 15px;white-space:pre-wrap;overflow-wrap:anywhere;animation:pop .2s ease}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg.user{align-self:flex-end;background:var(--raise);border-bottom-right-radius:6px}
+.msg.bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-bottom-left-radius:6px}
+.msg.err{border-color:color-mix(in srgb,var(--warn) 45%,var(--line))}
+.cite{display:inline-block;vertical-align:1px;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1;color:var(--red-hot);border:1px solid color-mix(in srgb,var(--red) 60%,transparent);border-radius:5px;padding:3px 5px;margin:0 1px}
+.cite:hover{background:color-mix(in srgb,var(--red) 18%,transparent)}
+.verdict{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:8px;white-space:normal}
+.verdict i{width:7px;height:7px;border-radius:50%;background:var(--good);flex:0 0 auto}
+.verdict.warn i{background:var(--warn)}
+.typing{display:inline-flex;gap:4px;align-items:center;color:var(--muted);font-size:14px}
+.typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:dot 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+@keyframes dot{0%,80%,100%{opacity:.25}40%{opacity:1}}
+
+footer{flex:0 0 auto;border-top:1px solid var(--line);background:var(--bg);padding:10px var(--gr) calc(10px + env(safe-area-inset-bottom,0px)) var(--gl)}
+form{max-width:720px;margin:0 auto;display:flex;gap:8px;align-items:flex-end}
+textarea{flex:1;min-width:0;resize:none;background:var(--panel);border:1px solid var(--line);border-radius:22px;color:var(--fg);font:inherit;font-size:16px;line-height:1.4;padding:11px 16px;max-height:120px}
+textarea:focus{outline:none;border-color:var(--muted)}
+.send{width:44px;height:44px;border-radius:50%;background:var(--red);display:grid;place-items:center;flex:0 0 auto;transition:background-color .15s}
+.send:hover{background:var(--red-hot)}
+.send:disabled{opacity:.4;cursor:default}
+.send svg{width:20px;height:20px}
+.fine{max-width:720px;margin:8px auto 0;font-size:11.5px;color:var(--muted);text-align:center}
+
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{width:min(560px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px 18px 0 0;padding:18px var(--gr) calc(22px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:10px;animation:up .2s ease}
+@keyframes up{from{transform:translateY(30px)}to{transform:none}}
+.sheet .grip{width:40px;height:4px;border-radius:2px;background:var(--line);justify-self:center}
+.sheet h3{margin:0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--red-hot)}
+.sheet p{margin:0;font-size:16px}
+.sheet small{color:var(--muted)}
+.sheet button{justify-self:end;background:var(--raise);border-radius:999px;padding:8px 16px;font-size:14px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark" aria-hidden="true">H</div>
+  <div class="who"><h1>Ask Harsha</h1><p>Harsha Reddy · Product Manager – Technical</p></div>
+  <button class="reset" id="reset" hidden>New chat</button>
+</header>
+
+<main id="main">
+  <div class="thread" id="thread" aria-live="polite">
+    <section class="hello" id="hello">
+      <h2>Ask about <span>Harsha</span></h2>
+      <p>His roles, impact, skills and certifications. Every answer is cited from his verified record, so tap any red tag to see the source.</p>
+      <div class="chips" id="chips"></div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <form id="form">
+    <textarea id="q" rows="1" maxlength="500" placeholder="Ask a question" aria-label="Your question" enterkeyhint="send"></textarea>
+    <button class="send" id="send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </form>
+  <p class="fine">An AI agent Harsha built from scratch. It answers only from his verified facts.</p>
+</footer>
+
+<script>
+(()=>{
+'use strict';
+const API='/api/chat';
+const $=s=>document.querySelector(s);
+const thread=$('#thread'),main=$('#main'),form=$('#form'),q=$('#q'),send=$('#send'),hello=$('#hello'),resetBtn=$('#reset');
+const SUGGESTIONS=["What's his current role?","Has he shipped anything with AI?","Did he build the Redis architecture himself?","Which certifications does he have?","How can I reach him?"];
+let history=[],busy=false;
+const facts={};  // id -> text, from citations returned so far
+
+$('#chips').append(...SUGGESTIONS.map(s=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=s;b.onclick=()=>ask(s);return b}));
+
+function scrollDown(){requestAnimationFrame(()=>{main.scrollTop=main.scrollHeight})}
+function bubble(cls){const d=document.createElement('div');d.className='msg '+cls;thread.append(d);scrollDown();return d}
+
+// Render answer text, turning [F14] into tappable source tags. Built with DOM nodes, never innerHTML.
+function renderAnswer(el,text){
+  el.textContent='';
+  const re=/\[(F\d{2,3})\]/g;let last=0,m;
+  while((m=re.exec(text))){
+    if(m.index>last)el.append(text.slice(last,m.index));
+    const id=m[1];  // capture now: m is reset by the loop before any click happens
+    const b=document.createElement('button');b.type='button';b.className='cite';b.textContent=id;
+    b.setAttribute('aria-label',`Source ${id}`);b.onclick=()=>openSource(id);
+    el.append(b);last=re.lastIndex;
+  }
+  if(last<text.length)el.append(text.slice(last));
+}
+function verdict(el,data){
+  const v=document.createElement('div');const n=data.citations.length;
+  v.className='verdict'+(data.grounded?'':' warn');
+  v.innerHTML='<i></i>';
+  v.append(data.grounded?(n?`Every claim checked against ${n} source${n===1?'':'s'}`:'No sources needed'):'Some details could not be verified against his record');
+  el.append(v);
+}
+function openSource(id){
+  const bg=document.createElement('div');bg.className='sheet-bg';
+  const s=document.createElement('div');s.className='sheet';s.setAttribute('role','dialog');s.setAttribute('aria-label',`Source ${id}`);
+  const grip=document.createElement('div');grip.className='grip';
+  const h=document.createElement('h3');h.textContent=`Source ${id}`;
+  const p=document.createElement('p');p.textContent=facts[id]||'Source text unavailable.';
+  const small=document.createElement('small');small.textContent="From Harsha's verified record.";
+  const close=document.createElement('button');close.type='button';close.textContent='Close';
+  s.append(grip,h,p,small,close);bg.append(s);document.body.append(bg);close.focus();
+  const done=()=>bg.remove();close.onclick=done;bg.onclick=e=>{if(e.target===bg)done()};
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){done();document.removeEventListener('keydown',esc)}});
+}
+
+async function ask(text){
+  text=text.trim();if(!text||busy)return;
+  busy=true;send.disabled=true;hello.hidden=true;resetBtn.hidden=false;
+  bubble('user').textContent=text;
+  const bot=bubble('bot');bot.innerHTML='<span class="typing" aria-label="Looking it up"><span></span><span></span><span></span>&nbsp;Looking it up</span>';
+  try{
+    const res=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:text,history})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
+    data.citations.forEach(c=>{facts[c.id]=c.text});
+    renderAnswer(bot,data.answer);verdict(bot,data);
+    history.push({role:'user',content:text},{role:'assistant',content:data.answer});
+    history=history.slice(-12);
+  }catch(e){
+    bot.classList.add('err');bot.textContent="Couldn't connect. Check your connection and try again.";
+  }finally{busy=false;send.disabled=false;scrollDown()}
+}
+
+form.addEventListener('submit',e=>{e.preventDefault();const t=q.value;q.value='';grow();ask(t)});
+q.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
+function grow(){q.style.height='auto';q.style.height=Math.min(q.scrollHeight,120)+'px'}
+q.addEventListener('input',grow);
+resetBtn.addEventListener('click',()=>{history=[];thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;q.focus()});
+})();
+</script>
+</body>
+</html>
