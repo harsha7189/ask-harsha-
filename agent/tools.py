@@ -31,9 +31,14 @@ class ToolRegistry:
         self.kb = kb
         # IDs the model has retrieved during the current user turn; used by the grounding check.
         self.retrieved: set[str] = set()
+        # Memory changes made during the current turn, reported back to the page.
+        self.changes: list[dict] = []
         self._tools: dict[str, Tool] = {}
         for tool in self._build():
             self._tools[tool.name] = tool
+
+    def add(self, tool: Tool) -> None:
+        self._tools[tool.name] = tool
 
     # ---- tool implementations -------------------------------------------------
     def _search_facts(self, args: dict) -> dict:
@@ -118,3 +123,63 @@ class ToolRegistry:
 
     def reset_turn(self) -> None:
         self.retrieved.clear()
+        self.changes.clear()
+
+
+def add_notes_tools(registry: ToolRegistry, index, store, owner: bool) -> None:
+    """Give the model search over Harsha's notes; give remember/forget only when Harsha is verified."""
+    from .notes import NotesUnavailable  # local import keeps tools.py usable without notes
+
+    def search_notes(args: dict) -> dict:
+        query = str(args.get("query", "")).strip()
+        if not query:
+            raise ToolError("Missing 'query'.")
+        hits = index.search(query, k=5)
+        registry.retrieved.update(n.id for n, _ in hits)
+        if not hits:
+            return {"query": query, "results": [], "note": "No matching notes."}
+        return {"query": query, "results": [{"id": n.id, "text": n.text, "score": s} for n, s in hits]}
+
+    registry.add(Tool(
+        name="search_notes",
+        description="Search notes Harsha has personally taught you (his preferences, opinions, interests, plans, knowledge he wants you to have). Returns notes with IDs like N003 that you must cite when you use them.",
+        input_schema={"type": "object", "properties": {"query": {"type": "string", "description": "Keywords."}}, "required": ["query"]},
+        run=search_notes,
+    ))
+    if not owner:
+        return
+
+    def remember(args: dict) -> dict:
+        try:
+            note = store.add(str(args.get("text", "")))
+        except ValueError as e:
+            raise ToolError(str(e))
+        except NotesUnavailable as e:
+            raise ToolError(f"Memory storage is unavailable: {e}")
+        registry.retrieved.add(note.id)
+        registry.changes.append({"action": "added", "id": note.id, "text": note.text})
+        return {"saved": note.to_dict()}
+
+    def forget(args: dict) -> dict:
+        note_id = str(args.get("id", "")).strip().upper()
+        try:
+            note = store.delete(note_id)
+        except KeyError:
+            raise ToolError(f"No note with ID '{note_id}'. Use search_notes to find the right ID.")
+        except NotesUnavailable as e:
+            raise ToolError(f"Memory storage is unavailable: {e}")
+        registry.changes.append({"action": "removed", "id": note.id, "text": note.text})
+        return {"removed": note.to_dict()}
+
+    registry.add(Tool(
+        name="remember_note",
+        description="Save a new note to your long-term memory. Only Harsha can use this. Write one clear, self-contained statement (for example 'Harsha prefers concise answers' or 'Harsha's favorite book is X'). Check search_notes first to avoid duplicates.",
+        input_schema={"type": "object", "properties": {"text": {"type": "string", "description": "The note, under 500 characters."}}, "required": ["text"]},
+        run=remember,
+    ))
+    registry.add(Tool(
+        name="forget_note",
+        description="Delete a note from memory by its ID (find it with search_notes first). Only Harsha can use this.",
+        input_schema={"type": "object", "properties": {"id": {"type": "string", "description": "Note ID like N003."}}, "required": ["id"]},
+        run=forget,
+    ))

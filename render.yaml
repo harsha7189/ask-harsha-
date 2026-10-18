@@ -24,5 +24,19 @@ services:
         value: "600"
       - key: LOG_QUESTIONS
         value: "false"
+      - key: OWNER_PASSCODE
+        sync: false            # your passcode for teaching the assistant; set it in the dashboard
+      - key: GITHUB_TOKEN
+        sync: false            # fine-grained token with Contents read/write on this repo only
+      - key: NOTES_REPO
+        value: harsha7189/ask-harsha-
+      - key: NOTES_BRANCH
+        value: notes
+      - key: WEB_SEARCH
+        value: "true"
+      - key: PRICE_PER_SEARCH
+        value: "0.01"
+      - key: ASSISTANT_TIMEZONE
+        value: America/Chicago
       - key: PYTHON_VERSION
         value: "3.12.7"

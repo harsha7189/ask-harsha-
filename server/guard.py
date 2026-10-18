@@ -70,6 +70,13 @@ class DailyBudget:
             self._spent += cost
             return cost
 
+    def add_flat(self, usd: float) -> float:
+        """Add a fixed cost, such as web search fees."""
+        with self._lock:
+            self._roll()
+            self._spent += usd
+            return usd
+
     @property
     def spent(self) -> float:
         with self._lock:

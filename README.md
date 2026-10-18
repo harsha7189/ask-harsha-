@@ -46,6 +46,7 @@ agent/
   prompts.py    system prompt with the grounding rules
   loop.py       the agent loop
   grounding.py  citation and number verification
+  notes.py      memory: notes store (GitHub branch / local file) + search
 knowledge/profile.json   the facts (edit this to change what the agent knows)
 cli.py          interactive chat
 server/         web app: FastAPI API, rate limit + budget guards, phone chat page
@@ -68,6 +69,19 @@ Inside the chat: `/trace`, `/reset`, `/facts`, `/quit`.
 
 The default model is `claude-sonnet-5-5`. Set `ASK_HARSHA_MODEL=claude-haiku-5-5` in `.env` for the cheapest option.
 
+## General assistant with memory
+
+The web app is a general AI assistant: it answers anything from the model's own knowledge, uses Claude's web search tool for current information (showing its sources), and still answers questions about Harsha only from his record, with citations.
+
+Harsha can teach it over time. After unlocking owner mode with his passcode, he says "remember that ..." or "forget ...", and the assistant saves or removes a note (IDs like `N003`). Notes are searchable and citable like career facts, and visitors can read them but never change them.
+
+Notes live in `notes.json` on a separate `notes` branch of this repository, written through the GitHub API. That means they survive restarts (Render's free disk doesn't), every change is a commit you can review or revert, and saving a note doesn't redeploy the app. If GitHub can't be read, the store refuses to write rather than risk overwriting memory.
+
+| Who | Can do |
+|---|---|
+| Visitor | Ask anything; read answers that cite Harsha's facts and notes |
+| Harsha (passcode) | Everything above, plus remember/forget, the Memory screen, no per-visitor rate limit |
+
 ## Web app (works on any phone)
 
 ```bash
@@ -79,7 +93,7 @@ uvicorn server.app:app --reload        # then open http://localhost:8000
 ## Test it
 
 ```bash
-python -m pytest -q                 # 41 offline tests, no API key, about a second
+python -m pytest -q                 # 56 offline tests, no API key, about a second
 python evals/run_evals.py           # 12 live cases against the real model
 ```
 

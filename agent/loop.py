@@ -2,12 +2,16 @@
 
 One user turn:
   1. Send the conversation + tool specs to the model.
-  2. If the model stops with stop_reason == "tool_use", run each requested tool and send the
+  2. If the model stops with stop_reason == "tool_use", run each requested client tool and send the
      results back as tool_result blocks in a user message. Repeat.
-  3. When it stops for any other reason, the text it produced is the answer.
-  4. Run the grounding check on that answer.
+  3. If it stops with "pause_turn" (a long server-side web search), send the conversation back
+     unchanged so the model can continue.
+  4. Any other stop reason ends the turn; the text it produced is the answer.
+  5. Run the grounding check on that answer.
 
-The client is injected, so tests can drive the loop with a fake model and no network.
+Server tools such as web_search run on Anthropic's side: their blocks arrive inside the assistant
+message and are passed back untouched. The client is injected, so tests can drive the loop with a
+fake model and no network.
 """
 from __future__ import annotations
 
@@ -21,6 +25,7 @@ from .prompts import SYSTEM_PROMPT
 from .tools import ToolRegistry
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
+WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 3}
 
 
 @dataclass
@@ -30,6 +35,9 @@ class Reply:
     steps: int
     tool_calls: list[dict] = field(default_factory=list)
     report: grounding.GroundingReport | None = None
+    web_sources: list[dict] = field(default_factory=list)   # [{"url", "title"}] from web search citations
+    web_searches: int = 0
+    memory_changes: list[dict] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
     seconds: float = 0.0
@@ -51,6 +59,10 @@ class Agent:
         max_steps: int = 8,
         max_tokens: int = 1500,
         on_event: Callable[[str, dict], None] | None = None,
+        system: str | None = None,
+        server_tools: list[dict] | None = None,
+        lookup: Any = None,
+        strict_grounding: bool = True,
     ):
         self.client = client
         self.kb = kb or KnowledgeBase.load()
@@ -59,6 +71,10 @@ class Agent:
         self.max_steps = max_steps
         self.max_tokens = max_tokens
         self.on_event = on_event or (lambda kind, data: None)
+        self.system = system or SYSTEM_PROMPT
+        self.server_tools = server_tools or []
+        self.lookup = lookup          # object with .by_id covering facts (+ notes); defaults to the KB
+        self.strict_grounding = strict_grounding
         self.messages: list[dict] = []  # full conversation, kept across turns
 
     def reset(self) -> None:
@@ -78,36 +94,54 @@ class Agent:
         self.tools.reset_turn()
         self.messages.append({"role": "user", "content": question})
         reply = Reply(text="", stop_reason="", steps=0)
+        text_parts: list[str] = []   # answer text since the last client-tool round
+        seen_urls: set[str] = set()
 
         for step in range(1, self.max_steps + 1):
             reply.steps = step
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                system=SYSTEM_PROMPT,
-                tools=self.tools.specs(),
+                system=self.system,
+                tools=self.tools.specs() + self.server_tools,
                 messages=self.messages,
             )
             usage = _get(response, "usage")
             if usage is not None:
                 reply.input_tokens += _get(usage, "input_tokens", 0) or 0
                 reply.output_tokens += _get(usage, "output_tokens", 0) or 0
+                stu = _get(usage, "server_tool_use")
+                if stu is not None:
+                    reply.web_searches += _get(stu, "web_search_requests", 0) or 0
 
             content = list(_get(response, "content", []) or [])
             stop = _get(response, "stop_reason", "")
-            # Keep the assistant turn exactly as returned (including any thinking blocks).
+            # Keep the assistant turn exactly as returned (thinking blocks, server tool blocks, citations).
             self.messages.append({"role": "assistant", "content": content})
+
+            for b in content:
+                if _get(b, "type") != "text":
+                    continue
+                text_parts.append(_get(b, "text", ""))
+                for c in _get(b, "citations", None) or []:
+                    url = _get(c, "url")
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        reply.web_sources.append({"url": url, "title": _get(c, "title") or url})
+
+            if stop == "pause_turn":
+                continue  # the history now ends with the paused assistant turn; sending it back resumes it
 
             if stop != "tool_use":
                 reply.stop_reason = stop
-                reply.text = "".join(_get(b, "text", "") for b in content if _get(b, "type") == "text").strip()
+                reply.text = "".join(text_parts).strip()
                 if stop == "max_tokens":
-                    reply.text += "\n\n[Answer cut off at the token limit.]"
+                    reply.text += "\n\n[Answer cut off at the length limit.]"
                 elif stop == "refusal" and not reply.text:
-                    reply.text = "I can't help with that one. Please ask about Harsha's professional experience."
+                    reply.text = "I can't help with that one."
                 break
 
-            # Run every tool the model asked for, then answer all of them in one user message.
+            # Run every client tool the model asked for, then answer all of them in one user message.
             results = []
             for block in content:
                 if _get(block, "type") != "tool_use":
@@ -121,18 +155,20 @@ class Agent:
                 if is_error:
                     result["is_error"] = True
                 results.append(result)
-            if not results:  # stop_reason said tool_use but no tool_use blocks: end safely
+            if not results:  # stop_reason said tool_use but no client tool blocks: end safely
                 reply.stop_reason = "no_tool_blocks"
+                reply.text = "".join(text_parts).strip()
                 break
             self.messages.append({"role": "user", "content": results})
+            text_parts = []  # narration before a tool call isn't part of the answer
         else:
             reply.stop_reason = "max_steps"
-            reply.text = "I couldn't finish looking that up. Please try a narrower question."
-            # Leave the history valid: the last assistant turn asked for tools we already answered,
-            # so close the turn with a short assistant note.
-            self.messages.append({"role": "assistant", "content": [{"type": "text", "text": reply.text}]})
+            reply.text = "I couldn't finish working that out. Please try a narrower question."
+            if self.messages[-1]["role"] == "user":
+                self.messages.append({"role": "assistant", "content": [{"type": "text", "text": reply.text}]})
 
-        reply.report = grounding.check(reply.text, set(self.tools.retrieved), self.kb)
+        reply.memory_changes = list(self.tools.changes)
+        reply.report = grounding.check(reply.text, set(self.tools.retrieved), self.lookup or self.kb, strict=self.strict_grounding)
         reply.seconds = round(time.monotonic() - start, 2)
         self.on_event("done", {"report": reply.report.summary(), "steps": reply.steps})
         return reply

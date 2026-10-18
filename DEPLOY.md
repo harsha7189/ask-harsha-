@@ -69,3 +69,21 @@ Edit `knowledge/profile.json`, run `python -m pytest -q`, then commit and push. 
 ## Linking it from your portfolio
 
 Put the Render URL behind an "Ask Harsha" button. If another website will call the API directly, add that site's address to `ALLOWED_ORIGINS` in Render.
+
+## Turn on memory and owner mode
+
+These two secrets let you teach the assistant from your phone. Add them in Render: open your service, then **Environment**, then **Add Environment Variable**, and save. Render restarts the service.
+
+1. **OWNER_PASSCODE**: a passcode only you know, at least 12 characters. You'll type it once on your phone to unlock owner mode.
+2. **GITHUB_TOKEN**: lets the app save notes to the `notes` branch of your repository.
+   1. On github.com go to **Settings**, **Developer settings**, **Personal access tokens**, **Fine-grained tokens**, then **Generate new token** (direct link: https://github.com/settings/personal-access-tokens/new).
+   2. Name it `ask-harsha-memory` and pick an expiration (a year is fine; set a reminder to renew it).
+   3. Under **Repository access**, choose **Only select repositories** and pick `ask-harsha-`.
+   4. Under **Permissions**, set **Contents** to **Read and write**. Leave everything else as is.
+   5. Generate it, copy it, and paste it as `GITHUB_TOKEN` in Render.
+
+`NOTES_REPO` and `NOTES_BRANCH` are already set by the blueprint. Without a token the app still works, but notes are kept only until the next restart.
+
+Then, on your phone: open the app, tap the lock icon, and enter your passcode. You'll see **Owner** next to the name and a **Memory** button.
+
+Everything you teach the assistant can be shown to any visitor, so keep passwords, account numbers and other private details out.

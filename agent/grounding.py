@@ -3,14 +3,21 @@
 It doesn't trust the model to follow the citation rules; it verifies them:
   1. Every cited ID must exist in the knowledge base.
   2. Every cited ID must have been retrieved by a tool during this turn.
-  3. Every number in the answer must appear in at least one retrieved fact.
+  3. Every number in a claim about Harsha must appear in at least one retrieved fact or note.
+
+strict=True (the career-only CLI) checks every number in the answer. strict=False (the general
+assistant) checks numbers only in sentences that cite Harsha's record, because general-knowledge
+and web answers legitimately contain numbers that aren't in his facts.
+
+IDs: F## are verified career facts, N### are notes Harsha taught the assistant.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 
-CITATION = re.compile(r"\[(F\d{2,3})\]")
+CITATION = re.compile(r"\[((?:F\d{2,3})|(?:N\d{3,4}))\]")
+SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
 # Numbers worth checking: 35%, $8M+, 12,000+, 11, 2024, 3+ ... (ignores single digits used as list counts like "3 points").
 NUMBER = re.compile(r"\$?\d[\d,]*(?:\.\d+)?\s?(?:%|[kKmMbB](?![a-z]))?\+?")
 
@@ -47,7 +54,14 @@ class GroundingReport:
     def ok(self) -> bool:
         return not (self.unknown_ids or self.unretrieved_ids or self.unsupported_numbers)
 
+    @property
+    def kind(self) -> str:
+        """'grounded' when the answer cites Harsha's record, 'general' when it cites nothing."""
+        return "grounded" if self.cited else "general"
+
     def summary(self) -> str:
+        if self.ok and not self.cited:
+            return "general knowledge (no record citations)"
         if self.ok:
             n = len(self.cited)
             return f"grounded ({n} citation{'s' if n != 1 else ''})"
@@ -61,7 +75,8 @@ class GroundingReport:
         return "check: " + "; ".join(parts)
 
 
-def check(answer: str, retrieved_ids: set[str], kb) -> GroundingReport:
+def check(answer: str, retrieved_ids: set[str], kb, strict: bool = True) -> GroundingReport:
+    """kb is anything with a `by_id` mapping of ID -> object with `.text` (facts, notes, or both)."""
     report = GroundingReport()
     seen = []
     for cid in CITATION.findall(answer):
@@ -73,12 +88,17 @@ def check(answer: str, retrieved_ids: set[str], kb) -> GroundingReport:
 
     evidence = " ".join(kb.by_id[i].text for i in retrieved_ids if i in kb.by_id)
     supported = {k for k in (_key(m) for m in NUMBER.findall(evidence)) if k}
-    for m in NUMBER.findall(CITATION.sub("", answer)):
-        k = _key(m)
-        if k is None:
-            continue
-        if k[0] == "num" and k[1] < 10:
-            continue  # small counts ("3 releases", list numbering) aren't worth flagging
-        if k not in supported:
-            report.unsupported_numbers.append(m.strip())
+    if strict:
+        checked = [answer]
+    else:
+        checked = [s for s in SENTENCE.split(answer) if CITATION.search(s)]
+    for sentence in checked:
+        for m in NUMBER.findall(CITATION.sub("", sentence)):
+            k = _key(m)
+            if k is None:
+                continue
+            if k[0] == "num" and k[1] < 10:
+                continue  # small counts ("3 releases", list numbering) aren't worth flagging
+            if k not in supported:
+                report.unsupported_numbers.append(m.strip())
     return report
