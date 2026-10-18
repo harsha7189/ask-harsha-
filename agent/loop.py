@@ -34,6 +34,7 @@ class Reply:
     stop_reason: str
     steps: int
     tool_calls: list[dict] = field(default_factory=list)
+    steps_log: list[dict] = field(default_factory=list)      # what the loop did, in order, for "How I got this"
     report: grounding.GroundingReport | None = None
     web_sources: list[dict] = field(default_factory=list)   # [{"url", "title"}] from web search citations
     web_searches: int = 0
@@ -120,6 +121,9 @@ class Agent:
             self.messages.append({"role": "assistant", "content": content})
 
             for b in content:
+                if _get(b, "type") == "server_tool_use" and _get(b, "name") == "web_search":
+                    q = (_get(b, "input") or {}).get("query", "") if isinstance(_get(b, "input"), dict) else ""
+                    reply.steps_log.append({"kind": "web_search", "query": q})
                 if _get(b, "type") != "text":
                     continue
                 text_parts.append(_get(b, "text", ""))
@@ -148,9 +152,16 @@ class Agent:
                     continue
                 name, args, use_id = _get(block, "name"), _get(block, "input") or {}, _get(block, "id")
                 self.on_event("tool_call", {"name": name, "input": args})
+                before = set(self.tools.retrieved)
                 output, is_error = self.tools.call(name, args)
                 self.on_event("tool_result", {"name": name, "is_error": is_error, "output": output})
                 reply.tool_calls.append({"name": name, "input": args, "is_error": is_error})
+                reply.steps_log.append({
+                    "kind": name,
+                    "query": str(args.get("query") or args.get("topic") or args.get("text") or args.get("id") or "")[:200] if isinstance(args, dict) else "",
+                    "found": sorted(self.tools.retrieved - before),
+                    "error": output[:200] if is_error else None,
+                })
                 result = {"type": "tool_result", "tool_use_id": use_id, "content": output}
                 if is_error:
                     result["is_error"] = True

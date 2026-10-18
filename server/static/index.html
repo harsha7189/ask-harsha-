@@ -70,6 +70,19 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .src{font-size:12px;color:var(--fg);background:var(--raise);border:1px solid var(--line);border-radius:999px;padding:4px 10px;text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .src:hover{border-color:var(--muted)}
 .saved{font-size:12.5px;color:var(--blue);border-left:2px solid var(--blue);padding-left:8px}
+.how{font-size:13px;color:var(--muted)}
+.how summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;padding:4px 0;color:var(--fg);font-weight:600;font-size:12.5px}
+.how summary::-webkit-details-marker{display:none}
+.how summary::before{content:"";width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
+.how[open] summary::before{transform:rotate(45deg)}
+.steps{margin:6px 0 2px;padding-left:20px;display:grid;gap:8px}
+.steps li{padding-left:2px}
+.steps li::marker{color:var(--muted);font-size:12px}
+.steps .sk{color:var(--fg);font-weight:500;margin-right:6px}
+.steps .sq{color:var(--muted);margin-right:6px;overflow-wrap:anywhere}
+.steps .sf{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle}
+.steps .sn{color:var(--muted);font-style:italic}
+.steps .se{color:var(--warn)}
 .typing{display:inline-flex;gap:4px;align-items:center;color:var(--muted);font-size:14px}
 .typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:dot 1.2s infinite}
 .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
@@ -185,14 +198,33 @@ function renderExtras(box,data){
     data.web_sources.forEach(w=>{let host='';try{host=new URL(w.url).hostname.replace(/^www\./,'')}catch(e){}const a=el('a','src',host||w.title);a.href=w.url;a.target='_blank';a.rel='noopener';a.title=w.title;s.append(a)});
     x.append(s);
   }
-  const v=el('div','verdict');v.append(el('i'));
-  const n=(data.citations||[]).length;
-  if(data.kind==='grounded'&&data.grounded){v.append(`Checked against ${n} source${n===1?'':'s'} in Harsha's record`)}
-  else if(data.kind==='grounded'){v.classList.add('warn');v.append("Some details couldn't be verified against Harsha's record")}
-  else if(data.web_sources&&data.web_sources.length){v.classList.add('plain');v.append('From the web')}
-  else{v.classList.add('plain');v.append('From general knowledge')}
-  x.append(v);box.append(x);
+  const label=data.label||(data.kind==='grounded'?'record':(data.web_sources&&data.web_sources.length?'web':'general'));
+  if(label!=='none'){
+    const v=el('div','verdict');v.append(el('i'));
+    const n=(data.citations||[]).length,s=n===1?'':'s';
+    const where={record:"Harsha's record",memory:"Harsha's memory",mixed:"Harsha's record and memory"}[label];
+    if(where&&data.grounded){v.append(`Checked against ${n} source${s} in ${where}`)}
+    else if(where){v.classList.add('warn');v.append(`Some details couldn't be verified against ${where}`)}
+    else if(label==='web'){v.classList.add('plain');v.append('From the web')}
+    else{v.classList.add('plain');v.append('From general knowledge')}
+    x.append(v);
+  }
+  const steps=data.trace||[];
+  if(steps.length){
+    const d=el('details','how');const sm=el('summary',null,`How I got this · ${steps.length} lookup${steps.length===1?'':'s'}`);d.append(sm);
+    const ol=el('ol','steps');
+    steps.forEach(st=>{const li=el('li');li.append(el('span','sk',STEP_LABEL[st.kind]||st.kind));
+      if(st.query)li.append(el('span','sq',`“${st.query}”`));
+      if(st.error)li.append(el('span','se',st.error));
+      else if(st.found&&st.found.length){const f=el('span','sf');st.found.forEach(id=>{const b=el('button','cite'+(id.startsWith('N')?' note':''),id);b.type='button';b.onclick=()=>openSource(id);f.append(b)});li.append(f)}
+      else if(st.kind!=='web_search')li.append(el('span','sn','nothing found'));
+      ol.append(li)});
+    const fin=el('li');fin.append(el('span','sk','Wrote the answer'));if(label!=='general'&&label!=='none'&&label!=='web')fin.append(el('span','sn','then the grounding check verified every citation'));ol.append(fin);
+    d.append(ol);x.append(d);
+  }
+  box.append(x);
 }
+const STEP_LABEL={web_search:'Searched the web',search_facts:"Searched Harsha's career facts",get_topic:"Opened a topic in Harsha's record",list_topics:"Listed the topics in Harsha's record",search_notes:"Searched Harsha's memory",remember_note:'Saved to memory',forget_note:'Removed from memory'};
 
 function sheet(build){
   const bg=el('div','sheet-bg'),s=el('div','sheet');s.setAttribute('role','dialog');
@@ -261,6 +293,7 @@ async function ask(text){
     const data=await res.json().catch(()=>({}));
     if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
     if(passcode&&!data.owner){passcode='';store.set('');setOwner(false)}  // passcode was changed on the server
+    Object.entries(data.sources||{}).forEach(([id,v])=>{cache[id]=v});
     (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
     (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
     renderAnswer(bot,data.answer);renderExtras(bot,data);

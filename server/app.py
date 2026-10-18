@@ -48,6 +48,22 @@ log = logging.getLogger("ask_harsha")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 DECLINE = re.compile(r"isn't in|is not in|not in (?:harsha's|his) record|ask him directly|best discussed", re.I)
+MEMORY_REQUEST = re.compile(r"^\s*(?:please\s+|can you\s+|could you\s+)?(?:remember|forget|save|note)\b", re.I)
+
+
+def answer_kind(report, owner: bool, question: str, reply) -> str:
+    """What the page labels the answer as: record, memory, mixed, web, general, or none (visitor memory refusal)."""
+    if not owner and MEMORY_REQUEST.search(question) and not report.cited:
+        return "none"
+    facts = any(c.startswith("F") for c in report.cited)
+    notes = any(c.startswith("N") for c in report.cited)
+    if facts and notes:
+        return "mixed"
+    if facts:
+        return "record"
+    if notes:
+        return "memory"
+    return "web" if reply.web_sources else "general"
 
 
 def _env_float(name: str, default: float) -> float:
@@ -263,6 +279,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         return {
             "answer": reply.text,
             "kind": report.kind,
+            "label": answer_kind(report, owner, question, reply),
+            "trace": reply.steps_log,
             "grounded": report.ok,
             "check": report.summary(),
             "citations": cited,
@@ -270,6 +288,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "memory_changes": reply.memory_changes,
             "owner": owner,
             "retrieved": sorted(agent.tools.retrieved),
+            "sources": {i: {"text": lookup[i].text, "kind": "note" if i.startswith("N") else "fact"} for i in agent.tools.retrieved if i in lookup},
             "steps": reply.steps,
         }
 

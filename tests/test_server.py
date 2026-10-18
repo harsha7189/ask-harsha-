@@ -182,3 +182,47 @@ def test_owner_is_not_rate_limited():
     c, _ = make(answer_script(3), rate_limit=1)
     for _ in range(3):
         assert c.post("/api/chat", json={"question": "Cybage?"}, headers=OWNER).status_code == 200
+
+
+def test_trace_lists_each_step_with_what_it_found():
+    c, _ = make(answer_script())
+    data = c.post("/api/chat", json={"question": "Cybage delivery?"}).json()
+    assert data["label"] == "record"
+    step = data["trace"][0]
+    assert step["kind"] == "search_facts" and step["query"] == "Cybage sprints" and "F41" in step["found"] and step["error"] is None
+
+
+def test_trace_records_web_search_queries():
+    from types import SimpleNamespace
+    web = SimpleNamespace(
+        content=[{"type": "server_tool_use", "id": "s1", "name": "web_search", "input": {"query": "Austin weather today"}},
+                 {"type": "web_search_tool_result", "tool_use_id": "s1", "content": []},
+                 {"type": "text", "text": "Sunny, 75F.", "citations": [{"url": "https://weather.example", "title": "W"}]}],
+        stop_reason="end_turn", usage=None)
+    c, _ = make([web])
+    data = c.post("/api/chat", json={"question": "Weather in Austin?"}).json()
+    assert data["trace"] == [{"kind": "web_search", "query": "Austin weather today"}] and data["label"] == "web"
+
+
+def test_labels_for_memory_and_visitor_refusal():
+    notes = MemoryNotesStore(["Harsha's favorite food is biryani."])
+    recall = [response([tool_use("t", "search_notes", {"query": "favorite food"})], "tool_use"),
+              response([text("His favorite food is biryani [N001].")], "end_turn")]
+    c, _ = make(recall, notes=notes)
+    assert c.post("/api/chat", json={"question": "Favorite food?"}).json()["label"] == "memory"
+
+    c2, _ = make([response([text("Only Harsha can add to my memory.")], "end_turn")], notes=notes)
+    assert c2.post("/api/chat", json={"question": "Remember that Harsha hates biryani"}).json()["label"] == "none"
+
+
+def test_failed_tool_shows_error_in_trace():
+    c, _ = make([response([tool_use("t", "get_topic", {"topic": "astronomy"})], "tool_use"),
+                 response([text("That isn't in Harsha's record.")], "end_turn")])
+    step = c.post("/api/chat", json={"question": "astronomy?"}).json()["trace"][0]
+    assert step["found"] == [] and "Unknown topic" in step["error"]
+
+
+def test_every_retrieved_source_text_is_returned():
+    c, _ = make(answer_script())
+    data = c.post("/api/chat", json={"question": "Cybage?"}).json()
+    assert set(data["sources"]) == set(data["retrieved"]) and data["sources"]["F41"]["kind"] == "fact"
