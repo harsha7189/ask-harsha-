@@ -64,6 +64,7 @@ class Agent:
         server_tools: list[dict] | None = None,
         lookup: Any = None,
         strict_grounding: bool = True,
+        stream: bool = False,
     ):
         self.client = client
         self.kb = kb or KnowledgeBase.load()
@@ -76,10 +77,28 @@ class Agent:
         self.server_tools = server_tools or []
         self.lookup = lookup          # object with .by_id covering facts (+ notes); defaults to the KB
         self.strict_grounding = strict_grounding
+        self.stream = stream            # stream text deltas through on_event("text", ...)
         self.messages: list[dict] = []  # full conversation, kept across turns
 
     def reset(self) -> None:
         self.messages = []
+
+    def _call(self, kwargs: dict):
+        """One model call. With streaming on, forward text as it arrives and return the final message."""
+        if not self.stream:
+            return self.client.messages.create(**kwargs)
+        with self.client.messages.stream(**kwargs) as s:
+            for ev in s:
+                kind = _get(ev, "type")
+                if kind == "text":
+                    delta = _get(ev, "text", "")
+                    if delta:
+                        self.on_event("text", {"delta": delta})
+                elif kind == "content_block_start":
+                    block = _get(ev, "content_block")
+                    if _get(block, "type") == "server_tool_use" and _get(block, "name") == "web_search":
+                        self.on_event("web_search_start", {})
+            return s.get_final_message()
 
     def ask(self, question: str) -> Reply:
         """Answer one question. If the API call fails mid-turn, the history is rolled back and the error re-raised."""
@@ -100,13 +119,13 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             reply.steps = step
-            response = self.client.messages.create(
+            response = self._call(dict(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=self.system,
                 tools=self.tools.specs() + self.server_tools,
                 messages=self.messages,
-            )
+            ))
             usage = _get(response, "usage")
             if usage is not None:
                 reply.input_tokens += _get(usage, "input_tokens", 0) or 0
@@ -171,7 +190,9 @@ class Agent:
                 reply.text = "".join(text_parts).strip()
                 break
             self.messages.append({"role": "user", "content": results})
-            text_parts = []  # narration before a tool call isn't part of the answer
+            if any(t.strip() for t in text_parts):
+                self.on_event("text_reset", {})  # streamed narration before a tool call isn't part of the answer
+            text_parts = []
         else:
             reply.stop_reason = "max_steps"
             reply.text = "I couldn't finish working that out. Please try a narrower question."

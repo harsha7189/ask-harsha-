@@ -226,3 +226,82 @@ def test_every_retrieved_source_text_is_returned():
     c, _ = make(answer_script())
     data = c.post("/api/chat", json={"question": "Cybage?"}).json()
     assert set(data["sources"]) == set(data["retrieved"]) and data["sources"]["F41"]["kind"] == "fact"
+
+
+def parse_sse(body: str) -> list[tuple[str, dict]]:
+    import json as _json
+    out = []
+    for block in body.split("\n\n"):
+        kind, data = None, None
+        for line in block.splitlines():
+            if line.startswith("event: "):
+                kind = line[7:]
+            elif line.startswith("data: "):
+                data = _json.loads(line[6:])
+        if kind:
+            out.append((kind, data))
+    return out
+
+
+def test_stream_sends_status_text_then_final():
+    c, _ = make(answer_script())
+    r = c.post("/api/chat/stream", json={"question": "Cybage delivery?"})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
+    events = parse_sse(r.text)
+    kinds = [k for k, _ in events]
+    assert kinds[0] == "status" and events[0][1]["label"] == "Looking up Harsha's career facts"
+    text = "".join(d["delta"] for k, d in events if k == "text")
+    assert text == "He delivered 26 consecutive on-time sprints at Cybage [F41]."
+    final = events[-1]
+    assert final[0] == "final" and final[1]["answer"] == text and final[1]["grounded"] is True
+
+
+def test_stream_resets_narration_before_tool_calls():
+    script = [response([text("Let me check."), tool_use("t", "search_facts", {"query": "Cybage sprints"})], "tool_use"),
+              response([text("26 sprints [F41].")], "end_turn")]
+    c, _ = make(script)
+    kinds = [k for k, _ in parse_sse(c.post("/api/chat/stream", json={"question": "q"}).text)]
+    assert kinds.index("text_reset") < kinds.index("final")
+    assert kinds.index("text_reset") > kinds.index("text")
+
+
+def test_stream_validation_errors_are_plain_json():
+    c, _ = make([])
+    r = c.post("/api/chat/stream", json={"question": "   "})
+    assert r.status_code == 400 and r.json()["error"] == "empty"
+
+
+def test_stream_upstream_failure_sends_error_event():
+    c, _ = make([RuntimeError("down")])
+    events = parse_sse(c.post("/api/chat/stream", json={"question": "hi"}).text)
+    assert events[-1][0] == "error"
+
+
+def test_evals_are_owner_only_and_report_each_case(monkeypatch):
+    import server.app as appmod
+    cases = [{"id": "c1", "question": "Cybage?", "must_include": ["26"], "must_cite": ["F41"]},
+             {"id": "c2", "question": "Cybage again?", "must_include": ["nonexistent phrase"]}]
+    monkeypatch.setattr(appmod, "load_cases", lambda mode, web: cases)
+    c, fake = make(answer_script(2))
+    assert c.post("/api/owner/evals").status_code == 401
+    events = parse_sse(c.post("/api/owner/evals", headers=OWNER).text)
+    rows = [d for k, d in events if k == "case"]
+    assert [r["pass"] for r in rows] == [True, False] and "missing 'nonexistent phrase'" in rows[1]["failures"]
+    summary = [d for k, d in events if k == "summary"][0]
+    assert summary["passed"] == 1 and summary["total"] == 2
+    assert "talking with a visitor" in fake.requests[0]["system"]   # evals test the visitor experience
+
+
+def test_eval_scorer_rules():
+    from agent.evals import score
+    assert score({"must_include": ["{year}"]}, "It is 1999.") != []
+    assert score({"expect_label": "none"}, "Only Harsha can add to my memory.", label="none") == []
+    assert score({"expect_no_memory_change": True}, "ok", memory_changes=[{"id": "N1"}]) == ["changed memory"]
+    assert score({"expect_decline": True}, "I can't say whether he managed direct reports.") == []
+
+
+def test_real_cases_file_loads_for_both_runners():
+    from agent.evals import load_cases
+    general, career = load_cases(mode="general"), load_cases(mode="career", web=False)
+    assert len(general) > len(career) and all(not c.get("web") for c in career)
+    assert len({c["id"] for c in general}) == len(general)

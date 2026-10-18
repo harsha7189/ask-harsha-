@@ -16,8 +16,11 @@ import hmac
 import json
 import logging
 import os
+import queue
 import re
 import sys
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -26,13 +29,14 @@ from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 from agent.notes import FileNotesStore, GitHubNotesStore, NotesIndex, NotesStore, NotesUnavailable  # noqa: E402
@@ -232,8 +236,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         log.info(json.dumps({"event": "note_removed", "id": note.id}))
         return {"removed": note.to_dict()}
 
-    @app.post("/api/chat")
-    def chat(req: ChatRequest, request: Request):
+    def prepare(req: ChatRequest, request: Request, stream: bool):
+        """Validate and build the agent for one question. Returns (agent, owner, question) or an error response."""
         question = req.question.strip()
         if not question:
             return error(400, "empty", "Type a question first.")
@@ -249,37 +253,39 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return error(429, "rate_limited", f"That's a lot of questions at once. Try again in about {max(1, wait // 60)} minute(s).", {"Retry-After": str(wait)})
         if budget.exhausted():
             return error(503, "resting", f"Ask Harsha is resting for today. You can reach Harsha directly at {settings.contact_email}.")
+        agent = build_agent(owner, stream)
+        agent.messages = clean_history(req.history, settings.max_history_turns)
+        return agent, owner, question
 
+    def build_agent(owner: bool, stream: bool = False) -> Agent:
         today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
         agent = Agent(
             get_client(), kb=kb, model=settings.model, max_steps=8, max_tokens=1600,
             system=build_general_prompt(today, owner=owner, web=settings.web_search),
             server_tools=[WEB_SEARCH_TOOL] if settings.web_search else [],
-            lookup=_Lookup(kb, store), strict_grounding=False,
+            lookup=_Lookup(kb, store), strict_grounding=False, stream=stream,
         )
         add_notes_tools(agent.tools, index, store, owner=owner)
-        agent.messages = clean_history(req.history, settings.max_history_turns)
-        try:
-            reply = agent.ask(question)
-        except Exception as e:  # API outage, bad key, network: log the cause, show a friendly message
-            log.error(json.dumps({"event": "upstream_error", "type": type(e).__name__, "detail": str(e)[:300]}))
-            return error(502, "upstream", "Ask Harsha couldn't reach its model just now. Please try again in a moment.")
+        return agent
 
+    def finish(agent: Agent, reply, owner: bool, question: str, event: str = "answer") -> dict:
+        """Charge the budget, log one line, and build the response payload."""
         cost = budget.add(reply.input_tokens, reply.output_tokens) + budget.add_flat(reply.web_searches * settings.price_per_search)
         report = reply.report
         lookup = _Lookup(kb, store).by_id
         cited = [{"id": c, "text": lookup[c].text, "kind": "note" if c.startswith("N") else "fact"} for c in report.cited if c in lookup]
-        record = {"event": "answer", "owner": owner, "kind": report.kind, "grounded": report.ok, "steps": reply.steps,
+        label = answer_kind(report, owner, question, reply)
+        record = {"event": event, "owner": owner, "kind": report.kind, "grounded": report.ok, "steps": reply.steps,
                   "web_searches": reply.web_searches, "memory_changes": len(reply.memory_changes),
                   "tokens_in": reply.input_tokens, "tokens_out": reply.output_tokens, "cost_usd": round(cost, 5),
                   "declined": bool(DECLINE.search(reply.text)), "spent_today_usd": round(budget.spent, 4)}
-        if settings.log_questions:
+        if settings.log_questions or event != "answer":
             record["question"] = question[:200]
         log.info(json.dumps(record))
         return {
             "answer": reply.text,
             "kind": report.kind,
-            "label": answer_kind(report, owner, question, reply),
+            "label": label,
             "trace": reply.steps_log,
             "grounded": report.ok,
             "check": report.summary(),
@@ -290,7 +296,145 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "retrieved": sorted(agent.tools.retrieved),
             "sources": {i: {"text": lookup[i].text, "kind": "note" if i.startswith("N") else "fact"} for i in agent.tools.retrieved if i in lookup},
             "steps": reply.steps,
+            "cost_usd": round(cost, 5),
         }
+
+    def upstream_failed(e: Exception) -> None:
+        log.error(json.dumps({"event": "upstream_error", "type": type(e).__name__, "detail": str(e)[:300]}))
+
+    UPSTREAM_MSG = "Ask Harsha couldn't reach its model just now. Please try again in a moment."
+
+    @app.post("/api/chat")
+    def chat(req: ChatRequest, request: Request):
+        prep = prepare(req, request, stream=False)
+        if isinstance(prep, JSONResponse):
+            return prep
+        agent, owner, question = prep
+        try:
+            reply = agent.ask(question)
+        except Exception as e:  # API outage, bad key, network: log the cause, show a friendly message
+            upstream_failed(e)
+            return error(502, "upstream", UPSTREAM_MSG)
+        return finish(agent, reply, owner, question)
+
+    STATUS = {
+        "search_facts": "Looking up Harsha's career facts",
+        "get_topic": "Opening Harsha's record",
+        "list_topics": "Checking what's in Harsha's record",
+        "search_notes": "Searching Harsha's memory",
+        "remember_note": "Saving to memory",
+        "forget_note": "Removing from memory",
+    }
+
+    def sse(kind: str, data: dict) -> str:
+        return f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    def start_worker(work, q: "queue.Queue") -> None:
+        def runner():
+            try:
+                work()
+            finally:
+                q.put(None)
+        threading.Thread(target=runner, daemon=True).start()
+
+    def stream_events(q: "queue.Queue", work=None):
+        """Yield queued events as Server-Sent Events, with keep-alive pings.
+
+        With `work`, the worker starts only once the client begins reading, so an abandoned request costs nothing.
+        """
+        if work is not None:
+            start_worker(work, q)
+        yield ": connected\n\n"
+        while True:
+            try:
+                item = q.get(timeout=15)
+            except queue.Empty:
+                yield ": ping\n\n"  # keeps proxies from closing a quiet connection while the model thinks
+                continue
+            if item is None:
+                return
+            yield sse(*item)
+
+    SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+    @app.post("/api/chat/stream")
+    def chat_stream(req: ChatRequest, request: Request):
+        prep = prepare(req, request, stream=True)
+        if isinstance(prep, JSONResponse):
+            return prep
+        agent, owner, question = prep
+        q: queue.Queue = queue.Queue()
+
+        def on_event(kind: str, data: dict) -> None:
+            if kind == "text":
+                q.put(("text", {"delta": data["delta"]}))
+            elif kind == "text_reset":
+                q.put(("text_reset", {}))
+            elif kind == "web_search_start":
+                q.put(("status", {"label": "Searching the web"}))
+            elif kind == "tool_call":
+                q.put(("status", {"label": STATUS.get(data["name"], "Working")}))
+
+        agent.on_event = on_event
+
+        def work():
+            try:
+                reply = agent.ask(question)
+                q.put(("final", finish(agent, reply, owner, question)))
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": UPSTREAM_MSG}))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    eval_lock = threading.Lock()
+
+    @app.post("/api/owner/evals")
+    def run_evals(request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        if budget.exhausted():
+            return error(503, "resting", "Today's budget is used up, so evals can't run until tomorrow.")
+        if not eval_lock.acquire(blocking=False):
+            return error(409, "busy", "An eval run is already in progress.")
+        cases = load_cases(mode="general", web=settings.web_search)
+        q: queue.Queue = queue.Queue()
+
+        def work():
+            started, passed, cost, rows = time.monotonic(), 0, 0.0, []
+            try:
+                q.put(("start", {"total": len(cases)}))
+                for i, case in enumerate(cases, 1):
+                    if budget.exhausted():
+                        q.put(("stopped", {"message": "Stopped early: today's budget is used up.", "done": i - 1}))
+                        break
+                    agent = build_agent(owner=False)  # evals test what visitors get
+                    t0 = time.monotonic()
+                    try:
+                        reply = agent.ask(case["question"])
+                        payload = finish(agent, reply, False, case["question"], event="eval_case")
+                        failures = score_case(case, reply.text, reply.report, payload["label"], reply.memory_changes)
+                        answer, case_cost = reply.text, payload["cost_usd"]
+                    except Exception as e:
+                        upstream_failed(e)
+                        failures, answer, case_cost = ["model unreachable"], "", 0.0
+                    ok = not failures
+                    passed += ok
+                    cost += case_cost
+                    row = {"n": i, "id": case["id"], "question": case["question"], "pass": ok, "failures": failures,
+                           "answer": answer[:1500], "seconds": round(time.monotonic() - t0, 1), "cost_usd": case_cost}
+                    rows.append(row)
+                    q.put(("case", row))
+                summary = {"passed": passed, "total": len(rows), "cost_usd": round(cost, 4),
+                           "seconds": round(time.monotonic() - started, 1), "model": settings.model}
+                log.info(json.dumps({"event": "eval_run", **summary, "failed": [r["id"] for r in rows if not r["pass"]]}))
+                q.put(("summary", summary))
+            finally:
+                eval_lock.release()
+
+        start_worker(work, q)  # started now, so the lock is always released even if the page goes away
+        return StreamingResponse(stream_events(q), media_type="text/event-stream", headers=SSE_HEADERS)
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     return app

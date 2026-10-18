@@ -82,6 +82,12 @@ Notes live in `notes.json` on a separate `notes` branch of this repository, writ
 | Visitor | Ask anything; read answers that cite Harsha's facts and notes |
 | Harsha (passcode) | Everything above, plus remember/forget, the Memory screen, no per-visitor rate limit |
 
+## Streaming and live evals
+
+Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), with live status lines such as "Searching the web" or "Looking up Harsha's career facts" while the agent loop works. If streaming isn't available, the page falls back to `POST /api/chat`.
+
+In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
+
 ## Web app (works on any phone)
 
 ```bash
@@ -93,8 +99,8 @@ uvicorn server.app:app --reload        # then open http://localhost:8000
 ## Test it
 
 ```bash
-python -m pytest -q                 # 56 offline tests, no API key, about a second
-python evals/run_evals.py           # 12 live cases against the real model
+python -m pytest -q                 # 68 offline tests, no API key, about a second
+python evals/run_evals.py           # career cases against the CLI agent (the web app's Run evals covers all 17)
 ```
 
 The eval cases cover factual answers that must cite the right fact, ownership boundaries ("did he build the Redis architecture himself?" must credit engineering), and three cases that must decline: an invented job, a salary question, and a prompt-injection attempt.

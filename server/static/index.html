@@ -38,6 +38,7 @@ header{flex:0 0 auto;padding:calc(12px + env(safe-area-inset-top,0px)) var(--gr)
 .who{min-width:0;flex:1}
 .who h1{margin:0;font-size:17px;font-weight:700;line-height:1.2;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .who p{margin:0;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who p.owner{color:var(--good);font-weight:600}
 .pill{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--bg);background:var(--good);border-radius:999px;padding:2px 7px}
 .hbtn{font-size:13px;color:var(--muted);padding:8px 2px;display:flex;align-items:center;gap:4px;white-space:nowrap}
 @media (max-width:420px){header{gap:10px}.mark{width:36px;height:36px;font-size:23px}}
@@ -71,6 +72,28 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .src:hover{border-color:var(--muted)}
 .saved{font-size:12.5px;color:var(--blue);border-left:2px solid var(--blue);padding-left:8px}
 .how{font-size:13px;color:var(--muted)}
+.how .direct{margin:6px 0 2px;font-size:13px;color:var(--muted)}
+.status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
+.tools{display:grid;gap:8px}
+.tool{display:grid;gap:2px;text-align:left;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg)}
+.tool:hover{border-color:var(--muted)}
+.tool b{font-size:15px}
+.tool span{font-size:13px;color:var(--muted)}
+.evhead{font-size:14px;color:var(--muted)}
+.evhead b{color:var(--fg)}
+.evbar{height:4px;border-radius:2px;background:var(--raise);overflow:hidden}
+.evbar i{display:block;height:100%;width:0;background:var(--red);transition:width .3s}
+.evlist{display:grid;gap:6px}
+.evrow{border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.evrow summary{display:flex;gap:10px;align-items:baseline;cursor:pointer;list-style:none}
+.evrow summary::-webkit-details-marker{display:none}
+.evrow .evmark{font-size:11px;font-weight:700;letter-spacing:.06em;flex:0 0 auto}
+.evrow.pass .evmark{color:var(--good)}
+.evrow.fail .evmark{color:var(--warn)}
+.evrow .q{font-size:14px}
+.evrow .why{color:var(--warn);font-size:13px;margin:6px 0 0}
+.evrow .ans{white-space:pre-wrap;font-size:13px;color:var(--muted);margin:6px 0 0;max-height:220px;overflow:auto}
+.evrow .meta{font-size:12px;color:var(--muted);margin:4px 0 0}
 .how summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;padding:4px 0;color:var(--fg);font-weight:600;font-size:12.5px}
 .how summary::-webkit-details-marker{display:none}
 .how summary::before{content:"";width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
@@ -171,8 +194,8 @@ function renderChips(owner){
   (owner?OWNER_CHIPS:VISITOR_CHIPS).forEach(s=>{const b=el('button','chip',s);b.type='button';b.onclick=()=>{if(s.includes('…')){q.value=s.replace('…','');q.focus();grow()}else ask(s)};box.append(b)});
 }
 function setOwner(on){
-  pill.hidden=!on;memBtn.hidden=!on;lockBtn.setAttribute('aria-label',on?'Sign out of owner mode':'Owner sign-in');
-  $('#sub').textContent=on?'Owner mode':'AI assistant built by Harsha Reddy';
+  pill.hidden=true;$('#sub').classList.toggle('owner',on);memBtn.hidden=!on;lockBtn.setAttribute('aria-label',on?'Sign out of owner mode':'Owner sign-in');
+  $('#sub').textContent=on?'● Owner mode':'AI assistant built by Harsha Reddy';
   $('#hello-p').textContent=on?"Say \"remember that ...\" to teach it something, or \"forget ...\" to remove it. Everything you teach it is visible to visitors, so keep private details out.":"From today's news to code to Harsha's career. Anything about Harsha is answered from his verified record; tap a red tag to see the source.";
   renderChips(on);
 }
@@ -210,6 +233,11 @@ function renderExtras(box,data){
     x.append(v);
   }
   const steps=data.trace||[];
+  if(!steps.length&&label!=='none'){
+    const d=el('details','how');d.append(el('summary',null,'How I got this · no lookups needed'));
+    d.append(el('p','direct',"Answered straight from the model's own knowledge in one step. It didn't need to search the web, Harsha's record or memory."));
+    x.append(d);
+  }
   if(steps.length){
     const d=el('details','how');const sm=el('summary',null,`How I got this · ${steps.length} lookup${steps.length===1?'':'s'}`);d.append(sm);
     const ol=el('ol','steps');
@@ -246,7 +274,10 @@ function openLock(){
   if(passcode){
     sheet((s,close)=>{
       s.append(el('h3',null,'Owner mode'),el('p',null,'You are signed in as Harsha on this device.'));
-      const r=el('div','row'),out=el('button','btn','Sign out'),ok=el('button','btn red primary','Keep me signed in');
+      const tools=el('div','tools');
+      const ev=el('button','tool');ev.type='button';ev.append(el('b',null,'Run evals'),el('span',null,'Ask the test questions as a visitor and score every answer. Takes a few minutes and about 20 to 40 cents.'));
+      ev.onclick=()=>{close();openEvals()};tools.append(ev);s.append(tools);
+      const r=el('div','row'),out=el('button','btn','Sign out'),ok=el('button','btn red primary','Done');
       out.type=ok.type='button';out.onclick=()=>{passcode='';store.set('');setOwner(false);close()};ok.onclick=close;r.append(out,ok);s.append(r);
     });return;
   }
@@ -260,6 +291,36 @@ function openLock(){
       try{const res=await fetch('/api/owner/check',{method:'POST',headers:{'X-Owner-Passcode':p}});const d=await res.json().catch(()=>({}));
         if(res.ok&&d.owner){passcode=p;store.set(p);setOwner(true);close()}else line.textContent=d.message||'That passcode isn\'t right.'}
       catch(err){line.textContent="Couldn't connect. Try again."}finally{go.disabled=false}};
+  });
+}
+function openEvals(){
+  sheet(async (s,close)=>{
+    s.append(el('h3',null,'Evals'));
+    const head=el('p','evhead','Starting…'),bar=el('div','evbar'),fill=el('i');bar.append(fill);
+    const list=el('div','evlist'),r=el('div','row'),b=el('button','btn','Close');b.type='button';b.onclick=close;r.append(b);
+    s.append(head,bar,list,r);
+    let total=0;
+    try{
+      const res=await fetch('/api/owner/evals',{method:'POST',headers:headers()});
+      const type=res.headers.get('content-type')||'';
+      if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));head.textContent=d.message||'Evals could not start.';bar.remove();return}
+      await readSSE(res,(kind,d)=>{
+        if(kind==='start'){total=d.total;head.textContent=`Running 0 of ${total}…`}
+        else if(kind==='case'){
+          fill.style.width=(d.n/total*100)+'%';head.textContent=`Running ${d.n} of ${total}…`;
+          const row=el('details','evrow '+(d.pass?'pass':'fail'));
+          const sm=el('summary');sm.append(el('span','evmark',d.pass?'PASS':'FAIL'),el('span','q',d.question));row.append(sm);
+          if(!d.pass)row.append(el('p','why',d.failures.join('; ')));
+          row.append(el('p','ans',d.answer||'(no answer)'),el('p','meta',`${d.seconds}s · $${d.cost_usd.toFixed(3)}`));
+          list.append(row);
+        }
+        else if(kind==='stopped'){head.textContent=d.message}
+        else if(kind==='summary'){
+          fill.style.width='100%';const pct=d.total?Math.round(d.passed/d.total*100):0;
+          head.textContent='';head.append(el('b',null,`${d.passed} of ${d.total} passed (${pct}%)`),` · $${d.cost_usd.toFixed(2)} · ${Math.round(d.seconds)}s · ${d.model}`);
+        }
+      });
+    }catch(e){head.textContent="Lost connection during the run. Results so far are shown below."}
   });
 }
 function openMemory(){
@@ -283,23 +344,61 @@ function openMemory(){
 }
 function alertLine(s,msg){if(!msg)return;let l=s.querySelector('.msgline');if(!l){l=el('p','msgline');s.insertBefore(l,s.lastChild)}l.textContent=msg}
 
+// Read a Server-Sent Events response, calling onEvent(kind, data) for each event.
+async function readSSE(res,onEvent){
+  const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
+  for(;;){
+    const {value,done}=await reader.read();if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf('\n\n'))>=0){
+      const block=buf.slice(0,i);buf=buf.slice(i+2);let kind=null,data='';
+      block.split('\n').forEach(l=>{if(l.startsWith('event: '))kind=l.slice(7);else if(l.startsWith('data: '))data+=l.slice(6)});
+      if(kind){let d={};try{d=JSON.parse(data||'{}')}catch(e){}onEvent(kind,d)}
+    }
+  }
+}
+function showFinal(bot,data,text){
+  if(passcode&&!data.owner){passcode='';store.set('');setOwner(false)}  // passcode was changed on the server
+  Object.entries(data.sources||{}).forEach(([id,v])=>{cache[id]=v});
+  (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
+  (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
+  bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
+  history.push({role:'user',content:text},{role:'assistant',content:data.answer});history=history.slice(-12);
+}
+async function askOnce(bot,text){  // fallback when streaming isn't available
+  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history})});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
+  showFinal(bot,data,text);
+}
 async function ask(text){
   text=text.trim();if(!text||busy)return;
   busy=true;send.disabled=true;hello.hidden=true;resetBtn.hidden=false;
   bubble('user').textContent=text;
-  const bot=bubble('bot');bot.innerHTML='<span class="typing" aria-label="Thinking"><span></span><span></span><span></span>&nbsp;Thinking</span>';
+  const bot=bubble('bot');
+  const status=el('div','status');status.innerHTML='<span class="typing"><span></span><span></span><span></span></span>';const stxt=el('span',null,'Thinking');status.append(stxt);
+  const live=el('div','body');bot.append(status,live);
+  let streamed='',finished=false;
   try{
-    const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history})});
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
-    if(passcode&&!data.owner){passcode='';store.set('');setOwner(false)}  // passcode was changed on the server
-    Object.entries(data.sources||{}).forEach(([id,v])=>{cache[id]=v});
-    (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
-    (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
-    renderAnswer(bot,data.answer);renderExtras(bot,data);
-    history.push({role:'user',content:text},{role:'assistant',content:data.answer});history=history.slice(-12);
-  }catch(e){bot.classList.add('err');bot.textContent="Couldn't connect. Check your connection and try again."}
-  finally{busy=false;send.disabled=false;scrollDown()}
+    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history})});
+    const type=res.headers.get('content-type')||'';
+    if(!res.ok||!type.includes('text/event-stream')){
+      const data=await res.json().catch(()=>({}));
+      if(res.status===404||res.status===405){await askOnce(bot,text);return}
+      bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return;
+    }
+    if(!res.body){await askOnce(bot,text);return}
+    await readSSE(res,(kind,d)=>{
+      if(kind==='status'){stxt.textContent=d.label+'…';status.hidden=false}
+      else if(kind==='text'){streamed+=d.delta;status.hidden=true;renderAnswer(live,streamed);scrollDown()}
+      else if(kind==='text_reset'){streamed='';live.textContent='';status.hidden=false}
+      else if(kind==='final'){finished=true;showFinal(bot,d,text)}
+      else if(kind==='error'){finished=true;bot.classList.add('err');bot.textContent=d.message||'Something went wrong. Please try again.'}
+    });
+    if(!finished){bot.classList.add('err');status.remove();if(!streamed)bot.textContent="The connection dropped before the answer finished. Please try again.";else bot.append(el('div','verdict warn','Connection dropped; this answer may be incomplete.'))}
+  }catch(e){
+    if(!finished){bot.classList.add('err');bot.textContent="Couldn't connect. Check your connection and try again."}
+  }finally{busy=false;send.disabled=false;scrollDown()}
 }
 
 form.addEventListener('submit',e=>{e.preventDefault();const t=q.value;q.value='';grow();ask(t)});

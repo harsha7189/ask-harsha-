@@ -5,8 +5,8 @@
     python evals/run_evals.py --model claude-haiku-5-5
     python evals/run_evals.py --only ai-launch,contact
 
-A case passes when the answer contains every must_include string, cites every must_cite ID,
-contains none of must_not_include, passes the grounding check, and (for expect_decline) declines.
+Scoring rules live in agent/evals.py and are shared with the owner-only "Run evals" button in the
+web app, which tests the full general assistant (including general-knowledge and web cases).
 Results are also written to evals/results-<model>.json.
 """
 from __future__ import annotations
@@ -23,27 +23,11 @@ from agent.kb import KnowledgeBase  # noqa: E402
 from agent.loop import DEFAULT_MODEL, Agent  # noqa: E402
 from cli import load_dotenv, make_client  # noqa: E402
 
-DECLINE_MARKERS = ["isn't in", "is not in", "not in harsha's record", "not in his record", "doesn't cover", "ask him directly", "discuss with harsha", "discussed with harsha", "best discussed", "don't have"]
+from agent.evals import load_cases, score as score_case  # noqa: E402
 
 
 def score(case: dict, reply) -> list[str]:
-    text = reply.text
-    low = text.lower()
-    failures = []
-    for s in case.get("must_include", []):
-        if s.lower() not in low:
-            failures.append(f"missing '{s}'")
-    for s in case.get("must_not_include", []):
-        if s.lower() in low:
-            failures.append(f"contains '{s}'")
-    for cid in case.get("must_cite", []):
-        if f"[{cid}]" not in text:
-            failures.append(f"no citation [{cid}]")
-    if case.get("expect_decline") and not any(m in low for m in DECLINE_MARKERS):
-        failures.append("did not decline")
-    if reply.report and not reply.report.ok:
-        failures.append(reply.report.summary())
-    return failures
+    return score_case(case, reply.text, reply.report)
 
 
 def main() -> int:
@@ -53,7 +37,7 @@ def main() -> int:
     p.add_argument("--only", help="Comma-separated case IDs.")
     args = p.parse_args()
 
-    cases = json.loads((ROOT / "evals" / "cases.json").read_text())
+    cases = load_cases(mode="career", web=False)  # this runner tests the career-only CLI agent
     if args.only:
         keep = set(args.only.split(","))
         cases = [c for c in cases if c["id"] in keep]
