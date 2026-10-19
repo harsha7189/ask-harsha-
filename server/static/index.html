@@ -43,6 +43,11 @@ header{flex:0 0 auto;padding:calc(12px + env(safe-area-inset-top,0px)) var(--gr)
 .hbtn{font-size:13px;color:var(--muted);padding:8px 2px;display:flex;align-items:center;gap:4px;white-space:nowrap}
 @media (max-width:420px){header{gap:10px}.mark{width:36px;height:36px;font-size:23px}}
 .hbtn:hover{color:var(--fg)}
+a.hbtn{text-decoration:none}
+.assist-card{display:grid;gap:2px;margin-top:6px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);border-left:3px solid var(--red);background:var(--panel);color:var(--fg);text-decoration:none}
+.assist-card b{font-size:15px}
+.assist-card span{font-size:13.5px;color:var(--muted)}
+.assist-card:hover{border-color:var(--muted);border-left-color:var(--red)}
 .hbtn svg{width:18px;height:18px}
 
 main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
@@ -173,6 +178,7 @@ textarea:focus{outline:none;border-color:var(--muted)}
 <header>
   <div class="mark" aria-hidden="true">H</div>
   <div class="who"><h1>Ask Harsha <span class="pill" id="pill" hidden>Owner</span></h1><p id="sub">AI assistant built by Harsha Reddy</p></div>
+  <a class="hbtn" id="assist" href="/assist" aria-label="Assist mode: speak or type and it talks for you"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
   <button class="hbtn" id="memory" hidden aria-label="Manage memory">Memory</button>
   <button class="hbtn" id="reset" hidden>New chat</button>
   <button class="hbtn" id="lock" aria-label="Owner sign-in"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
@@ -184,6 +190,7 @@ textarea:focus{outline:none;border-color:var(--muted)}
       <h2>Ask me <span>anything</span></h2>
       <p id="hello-p">From today's news to code to Harsha's career. Anything about Harsha is answered from his verified record; tap a red tag to see the source.</p>
       <div class="chips" id="chips"></div>
+      <a class="assist-card" href="/assist"><b>Assist mode</b><span>For anyone who can't speak clearly, or at all: speak or type a few words, tap what you mean, and your phone says it out loud.</span></a>
     </section>
   </div>
 </main>

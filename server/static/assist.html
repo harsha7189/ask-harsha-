@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Assist</title>
+<meta name="description" content="Say it your way: speak or type a few words, tap the sentence you mean, and your phone says it out loud.">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Assist">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Assist: a voice for people who can't speak clearly or at all.
+   Layout: fixed header, scrolling middle (what was heard, guesses, last sentence, quick phrases), controls pinned at the bottom.
+   Every tap target is at least 52px; nothing needs a long press or precise timing. */
+:root{
+  --bg:#0b0b0b; --panel:#171717; --raise:#232323; --line:#2e2e2e;
+  --fg:#f5f5f1; --muted:#a3a3a3; --red:#e50914; --red-hot:#ff2a36; --good:#46d369; --warn:#f2b445; --blue:#7cb7ff;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --gl:max(16px,env(safe-area-inset-left,0px)); --gr:max(16px,env(safe-area-inset-right,0px));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:17px;line-height:1.45;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+button:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+
+header{flex:0 0 auto;padding:calc(10px + env(safe-area-inset-top,0px)) var(--gr) 10px var(--gl);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.back{display:grid;place-items:center;width:44px;height:44px;margin-left:-10px;color:var(--muted);text-decoration:none;border-radius:12px}
+.back:hover{color:var(--fg)}
+.back svg{width:22px;height:22px}
+.who{flex:1;min-width:0}
+.who h1{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:28px;line-height:.95;letter-spacing:.01em}
+.who h1 span{color:var(--red)}
+.who p{margin:0;font-size:13px;color:var(--muted)}
+.gear{width:44px;height:44px;display:grid;place-items:center;color:var(--muted);border-radius:12px}
+.gear:hover{color:var(--fg)}
+.gear svg{width:22px;height:22px}
+
+main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.wrap{max-width:640px;margin:0 auto;padding:16px var(--gr) 20px var(--gl);display:grid;gap:18px}
+.wrap>section:empty{display:none}
+.label{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+
+.heard{border-left:3px solid var(--line);padding:2px 0 2px 12px;display:grid;gap:2px}
+.heard b{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.heard q{font-size:18px;quotes:"\201C" "\201D"}
+.heard.partner{border-color:var(--blue)}
+.heard.partner b{color:var(--blue)}
+.heard .x{justify-self:start;font-size:13px;color:var(--muted);padding:6px 0;text-decoration:underline;text-underline-offset:3px}
+.heard.live q{color:var(--muted)}
+
+.guesses{display:grid;gap:10px}
+.guess{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;text-align:left;min-height:64px;padding:14px 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line);font-size:20px;line-height:1.3;font-weight:500}
+.guess:hover{border-color:var(--muted)}
+.guess:active{transform:scale(.99)}
+.guess .say{width:40px;height:40px;border-radius:50%;background:var(--red);display:grid;place-items:center}
+.guess .say svg{width:20px;height:20px}
+.guess.urgent{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--panel))}
+.guess .tag{display:block;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--warn);margin-bottom:2px}
+.guess.plain{font-size:16px;color:var(--muted);min-height:52px}
+.guess.plain .say{background:var(--raise)}
+.thinking{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:16px;min-height:52px}
+.spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--fg);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err{color:var(--warn);font-size:15px;margin:0}
+.fix{display:grid;gap:8px}
+.fix-row{display:flex;gap:8px}
+
+.said{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;display:grid;gap:12px}
+.said p{margin:0;font-size:24px;line-height:1.25;font-weight:600}
+.said .acts{display:flex;gap:8px;flex-wrap:wrap}
+.act{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:999px;background:var(--raise);font-size:15px;font-weight:600}
+.act svg{width:18px;height:18px}
+.act:hover{background:#2c2c2c}
+.act.on{color:var(--warn)}
+
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (min-width:520px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.tile{min-height:60px;padding:10px 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line);font-size:17px;font-weight:600;text-align:left;line-height:1.2}
+.tile:hover{border-color:var(--muted)}
+.tile:active{background:var(--raise)}
+.tile.help{background:color-mix(in srgb,var(--red) 22%,var(--panel));border-color:color-mix(in srgb,var(--red) 60%,var(--line))}
+.tile.yes{border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
+.tile.no{border-color:color-mix(in srgb,var(--red-hot) 45%,var(--line))}
+.empty{font-size:14px;color:var(--muted);margin:0}
+
+footer{flex:0 0 auto;border-top:1px solid var(--line);background:var(--bg);padding:10px var(--gr) calc(10px + env(safe-area-inset-bottom,0px)) var(--gl)}
+.controls{max-width:640px;margin:0 auto;display:grid;gap:10px}
+.typerow{display:flex;gap:8px;align-items:flex-end}
+textarea{flex:1;min-width:0;resize:none;background:var(--panel);border:1px solid var(--line);border-radius:16px;color:var(--fg);font:inherit;font-size:17px;line-height:1.35;padding:13px 14px;max-height:110px}
+textarea:focus{outline:none;border-color:var(--muted)}
+.make{min-height:52px;padding:0 16px;border-radius:16px;background:var(--raise);font-weight:700;font-size:16px;flex:0 0 auto}
+.make:disabled{opacity:.4}
+.microw{display:grid;grid-template-columns:2fr 1fr;gap:8px}
+.mic{min-height:64px;border-radius:18px;background:var(--red);display:flex;align-items:center;justify-content:center;gap:10px;font-size:19px;font-weight:700}
+.mic svg{width:24px;height:24px}
+.mic:hover{background:var(--red-hot)}
+.mic.listening{background:var(--fg);color:var(--bg);animation:breathe 1.4s ease-in-out infinite}
+@keyframes breathe{50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--fg) 18%,transparent)}}
+.hear{min-height:64px;border-radius:18px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:14px;font-weight:700;line-height:1.1;text-align:center;padding:4px}
+.hear svg{width:20px;height:20px;color:var(--blue)}
+.hear.listening{background:var(--blue);color:var(--bg);border-color:var(--blue)}
+.hear.listening svg{color:var(--bg)}
+.mic:disabled,.hear:disabled{opacity:.5}
+
+.big{position:fixed;inset:0;z-index:40;background:#000;display:grid;place-items:center;padding:calc(24px + env(safe-area-inset-top,0px)) var(--gr) calc(24px + env(safe-area-inset-bottom,0px)) var(--gl);text-align:center}
+.big p{margin:0;font-family:var(--f-body);font-weight:700;font-size:clamp(34px,10vw,76px);line-height:1.12;overflow-wrap:anywhere}
+.big small{position:absolute;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom,0px));color:var(--muted);font-size:14px}
+
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:30;display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:min(560px,100%);max-height:88vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px 18px 0 0;padding:18px var(--gr) calc(22px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:14px}
+.sheet h3{margin:0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--red-hot)}
+.sheet label{display:grid;gap:6px;font-size:14px;color:var(--muted)}
+.sheet select,.sheet input[type=range]{width:100%}
+.sheet select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;font:inherit;font-size:16px;padding:12px}
+.sheet p{margin:0;font-size:14px;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn{min-height:44px;background:var(--raise);border-radius:999px;padding:0 16px;font-size:15px;font-weight:600}
+.btn.red{background:var(--red)}
+.saved-list{display:grid;gap:6px}
+.saved-row{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:15px}
+.saved-row button{color:var(--muted);font-size:13px;min-height:36px;padding:0 6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  <div class="who"><h1>Ass<span>i</span>st</h1><p>Say it your way. Tap what you mean and your phone says it.</p></div>
+  <button class="gear" id="gear" type="button" aria-label="Voice and settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <section id="input-view" aria-live="polite"></section>
+    <section id="guess-view" aria-live="polite"></section>
+    <section id="said-view" hidden></section>
+    <section>
+      <h2 class="label">Quick phrases</h2>
+      <div class="tiles" id="quick"></div>
+    </section>
+    <section>
+      <h2 class="label">Saved</h2>
+      <div class="tiles" id="saved"></div>
+      <p class="empty" id="saved-empty">Phrases you save with ☆ show up here.</p>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="controls">
+    <form class="typerow" id="typeform">
+      <textarea id="typed" rows="1" maxlength="300" placeholder="Type a few words" aria-label="Type a few words" enterkeyhint="go"></textarea>
+      <button class="make" id="make" type="submit" disabled>Make it</button>
+    </form>
+    <div class="microw">
+      <button class="mic" id="mic" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Speak</span></button>
+      <button class="hear" id="hear" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 3-3 4-3 7a3 3 0 0 1-6 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 10a2 2 0 0 1 4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Hear them</span></button>
+    </div>
+  </div>
+</footer>
+<div class="sr" id="announce" aria-live="assertive"></div>
+
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e};
+const inputView=$('#input-view'),guessView=$('#guess-view'),saidView=$('#said-view'),main=$('#main');
+const typed=$('#typed'),make=$('#make'),mic=$('#mic'),hear=$('#hear'),announce=$('#announce');
+const SPEAKER='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const QUICK=[["Yes","yes"],["No","no"],["Help!","help"],["Please wait a moment.",""],["Thank you.",""],["I'm in pain.",""],["I need the bathroom.",""],["I need some water.",""],["Please say that again.",""],["Please call my family.",""]];
+
+// Everything personal lives on this phone only: past picks (so it learns how this person is heard), saved phrases, voice settings.
+const KEY='askh_assist';
+const data=(()=>{let d={};try{d=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){}return{past:Array.isArray(d.past)?d.past:[],saved:Array.isArray(d.saved)?d.saved:[],voice:d.voice||'',rate:+d.rate||1,lang:d.lang||''}})();
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}};
+const passcode=(()=>{try{return localStorage.getItem('askh_owner')||''}catch(e){return''}})();
+const say=t=>{announce.textContent='';setTimeout(()=>{announce.textContent=t},50)};
+
+let partner='',lastInput=null,busy=false,current='';
+
+// ---------- speaking ----------
+const synth=window.speechSynthesis;
+let voices=[];
+function loadVoices(){voices=synth?synth.getVoices():[]}
+if(synth){loadVoices();synth.onvoiceschanged=loadVoices}
+function speak(text){
+  if(!text)return;
+  current=text;showSaid(text);
+  if(!synth){say(text);return}
+  synth.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  const v=voices.find(v=>v.voiceURI===data.voice);if(v){u.voice=v;u.lang=v.lang}else if(data.lang)u.lang=data.lang;
+  u.rate=data.rate||1;
+  try{synth.speak(u)}catch(e){say(text)}  // the sentence is still on screen and in "Show big" if the voice fails
+}
+function showSaid(text){
+  saidView.hidden=false;saidView.textContent='';
+  const box=el('div','said');box.append(el('h2','label','Last said'),el('p',null,text));
+  const acts=el('div','acts');
+  const again=el('button','act');again.type='button';again.innerHTML=SPEAKER+'<span>Say again</span>';again.onclick=()=>speak(text);
+  const big=el('button','act');big.type='button';big.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Show big</span>';big.onclick=()=>showBig(text);
+  const isSaved=data.saved.includes(text);
+  const star=el('button','act'+(isSaved?' on':''));star.type='button';star.innerHTML=`<span aria-hidden="true">${isSaved?'★':'☆'}</span><span>${isSaved?'Saved':'Save'}</span>`;
+  star.onclick=()=>{toggleSaved(text);showSaid(text)};
+  acts.append(again,big,star);box.append(acts);saidView.append(box);
+}
+function showBig(text){
+  const o=el('div','big');o.setAttribute('role','dialog');o.setAttribute('aria-label','Sentence shown large');
+  o.append(el('p',null,text),el('small',null,'Tap anywhere to close'));o.tabIndex=-1;
+  o.onclick=()=>o.remove();document.addEventListener('keydown',function k(e){if(e.key==='Escape'){o.remove();document.removeEventListener('keydown',k)}});
+  document.body.append(o);o.focus();
+}
+function toggleSaved(text){
+  const i=data.saved.indexOf(text);if(i>=0)data.saved.splice(i,1);else data.saved.unshift(text);
+  data.saved=data.saved.slice(0,30);save();renderSaved();
+}
+function renderQuick(){
+  const box=$('#quick');box.textContent='';
+  QUICK.forEach(([t,kind])=>{const b=el('button','tile'+(kind?' '+kind:''),t);b.type='button';b.onclick=()=>speak(t);box.append(b)});
+}
+function renderSaved(){
+  const box=$('#saved');box.textContent='';
+  data.saved.forEach(t=>{const b=el('button','tile',t);b.type='button';b.onclick=()=>speak(t);box.append(b)});
+  $('#saved-empty').hidden=data.saved.length>0;
+}
+
+// ---------- learning ----------
+function learn(input,said){
+  data.past=data.past.filter(p=>!(p.said===said&&p.input===input));
+  data.past.push({input:(input||'').slice(0,300),said:said.slice(0,300)});
+  data.past=data.past.slice(-50);save();
+}
+
+// ---------- guessing ----------
+function showInput(kind,text,live){
+  inputView.textContent='';
+  if(partner){const p=el('div','heard partner');p.append(el('b',null,'They said'),el('q',null,partner));
+    const x=el('button','x','Clear');x.type='button';x.onclick=()=>{partner='';showInput(kind,text)};p.append(x);inputView.append(p)}
+  if(text){const h=el('div','heard'+(live?' live':''));h.append(el('b',null,kind==='typed'?'You typed':(live?'Listening…':'I heard')),el('q',null,text));inputView.append(h)}
+}
+async function guess(input){
+  if(busy)return;busy=true;lastInput=input;
+  guessView.textContent='';const th=el('div','thinking');th.append(el('span','spin'),el('span',null,'Working out what you mean…'));guessView.append(th);
+  const body={heard:input.heard||[],typed:input.typed||'',partner:partner,past:data.past.slice(-20).map(p=>({input:p.input||'',said:p.said})),saved:data.saved.slice(0,30)};
+  const h={'Content-Type':'application/json'};if(passcode)h['X-Owner-Passcode']=passcode;
+  try{
+    const res=await fetch('/api/assist/interpret',{method:'POST',headers:h,body:JSON.stringify(body)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(d.message||'Something went wrong. Quick phrases still work.');
+    renderGuesses(d.guesses||[],input);
+  }catch(e){
+    guessView.textContent='';guessView.append(el('p','err',e.message||"I couldn't make guesses just now. Quick phrases still work."));
+    addFallbacks(input);
+  }finally{busy=false}
+}
+function renderGuesses(list,input){
+  guessView.textContent='';
+  const raw=(input.typed||(input.heard||[])[0]||'').trim();
+  guessView.append(el('h2','label',list.length?(input.heard||input.typed?'Did you mean':'Reply with'):'No good guess'));
+  const box=el('div','guesses');
+  list.forEach((g,i)=>{
+    const b=el('button','guess'+(g.urgent?' urgent':''));b.type='button';
+    const t=el('span');if(g.urgent)t.append(el('span','tag','Urgent'));t.append(g.text);
+    const s=el('span','say');s.innerHTML=SPEAKER;b.append(t,s);b.setAttribute('aria-label',`Say: ${g.text}`);
+    b.onclick=()=>pick(raw,g.text);box.append(b);
+    if(i===0)setTimeout(()=>b.focus({preventScroll:true}),0);
+  });
+  guessView.append(box);
+  if(!list.length)guessView.append(el('p','empty',"I couldn't work that out. Try again, type a few words, or fix it below."));
+  addFallbacks(input);
+  say(list.length?`${list.length} guesses. First: ${list[0].text}`:'No good guess.');
+  main.scrollTo({top:0,behavior:'smooth'});
+}
+function addFallbacks(input){
+  const raw=(input.typed||(input.heard||[])[0]||'').trim();
+  const box=el('div','guesses');box.style.marginTop='10px';
+  if(raw){const asis=el('button','guess plain');asis.type='button';const s=el('span','say');s.innerHTML=SPEAKER;
+    asis.append(el('span',null,`Say exactly “${raw}”`),s);asis.onclick=()=>pick(raw,raw);box.append(asis)}
+  const fixb=el('button','guess plain');fixb.type='button';fixb.append(el('span',null,'None of these. Let me fix it'));fixb.onclick=()=>openFix(raw);box.append(fixb);
+  guessView.append(box);
+}
+function openFix(raw){
+  const f=el('div','fix');const ta=el('textarea');ta.rows=2;ta.maxLength=300;ta.value=raw;ta.setAttribute('aria-label','Fix the sentence');
+  const r=el('div','fix-row');const go=el('button','btn red','Say it');go.type='button';
+  go.onclick=()=>{const t=ta.value.trim();if(t)pick(raw,t)};r.append(go);f.append(ta,r);
+  guessView.append(f);ta.focus();
+}
+function pick(raw,text){
+  learn(raw,text);
+  guessView.textContent='';inputView.textContent='';partner='';typed.value='';make.disabled=true;
+  speak(text);
+}
+
+// ---------- typing ----------
+typed.addEventListener('input',()=>{make.disabled=!typed.value.trim();typed.style.height='auto';typed.style.height=Math.min(typed.scrollHeight,110)+'px'});
+$('#typeform').addEventListener('submit',e=>{e.preventDefault();const t=typed.value.trim();if(!t)return;typed.blur();showInput('typed',t);guess({typed:t})});
+typed.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#typeform').requestSubmit()}});
+
+// ---------- listening ----------
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,who=null;
+function stopListening(){if(rec){try{rec.stop()}catch(e){}}}
+function listen(target){
+  if(rec){stopListening();return}
+  if(!SR){
+    guessView.textContent='';
+    guessView.append(el('p','err',"Listening isn't available here. Tap the text box and use the microphone on your keyboard instead. I'll still work out what you mean."));
+    typed.focus();return;
+  }
+  if(synth)synth.cancel();
+  const r=new SR();rec=r;who=target;
+  r.lang=data.lang||navigator.language||'en-US';r.interimResults=true;r.continuous=true;r.maxAlternatives=5;
+  const segs=[];let interim='',timer=setTimeout(stopListening,30000);
+  const btn=target==='me'?mic:hear;btn.classList.add('listening');btn.querySelector('span').textContent='Tap when done';
+  (target==='me'?hear:mic).disabled=true;
+  if(target==='me'){guessView.textContent='';showInput('heard','…',true)}
+  r.onresult=e=>{
+    interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const res=e.results[i];
+      if(res.isFinal)segs[i]=Array.from(res).map(a=>a.transcript.trim());
+      else interim+=res[0].transcript;
+    }
+    const sofar=(segs.filter(Boolean).map(s=>s[0]).join(' ')+' '+interim).trim()||'…';
+    if(target==='me')showInput('heard',sofar,true);
+    else{inputView.textContent='';const p=el('div','heard partner live');p.append(el('b',null,'Listening to them…'),el('q',null,sofar));inputView.append(p)}
+  };
+  r.onerror=e=>{
+    const msg={'not-allowed':'Microphone access is off. Allow it for this site in Settings, or type instead.','service-not-allowed':'Microphone access is off. Allow it for this site in Settings, or type instead.','no-speech':"I didn't hear anything. Try again a little closer to the phone.",'audio-capture':"I couldn't use the microphone."}[e.error];
+    if(msg){guessView.textContent='';guessView.append(el('p','err',msg))}
+  };
+  r.onend=()=>{
+    clearTimeout(timer);rec=null;btn.classList.remove('listening');
+    mic.querySelector('span').textContent='Speak';hear.querySelector('span').textContent='Hear them';mic.disabled=hear.disabled=false;
+    const finals=segs.filter(Boolean);
+    if(!finals.length&&interim.trim())finals.push([interim.trim()]);
+    if(!finals.length){if(target==='me')inputView.textContent='';showInput('',''); return}
+    // Several readings of the whole utterance: the top one, plus each alternative of the least certain part.
+    const top=finals.map(s=>s[0]).join(' ');const alts=new Set([top]);
+    finals.forEach((s,i)=>s.slice(1).forEach(a=>{const c=finals.map((x,j)=>j===i?a:x[0]).join(' ');if(alts.size<5)alts.add(c)}));
+    if(target==='me'){showInput('heard',top);guess({heard:[...alts]})}
+    else{partner=top;showInput('','');guess({})}
+  };
+  try{r.start()}catch(e){rec=null;btn.classList.remove('listening');mic.disabled=hear.disabled=false}
+}
+mic.onclick=()=>{if(rec&&who!=='me')return;listen('me')};
+hear.onclick=()=>{if(rec&&who!=='them')return;listen('them')};
+
+// ---------- settings ----------
+$('#gear').onclick=()=>{
+  loadVoices();
+  const bg=el('div','sheet-bg'),s=el('div','sheet');s.setAttribute('role','dialog');s.setAttribute('aria-label','Voice and settings');
+  const close=()=>bg.remove();bg.onclick=e=>{if(e.target===bg)close()};
+  s.append(el('h3',null,'Voice'));
+  const vl=el('label',null,'Voice');const sel=el('select');
+  const def=el('option',null,'Phone default');def.value='';sel.append(def);
+  const lang=(navigator.language||'en').slice(0,2);
+  voices.slice().sort((a,b)=>(b.lang.startsWith(lang)-a.lang.startsWith(lang))||a.name.localeCompare(b.name)).forEach(v=>{const o=el('option',null,`${v.name} (${v.lang})`);o.value=v.voiceURI;if(v.voiceURI===data.voice)o.selected=true;sel.append(o)});
+  sel.onchange=()=>{data.voice=sel.value;const v=voices.find(v=>v.voiceURI===sel.value);data.lang=v?v.lang:'';save()};vl.append(sel);
+  const rl=el('label',null,'Speed');const rng=el('input');rng.type='range';rng.min='0.6';rng.max='1.4';rng.step='0.1';rng.value=String(data.rate||1);
+  rng.oninput=()=>{data.rate=+rng.value;save()};rl.append(rng);
+  const test=el('button','btn','Test the voice');test.type='button';test.onclick=()=>speak('Hello. This is how I sound.');
+  s.append(vl,rl,el('div','row'));s.lastChild.append(test);
+  s.append(el('h3',null,'Saved phrases'));
+  const list=el('div','saved-list');
+  const drawSaved=()=>{list.textContent='';if(!data.saved.length)list.append(el('p',null,'None yet.'));data.saved.forEach(t=>{const r=el('div','saved-row');const x=el('button',null,'Remove');x.type='button';x.onclick=()=>{toggleSaved(t);drawSaved()};r.append(el('span',null,t),x);list.append(r)})};
+  drawSaved();s.append(list);
+  s.append(el('h3',null,'Privacy'));
+  s.append(el('p',null,`It has learned from ${data.past.length} of your past choices. Those and your saved phrases stay on this phone. To make guesses, what was heard or typed is sent to the AI model; the server doesn't keep it. Your phone turns speech into text, and your phone's maker may process that audio.`));
+  const forget=el('button','btn','Forget what it learned');forget.type='button';
+  forget.onclick=()=>{data.past=[];save();forget.textContent='Forgotten';forget.disabled=true};
+  const done=el('button','btn red','Done');done.type='button';done.onclick=close;
+  const r2=el('div','row');r2.append(forget,done);s.append(r2);
+  bg.append(s);document.body.append(bg);sel.focus();
+};
+
+renderQuick();renderSaved();
+})();
+</script>
+</body>
+</html>

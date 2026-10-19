@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agent import factcheck  # noqa: E402
+from agent import assist, factcheck  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
@@ -98,6 +98,9 @@ class Settings:
     max_history_turns: int = 6
     log_questions: bool = field(default_factory=lambda: os.environ.get("LOG_QUESTIONS", "false").lower() == "true")
     contact_email: str = "harshareddy7189@gmail.com"
+    # Assist mode is someone's voice, so it gets a fast model and a looser per-visitor limit.
+    assist_model: str = field(default_factory=lambda: os.environ.get("ASSIST_MODEL", "claude-haiku-5-5"))
+    assist_rate_limit: int = field(default_factory=lambda: int(_env_float("ASSIST_RATE_LIMIT_PER_WINDOW", 60)))
 
 
 class Turn(BaseModel):
@@ -107,6 +110,19 @@ class Turn(BaseModel):
 
 class FactCheckRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=6000)
+
+
+class PastPick(BaseModel):
+    input: str = Field(default="", max_length=300)
+    said: str = Field(min_length=1, max_length=300)
+
+
+class AssistRequest(BaseModel):
+    heard: list[str] = Field(default_factory=list, max_length=5)
+    typed: str = Field(default="", max_length=300)
+    partner: str = Field(default="", max_length=600)
+    past: list[PastPick] = Field(default_factory=list, max_length=20)
+    saved: list[str] = Field(default_factory=list, max_length=30)
 
 
 class ChatRequest(BaseModel):
@@ -164,6 +180,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     store = notes if notes is not None else default_notes_store()
     index = NotesIndex(store)
     limiter = RateLimiter(settings.rate_limit, settings.rate_window)
+    assist_limiter = RateLimiter(settings.assist_rate_limit, settings.rate_window)
     passcode_failures = RateLimiter(5, 3600)  # 5 wrong passcodes per hour per visitor
     budget = DailyBudget(settings.daily_budget_usd, settings.price_in, settings.price_out)
     state = {"client": client}
@@ -201,6 +218,39 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     @app.get("/")
     def index_page():
         return FileResponse(STATIC / "index.html")
+
+    @app.get("/assist")
+    def assist_page():
+        return FileResponse(STATIC / "assist.html", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/assist/interpret")
+    def assist_interpret(req: AssistRequest, request: Request):
+        """Turn what was heard or typed into up to three sentences. Nothing about the content is stored or logged."""
+        if not any(h.strip() for h in req.heard) and not req.typed.strip() and not req.partner.strip():
+            return error(400, "empty", "I didn't get anything to work with. Try speaking again or type a few words.")
+        ip = client_ip(request)
+        status = owner_status(request)
+        if status == "denied" and too_many_wrong(ip):
+            return error(429, "locked", "Too many wrong passcodes. Try again in an hour.")
+        owner = status == "owner"
+        if not owner and not assist_limiter.allow(ip):
+            wait = assist_limiter.retry_after(ip)
+            return error(429, "rate_limited", f"Too many at once. Quick phrases still work. Try again in about {max(1, wait // 60)} minute(s).", {"Retry-After": str(wait)})
+        if budget.exhausted():
+            return error(503, "resting", "Guessing is resting for today, but quick phrases, saved phrases and typing a full sentence still work.")
+        started = time.monotonic()
+        try:
+            res = assist.interpret(get_client(), settings.assist_model, heard=req.heard, typed=req.typed,
+                                   partner=req.partner, past=[p.model_dump() for p in req.past], saved=req.saved)
+        except Exception as e:
+            upstream_failed(e)
+            return error(502, "upstream", "I couldn't reach the model just now. Quick phrases and typing still work.")
+        cost = budget.add(res.input_tokens, res.output_tokens)
+        mode = "partner" if req.partner.strip() and not (req.typed.strip() or any(h.strip() for h in req.heard)) else ("heard" if any(h.strip() for h in req.heard) else "typed")
+        log.info(json.dumps({"event": "assist", "owner": owner, "mode": mode, "guesses": len(res.guesses),
+                             "tokens_in": res.input_tokens, "tokens_out": res.output_tokens,
+                             "cost_usd": round(cost, 5), "spent_today_usd": round(budget.spent, 4)}))
+        return {"guesses": res.guesses, "cost_usd": round(cost, 5), "seconds": round(time.monotonic() - started, 2)}
 
     @app.post("/api/owner/check")
     def owner_check(request: Request):

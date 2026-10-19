@@ -98,6 +98,19 @@ Every answer has a **Fact-check this answer** button. Tapping it runs a separate
 
 The model's verdicts aren't taken on trust. Code throws out any web source the search didn't actually return in this check and any record ID that wasn't provided or looked up, and a "confirmed" or "contradicted" verdict left with no real source is downgraded to "unverified". A check costs a few cents and counts toward the same rate limit and daily budget as a question.
 
+## Assist mode: a voice for people who can't speak clearly, or at all
+
+`/assist` is its own screen (and can be its own home-screen icon). It's for people whose speech is hard to understand (after a stroke, or with ALS, cerebral palsy or Parkinson's) and people who can't speak at all.
+
+- **Speak:** the phone's own speech recognition listens, and `agent/assist.py` turns what it heard, which is often wrong for atypical speech, into up to three full sentences the person might mean. They tap one, and the phone says it out loud.
+- **Type a few words:** "water cold" becomes "Can I have some cold water, please?" and a couple of other readings, plus "Say exactly …" and "None of these. Let me fix it".
+- **Hear them:** it listens to the other person, then suggests replies.
+- **Quick phrases and saved phrases** speak instantly, with no model call, so they keep working offline or when the daily budget runs out.
+- **Show big** puts the sentence on the whole screen for noisy rooms.
+- **It learns this person:** every pick or fix is stored on their phone as "what was heard → what they meant", and recent pairs go along with each request, so it learns how their speech gets misheard. That history and the saved phrases never leave the device except inside a request, and the server logs only counts, never what was said.
+
+It uses a fast model (`ASSIST_MODEL`, default `claude-haiku-5-5`) and its own per-visitor limit (`ASSIST_RATE_LIMIT_PER_WINDOW`, default 60 per 10 minutes), because for someone using it as their voice, waiting is the worst failure. Sign language from the camera is deliberately not included: phone-camera recognition isn't reliable enough yet for something people rely on.
+
 ## Web app (works on any phone)
 
 ```bash
