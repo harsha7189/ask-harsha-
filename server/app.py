@@ -40,6 +40,7 @@ from agent import assist, attachments as files, factcheck, inbox as inboxmod, re
 from server import mcp  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
+from agent.weather import Weather  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -231,7 +232,8 @@ class _Lookup:
 
 
 def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings | None = None, notes: NotesStore | None = None,
-               inbox: "inboxmod.InboxStore | None" = None, receipts: "rcpt.ReceiptStore | None" = None) -> FastAPI:
+               inbox: "inboxmod.InboxStore | None" = None, receipts: "rcpt.ReceiptStore | None" = None,
+               weather: Weather | None = None) -> FastAPI:
     settings = settings or Settings()
     kb = kb or KnowledgeBase.load()
     store = notes if notes is not None else default_notes_store()
@@ -247,6 +249,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                     if token and repo else rcpt.ReceiptStore(fkey))
     share_limiter = RateLimiter(20, 86400)       # shared receipts: 20 a day per visitor
     mcp_limiter = RateLimiter(30, 600)           # agent questions over MCP, per client address
+    weather = weather or Weather()
+    greet_limiter = RateLimiter(60, 600)
     limiter = RateLimiter(settings.rate_limit, settings.rate_window)
     assist_limiter = RateLimiter(settings.assist_rate_limit, settings.rate_window)
     passcode_failures = RateLimiter(5, 3600)  # 5 wrong passcodes per hour per visitor
@@ -278,6 +282,14 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
     def too_many_wrong(ip: str) -> bool:
         return not passcode_failures.allow(ip)
+
+    # ---------- Home screen greeting ----------
+    @app.get("/api/greeting")
+    def greeting(request: Request):
+        """Weather where the visitor is, for the home screen. The address is used for the lookup and not kept."""
+        if not greet_limiter.allow(client_ip(request)):
+            return {"ok": False}
+        return JSONResponse(weather.greeting(client_ip(request)), headers={"Cache-Control": "private, max-age=600"})
 
     # ---------- PM Toolkit ----------
     brief_cache: dict = {}   # (date, topics) -> final payload; one morning brief per topic set per day

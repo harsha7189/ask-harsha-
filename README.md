@@ -88,6 +88,10 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Home screen greeting
+
+The home screen opens with today's weather where the visitor is ("Hot & sunny Monday, 96°F in Austin, feels like 101°") and suggestions that fit it: ways to keep cool in a heat wave, cozy recipes on a rainy day, driving tips in snow, a wind-down routine on a clear night. In the morning it also links the morning brief. `agent/weather.py` finds the approximate location from the visitor's IP address (ipwho.is) and the weather from Open-Meteo, both free with no key, cached in memory and never logged. US visitors see °F, everyone else °C, and it falls back to a plain greeting if the weather can't be reached.
+
 ## PM Toolkit
 
 `/tools` holds six focused agents for product work (`agent/toolkit.py`). Each is one streamed model call with its own instructions and no access to Harsha's record; input is wrapped as data, and nothing is stored or logged.

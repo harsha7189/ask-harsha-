@@ -56,6 +56,11 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .hello h2{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:clamp(40px,11vw,64px);line-height:.88;letter-spacing:.005em}
 .hello h2 span{color:var(--red)}
 .hello p{margin:0;color:var(--muted);max-width:48ch}
+.hello .wx{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--fg);font-weight:600;animation:pop .3s ease}
+.hello .wx .wi{font-size:22px;line-height:1}
+.hello .wx small{color:var(--muted);font-weight:500;font-size:13px}
+.hello .owner-tip{font-size:12.5px}
+.chip.link{text-decoration:none;color:var(--fg);border-color:color-mix(in srgb,var(--red) 55%,var(--line))}
 .chips{display:flex;flex-wrap:wrap;gap:8px;padding-top:4px}
 .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-size:14px;text-align:left}
 .chip:hover{border-color:var(--muted)}
@@ -242,9 +247,11 @@ textarea:focus{outline:none;border-color:var(--muted)}
 <main id="main">
   <div class="thread" id="thread" aria-live="polite">
     <section class="hello" id="hello">
-      <h2>Ask me <span>anything</span></h2>
-      <p id="hello-p">From today's news to code to Harsha's career. Anything about Harsha is answered from his verified record; tap a red tag to see the source.</p>
+      <p class="wx" id="wx" hidden></p>
+      <h2 id="hello-h"></h2>
+      <p id="hello-p"></p>
       <div class="chips" id="chips"></div>
+      <p class="owner-tip" id="owner-tip" hidden>Owner tip: say "remember that …" to teach it something, or "forget …" to remove it. What you teach it is visible to visitors.</p>
       <a class="assist-card" href="/tools"><b>PM Toolkit</b><span>Six agents for product work: a morning brief, meeting notes, customer feedback, customer interviews, release notes and spec reviews.</span></a>
       <a class="assist-card" href="/assist"><b>Assist mode</b><span>For anyone who can't speak clearly, or at all: speak or type a few words, tap what you mean, and your phone says it out loud.</span></a>
     </section>
@@ -270,8 +277,48 @@ textarea:focus{outline:none;border-color:var(--muted)}
 'use strict';
 const $=s=>document.querySelector(s);
 const thread=$('#thread'),main=$('#main'),form=$('#form'),q=$('#q'),send=$('#send'),hello=$('#hello'),resetBtn=$('#reset'),lockBtn=$('#lock'),memBtn=$('#memory'),pill=$('#pill');
-const VISITOR_CHIPS=["What's Harsha's current role?","What's in the news today?","Explain how AI agents work","Has Harsha shipped anything with AI?","Help me write a polite follow-up email"];
-const OWNER_CHIPS=["Remember that my favorite food is …","What do you remember about me?","What's in the news today?","Explain how AI agents work"];
+// ---------- home screen: a greeting for today's weather where the visitor is ----------
+const WX={
+  hot:   {icon:'🥵',word:'Hot & sunny',line:"It's a scorcher out there. Let's find ways to keep you cool.",chips:["How can I keep my place cool without blasting the AC?","Easy no-cook dinners for a hot day","Fun indoor things to do in {city} today"]},
+  sunny: {icon:'☀️',word:'Sunny',line:"Beautiful day out there. How can we get started?",chips:["Outdoor things to do in {city} this afternoon","Plan a simple picnic for two","Give me a 20-minute walking workout"]},
+  clear: {icon:'🌙',word:'Clear',line:"Quiet, clear night. A good time to plan tomorrow or unwind.",chips:["Help me plan tomorrow in 5 minutes","Recommend a movie for tonight","A short wind-down routine for better sleep"]},
+  cloudy:{icon:'☁️',word:'Cloudy',line:"Gray skies, clear head. Let's get something done.",chips:["Plan a 2-hour deep-work block with me","Teach me something interesting in 5 minutes","Make café-style coffee at home"]},
+  rain:  {icon:'🌧️',word:'Rainy',line:"Rain outside: the perfect excuse to stay in and dig into something.",chips:["Cozy recipes for a rainy day","Movies for a rainy afternoon","Tips for driving safely in heavy rain"]},
+  storm: {icon:'⛈️',word:'Stormy',line:"Storms around. Stay safe inside. I'm here for whatever you need.",chips:["How should I prepare for a thunderstorm?","Things to do if the power goes out","How far away is lightning if I hear thunder 10 seconds later?"]},
+  snow:  {icon:'❄️',word:'Snowy',line:"Snow day! Stay warm. What are we working on?",chips:["Tips for driving safely in snow","Warm soups I can make tonight","Fun things to do on a snow day"]},
+  fog:   {icon:'🌫️',word:'Foggy',line:"Foggy out there. Take it slow on the roads.",chips:["Tips for driving in fog","Teach me something interesting in 5 minutes","Help me plan my day"]},
+  cold:  {icon:'🥶',word:'Chilly',line:"It's cold out there. Warm drink first, then let's get going.",chips:["Warm drinks I can make at home","How to stay warm without cranking the heat","A 15-minute indoor workout"]},
+};
+const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function partOfDay(h){return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night'}
+function greet(w){
+  const now=new Date(),part=partOfDay(now.getHours()),day=DAYS[now.getDay()];
+  const h=$('#hello-h'),p=$('#hello-p'),wx=$('#wx');h.textContent='';
+  let chips=[],kind=null;
+  if(w&&w.ok){
+    kind=WX[w.condition]||WX.cloudy;
+    // At night, "sunny" reads wrong: clear skies after dark use the night copy.
+    if(w.condition==='sunny'&&(part==='night'||!w.is_day))kind=WX.clear;
+    h.append(kind.word+' ',el('span',null,day+(part==='night'||part==='evening'?' '+part:'')));
+    wx.textContent='';wx.append(el('span','wi',kind.icon),`${w.temp}°${w.unit}${w.city?' in '+w.city:''}`);
+    if(Math.abs(w.feels-w.temp)>=3)wx.append(el('small',null,`feels like ${w.feels}°`));
+    wx.hidden=false;p.textContent=kind.line;
+    chips=kind.chips.map(c=>c.replace('{city}',w.city||'my area'));
+  }else{
+    h.append(`Good ${part==='night'?'evening':part} `,el('span',null,day));
+    p.textContent="Ask me anything: today's news, code, writing, plans, or Harsha's work.";
+    chips=["What's in the news today?","Help me plan my day","Teach me something interesting in 5 minutes"];
+  }
+  const box=$('#chips');box.textContent='';
+  if(part==='morning'){const a=el('a','chip link','☀️ My morning brief');a.href='/tools#morning';box.append(a)}
+  if(passcode)chips=["Remember that …",...chips];
+  chips.forEach(s=>{const b=el('button','chip',s);b.type='button';b.onclick=()=>{if(s.includes('…')){q.value=s.replace('…','');q.focus();grow()}else ask(s)};box.append(b)});
+  $('#owner-tip').hidden=!passcode;
+}
+let weatherData=null;
+async function loadWeather(){
+  try{const res=await fetch('/api/greeting');const d=await res.json();if(d&&d.ok){weatherData=d;greet(d)}}catch(e){}
+}
 const KEY='askh_owner';
 let history=[],busy=false,passcode='',pendingNames=[];
 const cache={};  // id -> {text, kind}
@@ -282,15 +329,11 @@ function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className
 function scrollDown(){requestAnimationFrame(()=>{main.scrollTop=main.scrollHeight})}
 function bubble(cls){const d=el('div','msg '+cls);thread.append(d);scrollDown();return d}
 
-function renderChips(owner){
-  const box=$('#chips');box.textContent='';
-  (owner?OWNER_CHIPS:VISITOR_CHIPS).forEach(s=>{const b=el('button','chip',s);b.type='button';b.onclick=()=>{if(s.includes('…')){q.value=s.replace('…','');q.focus();grow()}else ask(s)};box.append(b)});
-}
+function renderChips(owner){greet(weatherData)}
 function setOwner(on){
   pill.hidden=true;$('#sub').classList.toggle('owner',on);memBtn.hidden=!on;lockBtn.setAttribute('aria-label',on?'Sign out of owner mode':'Owner sign-in');
   $('#sub').textContent=on?'● Owner mode':'AI assistant built by Harsha Reddy';
   if(on)refreshInboxCount();
-  $('#hello-p').textContent=on?"Say \"remember that ...\" to teach it something, or \"forget ...\" to remove it. Everything you teach it is visible to visitors, so keep private details out.":"From today's news to code to Harsha's career. Anything about Harsha is answered from his verified record; tap a red tag to see the source.";
   renderChips(on);
 }
 
@@ -809,7 +852,7 @@ resetBtn.addEventListener('click',()=>{history=[];files=[];renderTray();thread.q
 lockBtn.addEventListener('click',openLock);
 memBtn.addEventListener('click',openMemory);
 
-passcode=store.get();setOwner(!!passcode);checkTickets();
+passcode=store.get();setOwner(!!passcode);checkTickets();loadWeather();
 if(passcode){fetch('/api/owner/check',{method:'POST',headers:{'X-Owner-Passcode':passcode}}).then(r=>{if(!r.ok){passcode='';store.set('');setOwner(false)}}).catch(()=>{})}
 })();
 </script>
