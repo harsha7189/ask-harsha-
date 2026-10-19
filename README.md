@@ -88,6 +88,12 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Second opinions (model jury)
+
+Under a general or web answer, **⚖️ Second opinions** asks ChatGPT and Gemini the same question in parallel (`agent/jury.py`, plain HTTPS, no extra SDKs), shows each answer as it arrives, then has Claude compare all three: an agreement level (strong, partly, disagree), what they agree on, where they differ with each model's position, what only one said, and what to double-check. It doesn't pick a winner; it shows where to look.
+
+Set `OPENAI_API_KEY` and/or `GEMINI_API_KEY` to turn it on (the button appears only when at least one is set). Model names are settings, `OPENAI_MODEL` (default `gpt-6.1-sol`) and `GEMINI_MODEL` (default `gemini-3.8-flash`); if a configured model has been retired, the juror lists the provider's current models, picks the best match and remembers it. Visitors get 5 second opinions an hour; each juror call is charged to the daily budget at `JURY_PRICE_PER_CALL` (default $0.01). The question is sent to OpenAI and Google only when someone taps the button, and the page says so.
+
 ## Home screen greeting
 
 The home screen opens with today's weather where the visitor is ("Hot & sunny Monday, 96°F in Austin, feels like 101°") and suggestions that fit it: ways to keep cool in a heat wave, cozy recipes on a rainy day, driving tips in snow, a wind-down routine on a clear night. In the morning it also links the morning brief. `agent/weather.py` finds the approximate location from the visitor's IP address (ipwho.is) and the weather from Open-Meteo, both free with no key, cached in memory and never logged. US visitors see °F, everyone else °C, and it falls back to a plain greeting if the weather can't be reached.

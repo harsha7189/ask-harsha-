@@ -41,6 +41,7 @@ from server import mcp  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
+from agent.jury import Jury  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -116,6 +117,11 @@ class ToolRequest(BaseModel):
     text: str = Field(default="", max_length=150_000)
     attachments: list[Attachment] = Field(default_factory=list, max_length=files.MAX_FILES)
     options: dict = Field(default_factory=dict)
+
+
+class JuryRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    answer: str = Field(default="", max_length=10000)
 
 
 class ShareRequest(BaseModel):
@@ -233,7 +239,7 @@ class _Lookup:
 
 def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings | None = None, notes: NotesStore | None = None,
                inbox: "inboxmod.InboxStore | None" = None, receipts: "rcpt.ReceiptStore | None" = None,
-               weather: Weather | None = None) -> FastAPI:
+               weather: Weather | None = None, jury: Jury | None = None) -> FastAPI:
     settings = settings or Settings()
     kb = kb or KnowledgeBase.load()
     store = notes if notes is not None else default_notes_store()
@@ -251,6 +257,10 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     mcp_limiter = RateLimiter(30, 600)           # agent questions over MCP, per client address
     weather = weather or Weather()
     greet_limiter = RateLimiter(60, 600)
+    jury = jury or Jury(os.environ.get("OPENAI_API_KEY", ""), os.environ.get("OPENAI_MODEL", ""),
+                        os.environ.get("GEMINI_API_KEY", ""), os.environ.get("GEMINI_MODEL", ""))
+    jury_limiter = RateLimiter(5, 3600)          # second opinions: 5 an hour per visitor
+    jury_price = _env_float("JURY_PRICE_PER_CALL", 0.01)  # rough cost of one ChatGPT or Gemini answer, for the daily budget
     limiter = RateLimiter(settings.rate_limit, settings.rate_window)
     assist_limiter = RateLimiter(settings.assist_rate_limit, settings.rate_window)
     passcode_failures = RateLimiter(5, 3600)  # 5 wrong passcodes per hour per visitor
@@ -282,6 +292,43 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
     def too_many_wrong(ip: str) -> bool:
         return not passcode_failures.allow(ip)
+
+    # ---------- Second opinions (model jury) ----------
+    @app.get("/api/jury")
+    def jury_status():
+        return {"enabled": bool(jury.ready), "jurors": jury.status()}
+
+    @app.post("/api/jury/stream")
+    def jury_stream(req: JuryRequest, request: Request):
+        if not jury.ready:
+            return error(503, "jury", "Second opinions aren't set up yet.")
+        ip = client_ip(request)
+        status = owner_status(request)
+        if status == "denied" and too_many_wrong(ip):
+            return error(429, "locked", "Too many wrong passcodes. Try again in an hour.")
+        owner = status == "owner"
+        if not owner and not jury_limiter.allow(ip):
+            return error(429, "rate_limited", "That's a lot of second opinions for one hour. Please try again later.")
+        if budget.exhausted():
+            return error(503, "resting", f"Ask Harsha is resting for today. You can reach Harsha directly at {settings.contact_email}.")
+        q: queue.Queue = queue.Queue()
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+
+        def work():
+            started = time.monotonic()
+            try:
+                v = jury.run(get_client(), settings.model, today, req.question.strip(), req.answer.strip(), lambda k, d: q.put((k, d)))
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": "Second opinions couldn't finish. Please try again."}))
+                return
+            cost = budget.add(v.input_tokens, v.output_tokens) + budget.add_flat(v.juror_calls * jury_price)
+            log.info(json.dumps({"event": "jury", "owner": owner, "jurors": [o.id for o in v.opinions if o.text],
+                                 "failed": [o.id for o in v.opinions if o.error], "agreement": (v.comparison or {}).get("agreement"),
+                                 "cost_usd": round(cost, 5), "spent_today_usd": round(budget.spent, 4)}))
+            q.put(("final", {"comparison": v.comparison, "cost_usd": round(cost, 4), "seconds": round(time.monotonic() - started, 1)}))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
 
     # ---------- Home screen greeting ----------
     @app.get("/api/greeting")

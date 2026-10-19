@@ -94,6 +94,28 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .vcard .vfoot img{width:84px;height:84px;background:#fff;border-radius:8px;padding:4px;flex:0 0 auto}
 .vcard .vfoot b{display:block;font-size:14px}
 .vcard .vfoot span{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.jcards{display:grid;gap:6px}
+.jcard{border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.jcard summary{display:flex;gap:10px;align-items:baseline;cursor:pointer;list-style:none;font-size:14px}
+.jcard summary::-webkit-details-marker{display:none}
+.jcard summary::after{content:"Show";margin-left:auto;font-size:12px;color:var(--muted)}
+.jcard[open] summary::after{content:"Hide"}
+.jcard.pending summary::after,.jcard.failed summary::after{content:""}
+.jcard .jmeta{font-size:12px;color:var(--muted)}
+.jcard.pending .jmeta{animation:pulse 1.2s infinite}
+.jcard.failed .jmeta{color:var(--warn)}
+.jcard .jtext{font-size:14px;margin-top:8px;white-space:pre-wrap;color:var(--fg)}
+.jbadge{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 10px}
+.jbadge.ok{color:var(--good);background:color-mix(in srgb,var(--good) 16%,transparent)}
+.jbadge.unk{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.jbadge.bad{color:var(--red-hot);background:color-mix(in srgb,var(--red) 18%,transparent)}
+.jcmp{display:grid;gap:6px}
+.jsum{margin:0;font-size:14px}
+.jh{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.jlist{margin:0;padding-left:18px;display:grid;gap:6px;font-size:14px}
+.jlist b{display:block;font-weight:600}
+.jpos{font-size:13.5px;color:var(--muted);margin-top:2px}
+.jwho{display:inline-block;font-size:11px;font-weight:700;color:var(--fg);background:var(--raise);border-radius:5px;padding:1px 6px;margin-right:6px}
 .fcbtn.ok{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
 .fcbtn{justify-self:start;font-size:12.5px;font-weight:600;color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:var(--raise)}
 .fcbtn:hover{border-color:var(--muted)}
@@ -509,6 +531,7 @@ function showFinal(bot,data,text){
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
   bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
   if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);
+  if(juryOn&&['general','web'].includes(data.label)&&data.answer)addJury(bot,text,data.answer);
   if(data.receipt&&data.signature)addShare(bot,data);
   if(data.ask_harsha&&!passcode)addAskHarsha(bot,text,data);
   else if(data.ask_harsha&&passcode){const n=el('p','fcfoot','Visitors would see an "Ask the real Harsha" pop-up here: '+data.ask_harsha.reason);n.style.marginTop='8px';bot.append(n)}  // claims about a private file can't be checked on the web
@@ -643,6 +666,52 @@ main.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer&&e.dataTra
 q.addEventListener('paste',e=>{const l=[...(e.clipboardData&&e.clipboardData.files||[])];if(l.length){e.preventDefault();addFiles(l)}});
 const payload=()=>files.map(({name,kind,media_type,data})=>({name,kind,media_type,data}));
 function defaultQuestion(){const imgs=files.filter(f=>f.kind==='image').length;return imgs===files.length?(imgs===1?'What is in this photo? Tell me anything useful about it.':'What is in these photos? Tell me anything useful about them.'):(files.length===1?'Summarize this file.':'Summarize these files.')}
+
+// ---------- Second opinions: ask other AI models, then compare ----------
+let juryOn=false,juryNames=[];
+fetch('/api/jury').then(r=>r.json()).then(d=>{juryOn=!!d.enabled;juryNames=(d.jurors||[]).filter(j=>j.ready).map(j=>j.name)}).catch(()=>{});
+const AGREE={strong:['Strong agreement','ok'],partial:['Partly agree','unk'],low:['They disagree','bad']};
+function addJury(bot,question,answer){
+  const row=actionsFor(bot).querySelector('.arow');
+  const b=el('button','fcbtn','⚖️ Second opinions');b.type='button';b.setAttribute('aria-label',`Ask ${juryNames.join(' and ')} the same question and compare`);
+  b.onclick=()=>runJury(bot,b,question,answer);row.append(b);
+}
+async function runJury(bot,btn,question,answer){
+  btn.disabled=true;btn.textContent='Asking…';
+  const wrap=actionsFor(bot);wrap.querySelector('.jury')?.remove();
+  const panel=el('div','fc jury'),head=el('div','fchead'),cards=el('div','jcards'),cmp=el('div','jcmp'),foot=el('div','fcfoot');
+  head.append(el('span','fcspin'),el('span',null,'Asking other AI models…'));panel.append(head,cards,cmp,foot);wrap.append(panel);scrollDown();
+  const slot={};
+  juryNames.forEach(n=>{const d=el('details','jcard pending');const sm=el('summary');sm.append(el('b',null,n),el('span','jmeta','thinking…'));d.append(sm);cards.append(d);slot[n]=d});
+  let done=false;
+  try{
+    const res=await fetch('/api/jury/stream',{method:'POST',headers:headers(),body:JSON.stringify({question,answer})});
+    if(!res.ok||!(res.headers.get('content-type')||'').includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||"Couldn't get second opinions.")}
+    await readSSE(res,(k,d)=>{
+      if(k==='status'){head.lastChild.textContent=d.label+'…'}
+      else if(k==='opinion'){const c=slot[d.name];if(!c)return;c.classList.remove('pending');const meta=c.querySelector('.jmeta');
+        if(d.error){c.classList.add('failed');meta.textContent=d.error}else{meta.textContent=`${d.model} · ${Math.round(d.seconds)}s`;const t=el('div','jtext');renderAnswer(t,d.text);c.append(t)}}
+      else if(k==='final'){done=true;head.textContent='';
+        const c=d.comparison;
+        if(!c){head.append(el('span',null,'Only one answer came back, so there was nothing to compare.'))}
+        else{
+          const [word,cls]=AGREE[c.agreement]||AGREE.partial;const badge=el('span','jbadge '+cls,word);head.append(badge);
+          if(c.summary)cmp.append(el('p','jsum',c.summary));
+          const sec=(title,items,fn)=>{if(!items||!items.length)return;cmp.append(el('div','jh',title));const ul=el('ul','jlist');items.forEach(x=>ul.append(fn(x)));cmp.append(ul)};
+          sec('They agree on',c.agree,x=>el('li',null,x));
+          sec('Where they differ',c.disagree,x=>{const li=el('li');li.append(el('b',null,x.topic));Object.entries(x.positions||{}).forEach(([m,p])=>{const r=el('div','jpos');r.append(el('span','jwho',m),p);li.append(r)});return li});
+          sec('Only one said',c.unique,x=>{const li=el('li');li.append(el('span','jwho',x.model),x.point);return li});
+          sec('Worth double-checking',c.check,x=>el('li',null,x));
+        }
+        foot.textContent=`${d.cost_usd<0.01?'Under 1¢':Math.round(d.cost_usd*100)+'¢'} · ${Math.round(d.seconds)}s · Your question was also sent to ${juryNames.join(' and ')}.`;
+        btn.remove();
+      }
+      else if(k==='error'){throw new Error(d.message)}
+    });
+    if(!done)throw new Error('The connection dropped. Please try again.');
+  }catch(e){head.textContent='';head.append(el('span','fcerr',e.message));btn.disabled=false;btn.textContent='⚖️ Try second opinions again'}
+  scrollDown();
+}
 
 // ---------- Verified answers ----------
 // Every answer arrives signed by the server. "Share verified" sends the signed receipt back, the server checks the
