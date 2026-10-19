@@ -105,7 +105,8 @@ The model's verdicts aren't taken on trust. Code throws out any web source the s
 - **Speak:** the phone's own speech recognition listens, and `agent/assist.py` turns what it heard, which is often wrong for atypical speech, into up to three full sentences the person might mean. They tap one, and the phone says it out loud.
 - **Type a few words:** "water cold" becomes "Can I have some cold water, please?" and a couple of other readings, plus "Say exactly …" and "None of these. Let me fix it".
 - **Hear them:** it listens to the other person, then suggests replies.
-- **Quick phrases and saved phrases** speak instantly, with no model call, so they keep working offline or when the daily budget runs out.
+- **Phrase boards** (Mine, Basics, Feelings, Body, Doctor, Food, People) speak instantly with one tap, with no model call, so they keep working offline or when the daily budget runs out. "Mine" holds saved phrases and ones the person adds.
+- **Finish my sentence:** while typing, it suggests whole sentences this person has said or saved (their own first, most used first) and completes the word being typed. "wat" offers "Can I have some water, please?" in one tap. This runs on the phone, so it's instant and free.
 - **Show big** puts the sentence on the whole screen for noisy rooms.
 - **It learns this person:** every pick or fix is stored on their phone as "what was heard → what they meant", and recent pairs go along with each request, so it learns how their speech gets misheard. That history and the saved phrases never leave the device except inside a request, and the server logs only counts, never what was said.
 

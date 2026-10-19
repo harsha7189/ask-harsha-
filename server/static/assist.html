@@ -49,6 +49,9 @@ header{flex:0 0 auto;padding:calc(10px + env(safe-area-inset-top,0px)) var(--gr)
 main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .wrap{max-width:640px;margin:0 auto;padding:16px var(--gr) 20px var(--gl);display:grid;gap:18px}
 .wrap>section:empty{display:none}
+.wrap{grid-template-columns:minmax(0,1fr)}
+.wrap>section{min-width:0}
+.controls{grid-template-columns:minmax(0,1fr)}
 .label{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
 
 .heard{border-left:3px solid var(--line);padding:2px 0 2px 12px;display:grid;gap:2px}
@@ -103,7 +106,21 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .tile.help{background:color-mix(in srgb,var(--red) 22%,var(--panel));border-color:color-mix(in srgb,var(--red) 60%,var(--line))}
 .tile.yes{border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
 .tile.no{border-color:color-mix(in srgb,var(--red-hot) 45%,var(--line))}
-.empty{font-size:14px;color:var(--muted);margin:0}
+.empty{font-size:14px;color:var(--muted);margin:10px 0 0}
+.boards{display:flex;gap:6px;overflow-x:auto;margin:0 calc(-1*var(--gr)) 10px calc(-1*var(--gl));padding:2px var(--gr) 4px var(--gl);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.boards::-webkit-scrollbar{display:none}
+.board{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.board[aria-selected=true]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.board .em{font-size:17px;line-height:1}
+.tile .em{display:block;font-size:22px;line-height:1;margin-bottom:6px}
+.tile.add{border-style:dashed;color:var(--muted);font-weight:600}
+.suggest{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin:0 calc(-1*var(--gr)) 0 calc(-1*var(--gl));padding:0 var(--gr) 0 var(--gl)}
+.suggest::-webkit-scrollbar{display:none}
+.sg{flex:0 0 auto;min-height:44px;max-width:80vw;padding:0 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:16px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sg.sentence{border-color:color-mix(in srgb,var(--red) 55%,var(--line))}
+.sg.sentence svg{width:16px;height:16px;flex:0 0 auto;color:var(--red-hot)}
+.sg.word{font-weight:600;background:var(--raise)}
+.sg span{overflow:hidden;text-overflow:ellipsis}
 
 footer{flex:0 0 auto;border-top:1px solid var(--line);background:var(--bg);padding:10px var(--gr) calc(10px + env(safe-area-inset-bottom,0px)) var(--gl)}
 .controls{max-width:640px;margin:0 auto;display:grid;gap:10px}
@@ -158,19 +175,17 @@ textarea:focus{outline:none;border-color:var(--muted)}
     <section id="guess-view" aria-live="polite"></section>
     <section id="said-view" hidden></section>
     <section>
-      <h2 class="label">Quick phrases</h2>
-      <div class="tiles" id="quick"></div>
-    </section>
-    <section>
-      <h2 class="label">Saved</h2>
-      <div class="tiles" id="saved"></div>
-      <p class="empty" id="saved-empty">Phrases you save with ☆ show up here.</p>
+      <h2 class="label">Phrases</h2>
+      <div class="boards" id="boards" role="tablist" aria-label="Phrase boards"></div>
+      <div class="tiles" id="tiles" role="tabpanel"></div>
+      <p class="empty" id="board-empty" hidden></p>
     </section>
   </div>
 </main>
 
 <footer>
   <div class="controls">
+    <div class="suggest" id="suggest" hidden aria-label="Suggestions"></div>
     <form class="typerow" id="typeform">
       <textarea id="typed" rows="1" maxlength="300" placeholder="Type a few words" aria-label="Type a few words" enterkeyhint="go"></textarea>
       <button class="make" id="make" type="submit" disabled>Make it</button>
@@ -191,11 +206,22 @@ const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className
 const inputView=$('#input-view'),guessView=$('#guess-view'),saidView=$('#said-view'),main=$('#main');
 const typed=$('#typed'),make=$('#make'),mic=$('#mic'),hear=$('#hear'),announce=$('#announce');
 const SPEAKER='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-const QUICK=[["Yes","yes"],["No","no"],["Help!","help"],["Please wait a moment.",""],["Thank you.",""],["I'm in pain.",""],["I need the bathroom.",""],["I need some water.",""],["Please say that again.",""],["Please call my family.",""]];
+// Topic boards: tap a phrase and it's said at once. No model call, so they're instant, free and work offline.
+// A phrase is "text" or ["text", style] where style is yes, no or help.
+const BOARDS=[
+ {id:'mine',em:'★',name:'Mine'},
+ {id:'basics',em:'💬',name:'Basics',phrases:[["Yes","yes"],["No","no"],["Help!","help"],"Please wait a moment.","Thank you.","Please say that again.","I don't know.","Maybe.","I'm finished.","Please call my family."]},
+ {id:'feel',em:'🙂',name:'Feelings',phrases:["I'm okay.","I'm happy.","I'm tired.","I'm scared.","I feel sad.","I'm frustrated.","I'm bored.","I need a break.","I'm feeling better.","I'm worried."]},
+ {id:'body',em:'🩹',name:'Body',phrases:[["I can't breathe well.","help"],"I'm in pain.","It hurts here.","I feel sick.","I'm dizzy.","I'm cold.","I'm hot.","I need the bathroom.","I need my medicine.","I'd like to lie down."]},
+ {id:'doctor',em:'🩺',name:'Doctor',phrases:["Please speak slowly.","Please write it down.","Can you explain that again?","I have a question.","Is this going to hurt?","What are the side effects?","How long will this take?","I'd like my family here.","I understand.","I don't understand."]},
+ {id:'food',em:'🍽️',name:'Food',phrases:["I'm hungry.","I'm thirsty.","I need some water.","Can I have some tea?","Can I have some coffee?","Can you cut this for me?","Can I have a straw?","This is delicious.","I don't like this.","No more, thank you."]},
+ {id:'people',em:'❤️',name:'People',phrases:["Good morning.","Good night.","How are you?","I love you.","I miss you.","Please come here.","Can you help me?","See you soon.","Please give me some time alone.","Thank you for being here."]},
+];
+const ALL_PHRASES=BOARDS.flatMap(b=>(b.phrases||[]).map(p=>Array.isArray(p)?p[0]:p));
 
 // Everything personal lives on this phone only: past picks (so it learns how this person is heard), saved phrases, voice settings.
 const KEY='askh_assist';
-const data=(()=>{let d={};try{d=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){}return{past:Array.isArray(d.past)?d.past:[],saved:Array.isArray(d.saved)?d.saved:[],voice:d.voice||'',rate:+d.rate||1,lang:d.lang||''}})();
+const data=(()=>{let d={};try{d=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){}return{past:Array.isArray(d.past)?d.past:[],saved:Array.isArray(d.saved)?d.saved:[],voice:d.voice||'',rate:+d.rate||1,lang:d.lang||'',board:d.board||''}})();
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}};
 const passcode=(()=>{try{return localStorage.getItem('askh_owner')||''}catch(e){return''}})();
 const say=t=>{announce.textContent='';setTimeout(()=>{announce.textContent=t},50)};
@@ -237,16 +263,30 @@ function showBig(text){
 }
 function toggleSaved(text){
   const i=data.saved.indexOf(text);if(i>=0)data.saved.splice(i,1);else data.saved.unshift(text);
-  data.saved=data.saved.slice(0,30);save();renderSaved();
+  data.saved=data.saved.slice(0,30);save();renderBoard();
 }
-function renderQuick(){
-  const box=$('#quick');box.textContent='';
-  QUICK.forEach(([t,kind])=>{const b=el('button','tile'+(kind?' '+kind:''),t);b.type='button';b.onclick=()=>speak(t);box.append(b)});
+let board=data.board||(data.saved.length?'mine':'basics');
+if(!BOARDS.some(b=>b.id===board))board='basics';
+function renderBoard(){
+  const tabs=$('#boards');tabs.textContent='';
+  BOARDS.forEach(b=>{const t=el('button','board');t.type='button';t.setAttribute('role','tab');t.setAttribute('aria-selected',String(b.id===board));
+    t.append(el('span','em',b.em),b.name);t.onclick=()=>{board=b.id;data.board=b.id;save();renderBoard()};tabs.append(t)});
+  const box=$('#tiles'),empty=$('#board-empty');box.textContent='';
+  const b=BOARDS.find(x=>x.id===board);
+  const list=b.id==='mine'?data.saved.map(t=>[t,'']):b.phrases.map(p=>Array.isArray(p)?p:[p,'']);
+  list.forEach(([t,kind])=>{const x=el('button','tile'+(kind?' '+kind:''),t);x.type='button';x.onclick=()=>speak(t);box.append(x)});
+  if(b.id==='mine'){const add=el('button','tile add','+ Add a phrase');add.type='button';add.onclick=addPhrase;box.append(add)}
+  empty.hidden=!(b.id==='mine'&&!data.saved.length);
+  empty.textContent='Phrases you save with ☆, or add here, show up on this board.';
+  const sel=tabs.querySelector('[aria-selected=true]');if(sel&&sel.scrollIntoView)sel.scrollIntoView({block:'nearest',inline:'nearest'});
 }
-function renderSaved(){
-  const box=$('#saved');box.textContent='';
-  data.saved.forEach(t=>{const b=el('button','tile',t);b.type='button';b.onclick=()=>speak(t);box.append(b)});
-  $('#saved-empty').hidden=data.saved.length>0;
+function addPhrase(){
+  const bg=el('div','sheet-bg'),s=el('div','sheet');s.setAttribute('role','dialog');s.setAttribute('aria-label','Add a phrase');
+  const close=()=>bg.remove();bg.onclick=e=>{if(e.target===bg)close()};
+  const ta=el('textarea');ta.rows=2;ta.maxLength=200;ta.placeholder='For example: My name is Sam and I use this app to talk.';ta.setAttribute('aria-label','New phrase');
+  const r=el('div','row'),cancel=el('button','btn','Cancel'),ok=el('button','btn red','Add');cancel.type=ok.type='button';
+  cancel.onclick=close;ok.onclick=()=>{const t=ta.value.trim();if(t&&!data.saved.includes(t)){data.saved.unshift(t);data.saved=data.saved.slice(0,30);save()}close();board='mine';renderBoard()};
+  r.append(cancel,ok);s.append(el('h3',null,'Add a phrase'),ta,r);bg.append(s);document.body.append(bg);ta.focus();
 }
 
 // ---------- learning ----------
@@ -311,14 +351,56 @@ function openFix(raw){
   guessView.append(f);ta.focus();
 }
 function pick(raw,text){
-  learn(raw,text);
+  learn(raw,text);$('#suggest').hidden=true;
   guessView.textContent='';inputView.textContent='';partner='';typed.value='';make.disabled=true;
   speak(text);
 }
 
 // ---------- typing ----------
-typed.addEventListener('input',()=>{make.disabled=!typed.value.trim();typed.style.height='auto';typed.style.height=Math.min(typed.scrollHeight,110)+'px'});
-$('#typeform').addEventListener('submit',e=>{e.preventDefault();const t=typed.value.trim();if(!t)return;typed.blur();showInput('typed',t);guess({typed:t})});
+typed.addEventListener('input',()=>{make.disabled=!typed.value.trim();typed.style.height='auto';typed.style.height=Math.min(typed.scrollHeight,110)+'px';suggest()});
+
+// ---------- finish my sentence ----------
+// On the phone, no model call: whole sentences this person has said or saved (and the boards), matched by the start of
+// each word typed, plus completions for the word being typed. Their own sentences rank first, the most used first.
+const COMMON="i you my me we it is am are was can can't don't do want need like have go come please help thank thanks yes no not now later today tomorrow tonight here there home water food eat drink hungry thirsty tired pain hurts hurt bathroom medicine doctor nurse family mom dad wife husband son daughter friend phone call wait stop more again slowly okay good bad hot cold sick feel feeling happy sad scared love bed sleep walk sit chair window door light tv music outside inside room where when what who why how much time day night morning lunch dinner breakfast coffee tea milk juice sorry sure maybe right left back head stomach leg arm hand chest".split(' ');
+const words=t=>t.toLowerCase().replace(/[^\p{L}\p{N}'\s]/gu,' ').split(/\s+/).filter(Boolean);
+function sentencePool(){
+  const use=new Map();
+  const addS=(t,w)=>{if(!t)return;use.set(t,(use.get(t)||0)+w)};
+  data.past.forEach((p,i)=>addS(p.said,3+i/data.past.length));  // recent picks weigh a little more
+  data.saved.forEach(t=>addS(t,4));
+  ALL_PHRASES.forEach(t=>addS(t,1));
+  return use;
+}
+function matches(sentence,typedWords,partial){
+  const ws=words(sentence);let j=0;
+  for(const t of typedWords){while(j<ws.length&&!ws[j].startsWith(t))j++;if(j===ws.length)return 0;j++}
+  if(partial){let ok=false;for(let k=j;k<ws.length;k++)if(ws[k].startsWith(partial)){ok=true;break}if(!ok)return 0}
+  return 1+(ws[0]&&typedWords[0]&&ws[0].startsWith(typedWords[0])?.5:0);
+}
+function suggest(){
+  const box=$('#suggest');box.textContent='';
+  const v=typed.value;const ends=/\s$/.test(v);const ws=words(v);
+  if(!ws.length){box.hidden=true;return}
+  const partial=ends?'':ws[ws.length-1];const full=ends?ws:ws.slice(0,-1);
+  const pool=sentencePool(),scored=[];
+  pool.forEach((w,t)=>{const m=matches(t,full,partial);if(m)scored.push([m*w,t])});
+  scored.sort((a,b)=>b[0]-a[0]);
+  const sentences=scored.slice(0,3).map(x=>x[1]);
+  let comps=[];
+  if(partial){
+    const freq=new Map();
+    pool.forEach((w,t)=>words(t).forEach(x=>freq.set(x,(freq.get(x)||0)+w)));
+    COMMON.forEach(x=>freq.set(x,(freq.get(x)||0)+.5));
+    comps=[...freq].filter(([x])=>x.startsWith(partial)&&x!==partial).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
+  }
+  sentences.forEach(t=>{const b=el('button','sg sentence');b.type='button';b.innerHTML=SPEAKER;b.append(el('span',null,t));b.setAttribute('aria-label',`Say: ${t}`);
+    b.onclick=()=>{learn(v.trim(),t);typed.value='';make.disabled=true;box.hidden=true;guessView.textContent='';inputView.textContent='';speak(t)};box.append(b)});
+  comps.forEach(x=>{const b=el('button','sg word',x);b.type='button';b.setAttribute('aria-label',`Finish the word: ${x}`);
+    b.onclick=()=>{typed.value=v.replace(/\S+$/,x)+' ';typed.dispatchEvent(new Event('input'));typed.focus()};box.append(b)});
+  box.hidden=!box.children.length;
+}
+$('#typeform').addEventListener('submit',e=>{e.preventDefault();const t=typed.value.trim();if(!t)return;$('#suggest').hidden=true;typed.blur();showInput('typed',t);guess({typed:t})});
 typed.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#typeform').requestSubmit()}});
 
 // ---------- listening ----------
@@ -455,7 +537,7 @@ $('#gear').onclick=()=>{
   bg.append(s);document.body.append(bg);sel.focus();
 };
 
-renderQuick();renderSaved();
+renderBoard();
 })();
 </script>
 </body>
