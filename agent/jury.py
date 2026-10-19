@@ -54,6 +54,7 @@ class Juror:
     model: str
     prefer: tuple[str, ...]          # regexes, best first, for picking a model if the configured one is gone
     resolved: str = ""
+    via: str = ""                    # Gemini only: which API worked for this key
 
     @property
     def ready(self) -> bool:
@@ -117,8 +118,39 @@ class Jury:
                 for c in item.get("content", []) if c.get("type") == "output_text")
             u = d.get("usage") or {}
             return text.strip(), int(u.get("input_tokens", 0) or 0), int(u.get("output_tokens", 0) or 0)
-        d = self.http("POST", f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                      {"x-goog-api-key": j.key},
+        return self._gemini(j, model, system, question)
+
+    # Gemini: Google's newer Interactions API first (works with the new "AQ." keys AI Studio issues now), the classic
+    # generateContent second. Whichever works is remembered. Keys go in the x-goog-api-key header, as Google's docs show.
+    GEMINI = "https://generativelanguage.googleapis.com/v1beta"
+
+    def _gemini(self, j: Juror, model: str, system: str, question: str) -> tuple[str, int, int]:
+        order = [j.via] if getattr(j, "via", "") else ["interactions", "generate"]
+        last: Exception | None = None
+        for via in order:
+            try:
+                out = self._gemini_interactions(j, model, system, question) if via == "interactions" else self._gemini_generate(j, model, system, question)
+                j.via = via
+                return out
+            except urllib.error.HTTPError as e:
+                last = e
+                if e.code not in (401, 403, 404) or len(order) == 1:
+                    raise
+        raise last  # type: ignore[misc]
+
+    def _gemini_interactions(self, j: Juror, model: str, system: str, question: str) -> tuple[str, int, int]:
+        d = self.http("POST", f"{self.GEMINI}/interactions", {"x-goog-api-key": j.key},
+                      {"model": model, "input": question, "system_instruction": system,
+                       "generation_config": {"max_output_tokens": 1500}})
+        text = "".join(c.get("text", "") for st in d.get("steps", []) if st.get("type") == "model_output"
+                       for c in st.get("content", []) if c.get("type") == "text")
+        if not text:
+            text = d.get("output_text") or ""
+        u = d.get("usage") or d.get("usage_metadata") or {}
+        return text.strip(), int(u.get("input_tokens", u.get("total_input_tokens", 0)) or 0), int(u.get("output_tokens", u.get("total_output_tokens", 0)) or 0)
+
+    def _gemini_generate(self, j: Juror, model: str, system: str, question: str) -> tuple[str, int, int]:
+        d = self.http("POST", f"{self.GEMINI}/models/{model}:generateContent", {"x-goog-api-key": j.key},
                       {"systemInstruction": {"parts": [{"text": system}]},
                        "contents": [{"role": "user", "parts": [{"text": question}]}],
                        "generationConfig": {"maxOutputTokens": 1500}})

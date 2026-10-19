@@ -17,7 +17,7 @@ COMPARE = {"agreement": "partial", "summary": "Two agree; one dates it different
            "unique": [{"model": "ChatGPT", "point": "Parliament moved in 1927"}, {"model": "Nobody", "point": "dropped"}], "check": ["The year"]}
 
 
-def provider(calls, openai_status=None, retired=None):
+def provider(calls, openai_status=None, retired=None, interactions_status=None):
     def http(method, url, headers, body=None, timeout=60):
         calls.append((method, url, body and body.get("model")))
         if "openai.com/v1/models" in url:
@@ -29,6 +29,12 @@ def provider(calls, openai_status=None, retired=None):
                 raise urllib.error.HTTPError(url, 404, "model_not_found", {}, None)
             return {"output": [{"type": "reasoning"}, {"type": "message", "content": [{"type": "output_text", "text": "Canberra, since 1913."}]}],
                     "usage": {"input_tokens": 40, "output_tokens": 12}}
+        assert headers == {"x-goog-api-key": "g-key"} or headers == {"x-goog-api-key": "g"}
+        if url.endswith("/interactions"):
+            if interactions_status:
+                raise urllib.error.HTTPError(url, interactions_status, "err", {}, None)
+            assert body["system_instruction"] and body["generation_config"]["max_output_tokens"] == 1500
+            return {"steps": [{"type": "thought"}, {"type": "model_output", "content": [{"type": "text", "text": "Canberra; Parliament moved there in 1927."}]}]}
         return {"candidates": [{"content": {"parts": [{"text": "Thinking…", "thought": True}, {"text": "Canberra; Parliament moved there in 1927."}]}}],
                 "usageMetadata": {"promptTokenCount": 30, "candidatesTokenCount": 15}}
     return http
@@ -89,3 +95,16 @@ def test_endpoint_off_without_keys_and_visitors_are_limited():
     hdr = {"x-forwarded-for": "7.7.7.7"}
     codes = [c.post("/api/jury/stream", json={"question": "q", "answer": "a"}, headers=hdr).status_code for _ in range(6)]
     assert codes == [200] * 5 + [429]
+
+
+def test_gemini_uses_the_interactions_api_and_falls_back_to_generate_content():
+    calls = []
+    j = Jury("", "", "g-key", "", http=provider(calls))
+    op = j.ask_one(j.jurors[1], "Monday", "q")
+    assert op.text.startswith("Canberra") and calls[-1][1].endswith("/interactions") and j.jurors[1].via == "interactions"
+    calls2 = []
+    j2 = Jury("", "", "g-key", "", http=provider(calls2, interactions_status=401))
+    op2 = j2.ask_one(j2.jurors[1], "Monday", "q")
+    assert op2.text.startswith("Canberra") and calls2[-1][1].endswith(":generateContent") and j2.jurors[1].via == "generate"
+    j2.ask_one(j2.jurors[1], "Monday", "q")
+    assert not calls2[-1][1].endswith("/interactions")     # remembered which API works for this key
