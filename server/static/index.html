@@ -183,6 +183,12 @@ footer{flex:0 0 auto;border-top:1px solid var(--line);background:var(--bg);paddi
 form.ask{max-width:720px;margin:0 auto;display:flex;gap:8px;align-items:flex-end}
 textarea{flex:1;min-width:0;resize:none;background:var(--panel);border:1px solid var(--line);border-radius:22px;color:var(--fg);font:inherit;font-size:16px;line-height:1.4;padding:11px 16px;max-height:120px}
 textarea:focus{outline:none;border-color:var(--muted)}
+.mic{width:44px;height:44px;border-radius:50%;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;flex:0 0 auto;color:var(--fg)}
+.mic:hover{border-color:var(--muted)}
+.mic svg{width:20px;height:20px}
+.mic.on{background:var(--fg);color:var(--bg);border-color:var(--fg);animation:micpulse 1.4s ease-in-out infinite}
+@keyframes micpulse{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--fg) 18%,transparent)}}
+textarea.listening{border-color:var(--fg)}
 .send{width:44px;height:44px;border-radius:50%;background:var(--red);display:grid;place-items:center;flex:0 0 auto;transition:background-color .15s}
 .send:hover{background:var(--red-hot)}
 .send:disabled{opacity:.4;cursor:default}
@@ -262,6 +268,7 @@ textarea:focus{outline:none;border-color:var(--muted)}
   <form class="ask" id="form">
     <button class="attach" id="attach" type="button" aria-label="Add a photo or file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
     <textarea id="q" rows="1" maxlength="2000" placeholder="Ask anything" aria-label="Your message" enterkeyhint="send"></textarea>
+    <button class="mic" id="mic" type="button" aria-label="Speak your message" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
     <button class="send" id="send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </form>
   <input type="file" id="f-cam" accept="image/*" capture="environment" hidden>
@@ -842,7 +849,38 @@ async function ask(text){
   }finally{busy=false;send.disabled=false;scrollDown()}
 }
 
-form.addEventListener('submit',e=>{e.preventDefault();const t=q.value;q.value='';grow();ask(t)});
+// ---------- speak instead of typing ----------
+// The phone turns speech into text (Web Speech API); words appear in the box live and you review before sending.
+// iPhone stops listening at every pause, so a fresh recognizer restarts until you tap stop or go quiet for a few seconds.
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const micBtn=$('#mic');let dict=null;
+function stopDictation(){if(dict){dict.on=false;try{dict.rec&&dict.rec.stop()}catch(e){}}}
+function startDictation(){
+  if(!SR){toast("Voice typing isn't available in this browser. Tap the box and use the microphone on your keyboard.");q.focus();return}
+  const base=q.value.trim(),d={on:true,rec:null,finals:[],interim:'',heard:false,quiet:null,ph:q.placeholder};dict=d;
+  micBtn.classList.add('on');micBtn.setAttribute('aria-pressed','true');micBtn.setAttribute('aria-label','Stop listening');
+  q.classList.add('listening');q.placeholder='Listening… speak now';
+  const show=()=>{q.value=[base,...d.finals,d.interim].filter(Boolean).join(' ').replace(/\s+/g,' ').trimStart();grow()};
+  const settle=()=>{clearTimeout(d.quiet);d.quiet=setTimeout(()=>{if(d.heard)stopDictation()},IOS?3500:2500)};  // stop after a pause once you've said something
+  const loop=()=>{
+    if(!d.on)return done();
+    const r=new SR();d.rec=r;r.lang=navigator.language||'en-US';r.interimResults=true;r.continuous=!IOS;
+    r.onresult=e=>{d.interim='';for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i];if(x.isFinal){const t=x[0].transcript.trim();if(t)d.finals.push(t)}else d.interim+=x[0].transcript}
+      d.heard=true;show();settle()};
+    r.onerror=e=>{const m={'not-allowed':'Microphone access is blocked. Allow it for this site in your browser settings.','service-not-allowed':IOS?'Turn on Dictation (Settings → General → Keyboard → Enable Dictation), then try again.':'Voice typing is blocked in this browser.','audio-capture':"I couldn't use the microphone.",'network':'Voice typing needs an internet connection.'}[e.error];
+      if(m){d.on=false;toast(m)}};
+    r.onend=()=>{d.rec=null;if(d.interim.trim()){d.finals.push(d.interim.trim());d.interim=''}show();if(d.on)setTimeout(loop,200);else done()};
+    try{r.start()}catch(e){d.on=false;done()}
+  };
+  const done=()=>{if(dict!==d)return;dict=null;clearTimeout(d.quiet);micBtn.classList.remove('on');micBtn.setAttribute('aria-pressed','false');micBtn.setAttribute('aria-label','Speak your message');
+    q.classList.remove('listening');q.placeholder=d.ph;show();if(!d.heard)toast("I didn't hear anything. Tap the mic and try again.");else{q.focus();const n=q.value.length;try{q.setSelectionRange(n,n)}catch(e){}}};
+  d.quiet=setTimeout(()=>{if(!d.heard)stopDictation()},8000);  // nothing said at all: give up after 8 seconds
+  loop();
+}
+micBtn.addEventListener('click',()=>{if(dict)stopDictation();else startDictation()});
+
+form.addEventListener('submit',e=>{e.preventDefault();stopDictation();const t=q.value;q.value='';grow();ask(t)});
 q.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
 function grow(){q.style.height='auto';q.style.height=Math.min(q.scrollHeight,120)+'px'}
 q.addEventListener('input',grow);
