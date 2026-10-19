@@ -33,6 +33,8 @@ class ToolRegistry:
         self.retrieved: set[str] = set()
         # Memory changes made during the current turn, reported back to the page.
         self.changes: list[dict] = []
+        # Set by suggest_asking_harsha when the model offers to hand the question to Harsha.
+        self.offer: dict | None = None
         self._tools: dict[str, Tool] = {}
         for tool in self._build():
             self._tools[tool.name] = tool
@@ -124,6 +126,7 @@ class ToolRegistry:
     def reset_turn(self) -> None:
         self.retrieved.clear()
         self.changes.clear()
+        self.offer = None
 
 
 def add_notes_tools(registry: ToolRegistry, index, store, owner: bool) -> None:
@@ -182,4 +185,39 @@ def add_notes_tools(registry: ToolRegistry, index, store, owner: bool) -> None:
         description="Delete a note from memory by its ID (find it with search_notes first). Only Harsha can use this.",
         input_schema={"type": "object", "properties": {"id": {"type": "string", "description": "Note ID like N003."}}, "required": ["id"]},
         run=forget,
+    ))
+
+
+def add_ask_harsha_tool(registry: ToolRegistry) -> None:
+    """Let the model offer the visitor a way to send the question to the real Harsha.
+
+    The tool only records the offer; the page shows the pop-up and the visitor decides whether to send anything.
+    """
+    registry.offer = None
+
+    def offer(args: dict) -> dict:
+        reason = " ".join(str(args.get("reason", "")).split())[:200]
+        kind = args.get("kind") if args.get("kind") in ("about_harsha", "complex", "uncertain", "judgment") else "complex"
+        if not reason:
+            raise ToolError("Give a short reason, for example 'His record doesn't say whether he mentors students.'")
+        registry.offer = {"reason": reason, "kind": kind}
+        return {"ok": True, "note": "The app will show the visitor a button to send this question to Harsha. Finish your answer normally, "
+                "and mention the option in one short sentence at the end. Don't promise when or whether he'll reply."}
+
+    registry.add(Tool(
+        name="suggest_asking_harsha",
+        description=(
+            "Offer the visitor a button to send their question to the real Harsha, who answers personally later. Use it when "
+            "(1) they ask about Harsha and his record and notes don't cover it, or (2) the question is genuinely complex or "
+            "uncertain and a real person's judgment or experience would add something your answer can't: a hard trade-off with "
+            "no clear answer, sources that disagree, or you aren't confident. Still give your best answer. Don't use it for "
+            "simple questions you can answer well, more than once per conversation, or for emergencies, self-harm, or medical, "
+            "legal or financial decisions; for those, point to the right professional or service instead. Harsha is a product "
+            "manager, so don't present him as an expert outside his experience."
+        ),
+        input_schema={"type": "object", "properties": {
+            "reason": {"type": "string", "description": "One short sentence the visitor will see, saying why a human could help, e.g. 'This depends on your situation, and Harsha has made a similar career move.'"},
+            "kind": {"type": "string", "enum": ["about_harsha", "complex", "uncertain", "judgment"]},
+        }, "required": ["reason", "kind"]},
+        run=offer,
     ))

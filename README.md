@@ -88,6 +88,14 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Ask the real Harsha
+
+When a question needs a human, the agent says so. It calls `suggest_asking_harsha` when a question about Harsha isn't covered by his record, or when a general question is genuinely complex or uncertain and a real person's judgment would help (never for emergencies or medical, legal or financial decisions). It still answers first; then a card pops up under the answer: **Ask the real Harsha?**
+
+- The visitor chooses whether to send it, can edit the question and add a note, and gets a private link. Their browser also remembers it and shows **The real Harsha answered** when he does.
+- Harsha sees an Inbox in owner mode ("● Owner mode · 2 questions for you"), with the question, the visitor's note and what the agent told them. He answers once, and can tick **Also teach the agent** to save the answer to memory, so the agent knows it next time.
+- `agent/inbox.py` stores the inbox as `inbox.json` on the `notes` branch, **encrypted** (Fernet), because the repository is public. The key comes from `INBOX_KEY` if set, otherwise from the owner passcode. Nothing about the visitor is kept: the random link token is the only identifier. Visitors can send 5 questions a day.
+
 ## Photos and files
 
 The **+** next to the message box offers **Take a photo** (opens the camera), **Choose photos** and **Choose a file**. The agent reads photos (signs, labels, menus, screenshots, homework), PDFs up to 10 MB (30 pages for visitors, 100 for Harsha), Word documents (.docx) and text files (CSV, JSON, Markdown, code and so on). You can also paste or drag files in on a computer.

@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agent import assist, attachments as files, factcheck  # noqa: E402
+from agent import assist, attachments as files, factcheck, inbox as inboxmod  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
@@ -44,7 +44,7 @@ from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
 from agent.notes import FileNotesStore, GitHubNotesStore, NotesIndex, NotesStore, NotesUnavailable  # noqa: E402
 from agent.prompts import build_general_prompt  # noqa: E402
-from agent.tools import add_notes_tools  # noqa: E402
+from agent.tools import add_ask_harsha_tool, add_notes_tools  # noqa: E402
 from cli import load_dotenv  # noqa: E402
 from server.guard import DailyBudget, RateLimiter  # noqa: E402
 
@@ -108,6 +108,19 @@ class Settings:
 class Turn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=8000)
+
+
+class InboxRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=inboxmod.MAX_QUESTION)
+    reason: str = Field(default="", max_length=300)
+    kind: str = Field(default="complex", max_length=20)
+    context: str = Field(default="", max_length=6000)
+    note: str = Field(default="", max_length=600)
+
+
+class InboxAnswer(BaseModel):
+    answer: str = Field(min_length=1, max_length=inboxmod.MAX_ANSWER)
+    remember: bool = False
 
 
 class FactCheckRequest(BaseModel):
@@ -176,6 +189,14 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def default_inbox_store() -> "inboxmod.InboxStore":
+    key = inboxmod.make_key(os.environ.get("INBOX_KEY", ""), os.environ.get("OWNER_PASSCODE", ""))
+    token, repo = os.environ.get("GITHUB_TOKEN", ""), os.environ.get("NOTES_REPO", "")
+    if token and repo:
+        return inboxmod.GitHubInboxStore(repo, token, key, branch=os.environ.get("NOTES_BRANCH", "notes"))
+    return inboxmod.FileInboxStore(ROOT / "knowledge" / "inbox.local.json", key)
+
+
 def default_notes_store() -> NotesStore:
     token, repo = os.environ.get("GITHUB_TOKEN", ""), os.environ.get("NOTES_REPO", "")
     if token and repo:
@@ -197,11 +218,15 @@ class _Lookup:
         return {**self.kb.by_id, **{n.id: n for n in self.store.all()}}
 
 
-def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings | None = None, notes: NotesStore | None = None) -> FastAPI:
+def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings | None = None, notes: NotesStore | None = None,
+               inbox: "inboxmod.InboxStore | None" = None) -> FastAPI:
     settings = settings or Settings()
     kb = kb or KnowledgeBase.load()
     store = notes if notes is not None else default_notes_store()
     index = NotesIndex(store)
+    inbox = inbox if inbox is not None else default_inbox_store()
+    inbox_limiter = RateLimiter(5, 86400)        # questions sent to Harsha: 5 a day per visitor
+    ticket_limiter = RateLimiter(120, 600)
     limiter = RateLimiter(settings.rate_limit, settings.rate_window)
     assist_limiter = RateLimiter(settings.assist_rate_limit, settings.rate_window)
     passcode_failures = RateLimiter(5, 3600)  # 5 wrong passcodes per hour per visitor
@@ -274,6 +299,94 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                              "tokens_in": res.input_tokens, "tokens_out": res.output_tokens,
                              "cost_usd": round(cost, 5), "spent_today_usd": round(budget.spent, 4)}))
         return {"guesses": res.guesses, "cost_usd": round(cost, 5), "seconds": round(time.monotonic() - started, 2)}
+
+    # ---------- Ask the real Harsha ----------
+    def inbox_error(e: Exception) -> JSONResponse:
+        log.error(json.dumps({"event": "inbox_error", "detail": str(e)[:200]}))
+        return error(503, "inbox", str(e) if isinstance(e, inboxmod.InboxUnavailable) else "The inbox is unavailable right now. Please try again later.")
+
+    @app.post("/api/inbox")
+    def inbox_submit(req: InboxRequest, request: Request):
+        if not inbox.enabled:
+            return error(503, "inbox", "Ask the real Harsha isn't set up yet.")
+        ip = client_ip(request)
+        if owner_status(request) != "owner" and not inbox_limiter.allow(ip):
+            return error(429, "rate_limited", "You've sent a few questions to Harsha today. Please try again tomorrow.")
+        try:
+            item = inbox.submit(req.question, req.reason, req.kind, req.context, req.note)
+        except ValueError as e:
+            return error(400, "empty", str(e))
+        except Exception as e:
+            return inbox_error(e)
+        log.info(json.dumps({"event": "inbox_submit", "kind": item.kind}))
+        return {"id": item.id, "status": "waiting"}
+
+    @app.get("/api/inbox/{item_id}")
+    def inbox_ticket(item_id: str, request: Request):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{8,32}", item_id):
+            return error(404, "not_found", "That link isn't valid.")
+        if not ticket_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "Too many checks at once. Try again in a few minutes.")
+        try:
+            item = inbox.get(item_id)
+        except Exception as e:
+            return inbox_error(e)
+        if item is None or item.status == "dismissed":
+            return error(404, "not_found", "That question isn't in Harsha's inbox.")
+        return item.public()
+
+    @app.get("/api/owner/inbox")
+    def inbox_list(request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        try:
+            items = inbox.all()
+        except Exception as e:
+            return inbox_error(e)
+        order = {"open": 0, "answered": 1, "dismissed": 2}
+        items.sort(key=lambda i: (order.get(i.status, 3), i.created if i.status != "open" else ""), reverse=False)
+        open_items = [i for i in items if i.status == "open"]
+        done = sorted([i for i in items if i.status == "answered"], key=lambda i: i.answered_at, reverse=True)[:30]
+        from dataclasses import asdict
+        return {"open": [asdict(i) for i in sorted(open_items, key=lambda i: i.created)], "answered": [asdict(i) for i in done]}
+
+    @app.post("/api/owner/inbox/{item_id}/answer")
+    def inbox_answer(item_id: str, req: InboxAnswer, request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        try:
+            item = inbox.get(item_id)
+            if item is None:
+                return error(404, "not_found", "That question isn't in the inbox.")
+            note_id = ""
+            if req.remember:
+                text = f'Asked "{item.question[:200]}", Harsha answered: {req.answer.strip()}'
+                try:
+                    note_id = store.add(text[:500]).id
+                except (ValueError, NotesUnavailable) as e:
+                    return error(503, "storage", f"Your answer wasn't sent because saving it to memory failed: {e}")
+            item = inbox.answer(item_id, req.answer, note_id=note_id)
+        except ValueError as e:
+            return error(400, "empty", str(e))
+        except Exception as e:
+            return inbox_error(e)
+        log.info(json.dumps({"event": "inbox_answer", "remembered": bool(note_id)}))
+        return {"item": item.public(), "note_id": note_id}
+
+    @app.post("/api/owner/inbox/{item_id}/dismiss")
+    def inbox_dismiss(item_id: str, request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        try:
+            inbox.dismiss(item_id)
+        except KeyError:
+            return error(404, "not_found", "That question isn't in the inbox.")
+        except Exception as e:
+            return inbox_error(e)
+        return {"ok": True}
 
     @app.post("/api/owner/check")
     def owner_check(request: Request):
@@ -351,6 +464,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             lookup=_Lookup(kb, store), strict_grounding=False, stream=stream,
         )
         add_notes_tools(agent.tools, index, store, owner=owner)
+        if inbox.enabled:
+            add_ask_harsha_tool(agent.tools)
         return agent
 
     def finish(agent: Agent, reply, owner: bool, question: str, event: str = "answer") -> dict:
@@ -379,6 +494,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "citations": cited,
             "web_sources": reply.web_sources[:8],
             "memory_changes": reply.memory_changes,
+            "ask_harsha": agent.tools.offer,
             "owner": owner,
             "retrieved": sorted(agent.tools.retrieved),
             "sources": {i: {"text": lookup[i].text, "kind": "note" if i.startswith("N") else "fact"} for i in agent.tools.retrieved if i in lookup},
@@ -411,6 +527,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         "search_notes": "Searching Harsha's memory",
         "remember_note": "Saving to memory",
         "forget_note": "Removing from memory",
+        "suggest_asking_harsha": "Flagging this for Harsha",
     }
 
     def sse(kind: str, data: dict) -> str:

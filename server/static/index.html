@@ -101,6 +101,28 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .fcwhy b{color:var(--fg);font-weight:600}
 .fcrow.ok .fcwhy b{color:var(--good)}.fcrow.bad .fcwhy b{color:var(--red-hot)}.fcrow.unk .fcwhy b{color:var(--warn)}
 .fcfoot{font-size:12px;color:var(--muted)}
+.askh{margin-top:12px;border-radius:14px;padding:12px 14px;background:linear-gradient(135deg,color-mix(in srgb,var(--red) 20%,var(--panel)),var(--panel));border:1px solid color-mix(in srgb,var(--red) 55%,var(--line));display:grid;gap:8px;white-space:normal;animation:askpop .35s cubic-bezier(.2,.9,.3,1.3)}
+@keyframes askpop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+.askh .ah-top{display:flex;gap:10px;align-items:center}
+.askh .ah-av{width:34px;height:34px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:20px;flex:0 0 auto}
+.askh b{font-size:15px;display:block}
+.askh .ah-why{font-size:13px;color:var(--muted)}
+.askh .row{justify-content:flex-start}
+.askh .done{font-size:13.5px;color:var(--fg)}
+.askh .done a{color:var(--fg)}
+.answered{border:1px solid color-mix(in srgb,var(--good) 50%,var(--line));background:color-mix(in srgb,var(--good) 8%,var(--panel));border-radius:16px;padding:12px 14px;display:grid;gap:6px;white-space:pre-wrap}
+.answered .ah-label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--good);white-space:normal}
+.answered .ah-q{font-size:13.5px;color:var(--muted);white-space:normal}
+.answered .ah-x{justify-self:end;font-size:12.5px;color:var(--muted);padding:4px 0}
+.inbox{display:grid;gap:10px}
+.ibx{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:8px}
+.ibx .q{font-size:15.5px}
+.ibx .meta{font-size:12px;color:var(--muted)}
+.ibx details{font-size:13px;color:var(--muted)}
+.ibx details summary{cursor:pointer;color:var(--fg);font-weight:600;font-size:12.5px}
+.ibx textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;color:var(--fg);font:inherit;font-size:15px;padding:10px 12px;resize:vertical;min-height:70px}
+.ibx label{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--muted)}
+.ibx .ans{font-size:14px;border-left:2px solid var(--good);padding-left:8px}
 .how .direct{margin:6px 0 2px;font-size:13px;color:var(--muted)}
 .status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
 .tools{display:grid;gap:8px}
@@ -253,6 +275,7 @@ function renderChips(owner){
 function setOwner(on){
   pill.hidden=true;$('#sub').classList.toggle('owner',on);memBtn.hidden=!on;lockBtn.setAttribute('aria-label',on?'Sign out of owner mode':'Owner sign-in');
   $('#sub').textContent=on?'● Owner mode':'AI assistant built by Harsha Reddy';
+  if(on)refreshInboxCount();
   $('#hello-p').textContent=on?"Say \"remember that ...\" to teach it something, or \"forget ...\" to remove it. Everything you teach it is visible to visitors, so keep private details out.":"From today's news to code to Harsha's career. Anything about Harsha is answered from his verified record; tap a red tag to see the source.";
   renderChips(on);
 }
@@ -303,14 +326,14 @@ function renderExtras(box,data){
       if(st.query)li.append(el('span','sq',`“${st.query}”`));
       if(st.error)li.append(el('span','se',st.error));
       else if(st.found&&st.found.length){const f=el('span','sf');st.found.forEach(id=>{const b=el('button','cite'+(id.startsWith('N')?' note':''),id);b.type='button';b.onclick=()=>openSource(id);f.append(b)});li.append(f)}
-      else if(st.kind!=='web_search')li.append(el('span','sn','nothing found'));
+      else if(st.kind!=='web_search'&&st.kind!=='suggest_asking_harsha')li.append(el('span','sn','nothing found'));
       ol.append(li)});
     const fin=el('li');fin.append(el('span','sk','Wrote the answer'));if(label!=='general'&&label!=='none'&&label!=='web'&&label!=='file')fin.append(el('span','sn','then the grounding check verified every citation'));ol.append(fin);
     d.append(ol);x.append(d);
   }
   box.append(x);
 }
-const STEP_LABEL={web_search:'Searched the web',search_facts:"Searched Harsha's career facts",get_topic:"Opened a topic in Harsha's record",list_topics:"Listed the topics in Harsha's record",search_notes:"Searched Harsha's memory",remember_note:'Saved to memory',forget_note:'Removed from memory'};
+const STEP_LABEL={suggest_asking_harsha:'Offered to ask the real Harsha',web_search:'Searched the web',search_facts:"Searched Harsha's career facts",get_topic:"Opened a topic in Harsha's record",list_topics:"Listed the topics in Harsha's record",search_notes:"Searched Harsha's memory",remember_note:'Saved to memory',forget_note:'Removed from memory'};
 
 function sheet(build){
   const bg=el('div','sheet-bg'),s=el('div','sheet');s.setAttribute('role','dialog');
@@ -334,7 +357,9 @@ function openLock(){
       s.append(el('h3',null,'Owner mode'),el('p',null,'You are signed in as Harsha on this device.'));
       const tools=el('div','tools');
       const ev=el('button','tool');ev.type='button';ev.append(el('b',null,'Run evals'),el('span',null,'Ask the test questions as a visitor and score every answer. Takes a few minutes and about 20 to 40 cents.'));
-      ev.onclick=()=>{close();openEvals()};tools.append(ev);s.append(tools);
+      ev.onclick=()=>{close();openEvals()};
+      const ib=el('button','tool');ib.type='button';ib.append(el('b',null,inboxCount?`Inbox · ${inboxCount} waiting`:'Inbox'),el('span',null,'Questions visitors sent to the real you. Answer once, and optionally teach the agent.'));
+      ib.onclick=()=>{close();openInbox()};tools.append(ib,ev);s.append(tools);
       const r=el('div','row'),out=el('button','btn','Sign out'),ok=el('button','btn red primary','Done');
       out.type=ok.type='button';out.onclick=()=>{passcode='';store.set('');setOwner(false);close()};ok.onclick=close;r.append(out,ok);s.append(r);
     });return;
@@ -421,7 +446,9 @@ function showFinal(bot,data,text){
   (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
   bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
-  if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);  // claims about a private file can't be checked on the web
+  if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);
+  if(data.ask_harsha&&!passcode)addAskHarsha(bot,text,data);
+  else if(data.ask_harsha&&passcode){const n=el('p','fcfoot','Visitors would see an "Ask the real Harsha" pop-up here: '+data.ask_harsha.reason);n.style.marginTop='8px';bot.append(n)}  // claims about a private file can't be checked on the web
   history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer});history=history.slice(-12);
   pendingNames=[];if(files.length){files.forEach(f=>{f.sent=true});renderTray()}
 }
@@ -549,6 +576,108 @@ q.addEventListener('paste',e=>{const l=[...(e.clipboardData&&e.clipboardData.fil
 const payload=()=>files.map(({name,kind,media_type,data})=>({name,kind,media_type,data}));
 function defaultQuestion(){const imgs=files.filter(f=>f.kind==='image').length;return imgs===files.length?(imgs===1?'What is in this photo? Tell me anything useful about it.':'What is in these photos? Tell me anything useful about them.'):(files.length===1?'Summarize this file.':'Summarize these files.')}
 
+// ---------- Ask the real Harsha ----------
+// When the agent says a human would answer better, a card pops up under the answer. Sending is the visitor's choice.
+// They get a private link; this browser also remembers it and shows Harsha's reply when it arrives.
+const TKEY='askh_tickets';
+const tickets={get(){try{return JSON.parse(localStorage.getItem(TKEY)||'[]')||[]}catch(e){return[]}},set(v){try{localStorage.setItem(TKEY,JSON.stringify(v.slice(-20)))}catch(e){}}};
+let inboxCount=0;
+const ticketLink=id=>`${location.origin}/?ask=${encodeURIComponent(id)}`;
+function addAskHarsha(bot,question,data){
+  const card=el('div','askh');card.setAttribute('role','region');card.setAttribute('aria-label','Ask the real Harsha');
+  const top=el('div','ah-top'),av=el('div','ah-av','H'),tx=el('div');
+  tx.append(el('b',null,'Ask the real Harsha?'),el('span','ah-why',data.ask_harsha.reason));top.append(av,tx);
+  const r=el('div','row'),go=el('button','btn red','Ask Harsha'),no=el('button','btn','No thanks');go.type=no.type='button';
+  no.onclick=()=>card.remove();go.onclick=()=>openAskSheet(card,question,data);
+  r.append(go,no);card.append(top,r);bot.append(card);scrollDown();
+}
+function openAskSheet(card,question,data){
+  sheet((s,close)=>{
+    s.append(el('h3',null,'Ask the real Harsha'),el('small',null,"Harsha reads these himself and answers when he can. You'll get a private link to see his answer."));
+    const qa=el('textarea','field');qa.rows=3;qa.maxLength=1000;qa.value=question;qa.setAttribute('aria-label','Your question');
+    const na=el('textarea','field');na.rows=2;na.maxLength=500;na.placeholder='Anything Harsha should know? (optional)';na.setAttribute('aria-label','Note for Harsha');
+    const line=el('p','msgline'),r=el('div','row'),c=el('button','btn','Cancel'),go=el('button','btn red','Send to Harsha');c.type=go.type='button';
+    s.append(qa,na,el('small',null,"Only Harsha can read this. Please don't include passwords, account numbers or other private details."),line,r);r.append(c,go);
+    c.onclick=close;
+    go.onclick=async()=>{
+      const qv=qa.value.trim();if(!qv){line.textContent='Write your question first.';return}
+      go.disabled=true;line.textContent='';
+      try{
+        const res=await fetch('/api/inbox',{method:'POST',headers:headers(),body:JSON.stringify({question:qv,note:na.value.trim(),reason:data.ask_harsha.reason,kind:data.ask_harsha.kind,context:(data.answer||'').slice(0,1200)})});
+        const d=await res.json().catch(()=>({}));
+        if(!res.ok)throw new Error(d.message||"It didn't send. Please try again.");
+        const t=tickets.get();t.push({id:d.id,q:qv,seen:false});tickets.set(t);
+        close();card.textContent='';
+        const done=el('div','done');done.append(el('b',null,'Sent to Harsha.'),` Come back to this page, or keep this link to see his answer: `);
+        const a=el('a',null,ticketLink(d.id));a.href=ticketLink(d.id);done.append(a);
+        const cp=el('button','btn','Copy link');cp.type='button';cp.onclick=async()=>{try{await navigator.clipboard.writeText(ticketLink(d.id));cp.textContent='Copied'}catch(e){cp.textContent='Long-press the link to copy'}};
+        const rr=el('div','row');rr.append(cp);card.append(done,rr);
+      }catch(e){line.textContent=e.message}finally{go.disabled=false}
+    };
+    setTimeout(()=>qa.focus(),50);
+  });
+}
+function showAnswered(t,item){
+  const box=el('div','msg bot answered');box.setAttribute('role','status');
+  box.append(el('div','ah-label','The real Harsha answered'),el('div','ah-q',`You asked: “${item.question}”`),el('div',null,item.answer));
+  const x=el('button','ah-x','Dismiss');x.type='button';x.onclick=()=>box.remove();box.append(x);
+  hello.before(box);
+}
+async function checkTickets(){
+  const url=new URL(location.href),fromLink=url.searchParams.get('ask');
+  let list=tickets.get();
+  if(fromLink&&!list.some(t=>t.id===fromLink)){list.push({id:fromLink,q:'',seen:false});tickets.set(list)}
+  if(fromLink){url.searchParams.delete('ask');window.history.replaceState(null,'',url.pathname+url.search)}
+  for(const t of list.filter(t=>!t.seen||t.id===fromLink).slice(-10)){
+    try{
+      const res=await fetch('/api/inbox/'+encodeURIComponent(t.id));
+      if(res.status===404){list=list.filter(x=>x.id!==t.id);continue}
+      const d=await res.json();if(!res.ok)continue;
+      if(d.status==='answered'){showAnswered(t,d);t.seen=true}
+      else if(t.id===fromLink){const w=el('div','msg bot answered');w.append(el('div','ah-label','Waiting for Harsha'),el('div','ah-q',`You asked: “${d.question}”`),el('div',null,"He hasn't answered yet. This page will show his answer when he does."));hello.before(w)}
+    }catch(e){}
+  }
+  tickets.set(list);
+}
+async function refreshInboxCount(){
+  if(!passcode)return;
+  try{const res=await fetch('/api/owner/inbox',{headers:{'X-Owner-Passcode':passcode}});if(!res.ok)return;const d=await res.json();
+    inboxCount=d.open.length;const sub=$('#sub');sub.textContent='● Owner mode'+(inboxCount?` · ${inboxCount} question${inboxCount===1?'':'s'} for you`:'');
+    sub.style.cursor=inboxCount?'pointer':'';sub.onclick=inboxCount?openInbox:null;
+  }catch(e){}
+}
+function openInbox(){
+  sheet(async (s,close)=>{
+    s.append(el('h3',null,'Inbox'),el('small',null,'Questions visitors chose to send you. Your answer appears at their private link.'));
+    const list=el('div','inbox');s.append(list);
+    const r=el('div','row'),b=el('button','btn','Close');b.type='button';b.onclick=close;r.append(b);s.append(r);
+    list.append(el('p','evhead','Loading…'));
+    let d;
+    try{const res=await fetch('/api/owner/inbox',{headers:headers()});d=await res.json();if(!res.ok)throw new Error(d.message)}
+    catch(e){list.textContent='';list.append(el('p','msgline',e.message||"Couldn't load the inbox."));return}
+    list.textContent='';
+    if(!d.open.length)list.append(el('p','evhead','No questions waiting.'));
+    d.open.forEach(it=>{
+      const c=el('div','ibx');c.append(el('div','q',it.question));
+      const when=new Date(it.created);c.append(el('div','meta',`${it.reason||''}${it.reason?' · ':''}${isNaN(when)?'':when.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`));
+      if(it.note){const n=el('div','meta');n.append(el('b',null,'Their note: '),it.note);c.append(n)}
+      if(it.context){const dt=el('details');dt.append(el('summary',null,'What the agent told them'),el('p',null,it.context));c.append(dt)}
+      const ta=el('textarea');ta.placeholder='Your answer';ta.setAttribute('aria-label','Your answer');
+      const lb=el('label'),cb=el('input');cb.type='checkbox';cb.checked=it.kind==='about_harsha';lb.append(cb,'Also teach the agent (saves to memory, visible to visitors)');
+      const line=el('p','msgline'),rr=el('div','row'),dis=el('button','btn','Dismiss'),send=el('button','btn red','Send answer');dis.type=send.type='button';
+      dis.onclick=async()=>{dis.disabled=true;try{const res=await fetch(`/api/owner/inbox/${it.id}/dismiss`,{method:'POST',headers:headers()});if(res.ok){c.remove();refreshInboxCount()}else line.textContent=(await res.json()).message}catch(e){line.textContent="Couldn't connect."}finally{dis.disabled=false}};
+      send.onclick=async()=>{const a=ta.value.trim();if(!a){line.textContent='Write an answer first.';return}send.disabled=true;line.textContent='';
+        try{const res=await fetch(`/api/owner/inbox/${it.id}/answer`,{method:'POST',headers:headers(),body:JSON.stringify({answer:a,remember:cb.checked})});const x=await res.json().catch(()=>({}));
+          if(!res.ok)throw new Error(x.message||"It didn't send.");
+          c.textContent='';c.append(el('div','q',it.question),el('div','ans',a),el('div','meta',x.note_id?`Answered and saved to memory as ${x.note_id}.`:'Answered.'));refreshInboxCount();
+        }catch(e){line.textContent=e.message}finally{send.disabled=false}};
+      rr.append(dis,send);c.append(ta,lb,line,rr);list.append(c);
+    });
+    if(d.answered.length){const dt=el('details','how');dt.append(el('summary',null,`Answered (${d.answered.length})`));
+      d.answered.forEach(it=>{const c=el('div','ibx');c.append(el('div','q',it.question),el('div','ans',it.answer));dt.append(c)});list.append(dt)}
+  });
+}
+
 async function askOnce(bot,text){  // fallback when streaming isn't available
   const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload()})});
   const data=await res.json().catch(()=>({}));
@@ -596,7 +725,7 @@ resetBtn.addEventListener('click',()=>{history=[];files=[];renderTray();thread.q
 lockBtn.addEventListener('click',openLock);
 memBtn.addEventListener('click',openMemory);
 
-passcode=store.get();setOwner(!!passcode);
+passcode=store.get();setOwner(!!passcode);checkTickets();
 if(passcode){fetch('/api/owner/check',{method:'POST',headers:{'X-Owner-Passcode':passcode}}).then(r=>{if(!r.ok){passcode='';store.set('');setOwner(false)}}).catch(()=>{})}
 })();
 </script>
