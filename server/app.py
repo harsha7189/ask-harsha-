@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agent import assist, factcheck  # noqa: E402
+from agent import assist, attachments as files, factcheck  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
@@ -58,8 +58,8 @@ DECLINE = re.compile(r"isn't in|is not in|not in (?:harsha's|his) record|ask him
 MEMORY_REQUEST = re.compile(r"^\s*(?:please\s+|can you\s+|could you\s+)?(?:remember|forget|save|note)\b", re.I)
 
 
-def answer_kind(report, owner: bool, question: str, reply) -> str:
-    """What the page labels the answer as: record, memory, mixed, web, general, or none (visitor memory refusal)."""
+def answer_kind(report, owner: bool, question: str, reply, has_files: bool = False) -> str:
+    """What the page labels the answer as: record, memory, mixed, file, web, general, or none (visitor memory refusal)."""
     if not owner and MEMORY_REQUEST.search(question) and not report.cited:
         return "none"
     facts = any(c.startswith("F") for c in report.cited)
@@ -70,6 +70,8 @@ def answer_kind(report, owner: bool, question: str, reply) -> str:
         return "record"
     if notes:
         return "memory"
+    if has_files:
+        return "file"
     return "web" if reply.web_sources else "general"
 
 
@@ -125,9 +127,30 @@ class AssistRequest(BaseModel):
     saved: list[str] = Field(default_factory=list, max_length=30)
 
 
+class Attachment(BaseModel):
+    name: str = Field(default="file", max_length=200)
+    kind: Literal["image", "pdf", "docx", "text"]
+    media_type: str = Field(default="", max_length=100)
+    data: str = Field(min_length=1, max_length=14_000_000)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     history: list[Turn] = Field(default_factory=list, max_length=40)
+    attachments: list[Attachment] = Field(default_factory=list, max_length=files.MAX_FILES)
+
+
+FILES_INTRO = "Here are the files I've shared in this chat. Use them to answer my questions."
+FILES_ACK = "I have your files and will use them to answer."
+
+
+def file_turns(blocks: list[dict]) -> list[dict]:
+    """Attached files go first, as their own exchange, so they sit at a stable spot the prompt cache can reuse
+    for every follow-up question about them."""
+    if not blocks:
+        return []
+    return [{"role": "user", "content": [{"type": "text", "text": FILES_INTRO}, *blocks]},
+            {"role": "assistant", "content": FILES_ACK}]
 
 
 def clean_history(history: list[Turn], max_turns: int) -> list[dict]:
@@ -310,8 +333,13 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return error(429, "rate_limited", f"That's a lot of questions at once. Try again in about {max(1, wait // 60)} minute(s).", {"Retry-After": str(wait)})
         if budget.exhausted():
             return error(503, "resting", f"Ask Harsha is resting for today. You can reach Harsha directly at {settings.contact_email}.")
+        try:
+            prepared = files.prepare(req.attachments, max_pdf_pages=100 if owner else 30)
+        except files.AttachmentError as e:
+            return error(400, "attachment", str(e))
         agent = build_agent(owner, stream)
-        agent.messages = clean_history(req.history, settings.max_history_turns)
+        agent.messages = file_turns(prepared.blocks) + clean_history(req.history, settings.max_history_turns)
+        agent.attached = prepared.summary
         return agent, owner, question
 
     def build_agent(owner: bool, stream: bool = False) -> Agent:
@@ -331,11 +359,13 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         report = reply.report
         lookup = _Lookup(kb, store).by_id
         cited = [{"id": c, "text": lookup[c].text, "kind": "note" if c.startswith("N") else "fact"} for c in report.cited if c in lookup]
-        label = answer_kind(report, owner, question, reply)
+        label = answer_kind(report, owner, question, reply, has_files=bool(getattr(agent, "attached", None)))
         record = {"event": event, "owner": owner, "kind": report.kind, "grounded": report.ok, "steps": reply.steps,
                   "web_searches": reply.web_searches, "memory_changes": len(reply.memory_changes),
                   "tokens_in": reply.input_tokens, "tokens_out": reply.output_tokens, "cost_usd": round(cost, 5),
-                  "declined": bool(DECLINE.search(reply.text)), "spent_today_usd": round(budget.spent, 4)}
+                  "declined": bool(DECLINE.search(reply.text)), "spent_today_usd": round(budget.spent, 4),
+                  "attachments": [a["kind"] for a in getattr(agent, "attached", [])],
+                  "cache_read": reply.cache_read_tokens, "cache_write": reply.cache_write_tokens}
         if settings.log_questions or event != "answer":
             record["question"] = question[:200]
         log.info(json.dumps(record))
@@ -436,6 +466,9 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
         def work():
             try:
+                n = len(agent.attached)
+                if n:
+                    q.put(("status", {"label": "Reading your file" if n == 1 else f"Reading your {n} files"}))
                 reply = agent.ask(question)
                 q.put(("final", finish(agent, reply, owner, question)))
             except Exception as e:

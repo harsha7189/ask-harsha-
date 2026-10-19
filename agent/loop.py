@@ -39,8 +39,10 @@ class Reply:
     web_sources: list[dict] = field(default_factory=list)   # [{"url", "title"}] from web search citations
     web_searches: int = 0
     memory_changes: list[dict] = field(default_factory=list)
-    input_tokens: int = 0
+    input_tokens: int = 0         # billed-equivalent: cache writes count 1.25x and cache reads 0.1x
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     seconds: float = 0.0
 
 
@@ -128,7 +130,11 @@ class Agent:
             ))
             usage = _get(response, "usage")
             if usage is not None:
-                reply.input_tokens += _get(usage, "input_tokens", 0) or 0
+                cw = _get(usage, "cache_creation_input_tokens", 0) or 0
+                cr = _get(usage, "cache_read_input_tokens", 0) or 0
+                reply.cache_write_tokens += cw
+                reply.cache_read_tokens += cr
+                reply.input_tokens += (_get(usage, "input_tokens", 0) or 0) + round(cw * 1.25 + cr * 0.1)
                 reply.output_tokens += _get(usage, "output_tokens", 0) or 0
                 stu = _get(usage, "server_tool_use")
                 if stu is not None:

@@ -88,6 +88,15 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Photos and files
+
+The **+** next to the message box offers **Take a photo** (opens the camera), **Choose photos** and **Choose a file**. The agent reads photos (signs, labels, menus, screenshots, homework), PDFs up to 10 MB (30 pages for visitors, 100 for Harsha), Word documents (.docx) and text files (CSV, JSON, Markdown, code and so on). You can also paste or drag files in on a computer.
+
+- Photos are shrunk on the phone to at most 1568 px on the long side (what the model actually uses), so a 12 MP iPhone photo uploads as about 50 KB.
+- `agent/attachments.py` re-checks every file on the server (real image or PDF bytes, size and page limits), pulls the text out of Word files, and turns each into a content block.
+- Files stay attached for the rest of the chat. They're sent as the first exchange in the conversation with a prompt-cache marker, so follow-up questions about the same file are read from cache at about a tenth of the price. The budget counts cache writes at 1.25x and cache reads at 0.1x.
+- Answers from files are labelled "Read from your file". Nothing about the files is stored or logged except their types.
+
 ## Fact-check any answer
 
 Every answer has a **Fact-check this answer** button. Tapping it runs a separate check (`agent/factcheck.py`, `POST /api/factcheck/stream`) that:

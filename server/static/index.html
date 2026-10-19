@@ -148,6 +148,26 @@ textarea:focus{outline:none;border-color:var(--muted)}
 .send:hover{background:var(--red-hot)}
 .send:disabled{opacity:.4;cursor:default}
 .send svg{width:20px;height:20px}
+.attach{width:44px;height:44px;border-radius:50%;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;flex:0 0 auto;color:var(--fg)}
+.attach:hover{border-color:var(--muted)}
+.attach svg{width:20px;height:20px}
+.tray{max-width:720px;margin:0 auto 8px;display:grid;gap:6px}
+.tray .tlabel{font-size:12px;color:var(--muted)}
+.tray .tlist{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.tray .tlist::-webkit-scrollbar{display:none}
+.fchip{flex:0 0 auto;display:flex;align-items:center;gap:8px;max-width:220px;padding:4px 4px 4px 4px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.fchip img,.fchip .ficon{width:40px;height:40px;border-radius:8px;object-fit:cover;flex:0 0 auto}
+.fchip .ficon{display:grid;place-items:center;background:var(--raise);font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--red-hot)}
+.fchip .fname{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.fchip button{width:32px;height:32px;flex:0 0 auto;border-radius:50%;color:var(--muted);font-size:18px;line-height:1}
+.fchip button:hover{color:var(--fg);background:var(--raise)}
+.toast{max-width:720px;margin:0 auto 8px;font-size:13px;color:var(--warn)}
+.msg.user .ufiles{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;justify-content:flex-end}
+.msg.user .ufiles img{width:72px;height:72px;border-radius:10px;object-fit:cover;display:block}
+.msg.user .ufiles .ficon{display:grid;place-items:center;min-width:72px;height:40px;padding:0 10px;border-radius:10px;background:var(--panel);font-size:12px;font-weight:600;color:var(--fg)}
+.msg.user:has(.ufiles){background:transparent;padding-right:0}
+.msg.user .utext{background:var(--raise);border-radius:18px;border-bottom-right-radius:6px;padding:11px 15px;display:inline-block}
+.msg.user:has(.ufiles) .utext{float:right}
 .fine{max-width:720px;margin:8px auto 0;font-size:11.5px;color:var(--muted);text-align:center}
 
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s ease}
@@ -196,10 +216,16 @@ textarea:focus{outline:none;border-color:var(--muted)}
 </main>
 
 <footer>
+  <div class="tray" id="tray" hidden></div>
+  <p class="toast" id="toast" role="status" hidden></p>
   <form class="ask" id="form">
+    <button class="attach" id="attach" type="button" aria-label="Add a photo or file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
     <textarea id="q" rows="1" maxlength="2000" placeholder="Ask anything" aria-label="Your message" enterkeyhint="send"></textarea>
     <button class="send" id="send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </form>
+  <input type="file" id="f-cam" accept="image/*" capture="environment" hidden>
+  <input type="file" id="f-photo" accept="image/*" multiple hidden>
+  <input type="file" id="f-file" accept="image/*,application/pdf,.pdf,.docx,.txt,.md,.csv,.tsv,.json,.xml,.html,.htm,.log,.yaml,.yml,.py,.js,.ts,.java,.c,.cpp,.cs,.go,.rb,.php,.swift,.kt,.sql,.sh,.css,.srt,.vtt" multiple hidden>
   <p class="fine">An AI agent Harsha built from scratch. It can make mistakes; check important details.</p>
 </footer>
 
@@ -211,7 +237,7 @@ const thread=$('#thread'),main=$('#main'),form=$('#form'),q=$('#q'),send=$('#sen
 const VISITOR_CHIPS=["What's Harsha's current role?","What's in the news today?","Explain how AI agents work","Has Harsha shipped anything with AI?","Help me write a polite follow-up email"];
 const OWNER_CHIPS=["Remember that my favorite food is …","What do you remember about me?","What's in the news today?","Explain how AI agents work"];
 const KEY='askh_owner';
-let history=[],busy=false,passcode='';
+let history=[],busy=false,passcode='',pendingNames=[];
 const cache={};  // id -> {text, kind}
 
 const store={get(){try{return localStorage.getItem(KEY)||''}catch(e){return''}},set(v){try{v?localStorage.setItem(KEY,v):localStorage.removeItem(KEY)}catch(e){}}};
@@ -260,13 +286,14 @@ function renderExtras(box,data){
     if(where&&data.grounded){v.append(`Checked against ${n} source${s} in ${where}`)}
     else if(where){v.classList.add('warn');v.append(`Some details couldn't be verified against ${where}`)}
     else if(label==='web'){v.classList.add('plain');v.append('From the web')}
+    else if(label==='file'){v.classList.add('plain');v.append(data.web_sources&&data.web_sources.length?'From your file and the web':'Read from your file')}
     else{v.classList.add('plain');v.append('From general knowledge')}
     x.append(v);
   }
   const steps=data.trace||[];
   if(!steps.length&&label!=='none'){
     const d=el('details','how');d.append(el('summary',null,'How I got this · no lookups needed'));
-    d.append(el('p','direct',"Answered straight from the model's own knowledge in one step. It didn't need to search the web, Harsha's record or memory."));
+    d.append(el('p','direct',label==='file'?"Read your attached file and answered in one step. It didn't need to search the web, Harsha's record or memory.":"Answered straight from the model's own knowledge in one step. It didn't need to search the web, Harsha's record or memory."));
     x.append(d);
   }
   if(steps.length){
@@ -278,7 +305,7 @@ function renderExtras(box,data){
       else if(st.found&&st.found.length){const f=el('span','sf');st.found.forEach(id=>{const b=el('button','cite'+(id.startsWith('N')?' note':''),id);b.type='button';b.onclick=()=>openSource(id);f.append(b)});li.append(f)}
       else if(st.kind!=='web_search')li.append(el('span','sn','nothing found'));
       ol.append(li)});
-    const fin=el('li');fin.append(el('span','sk','Wrote the answer'));if(label!=='general'&&label!=='none'&&label!=='web')fin.append(el('span','sn','then the grounding check verified every citation'));ol.append(fin);
+    const fin=el('li');fin.append(el('span','sk','Wrote the answer'));if(label!=='general'&&label!=='none'&&label!=='web'&&label!=='file')fin.append(el('span','sn','then the grounding check verified every citation'));ol.append(fin);
     d.append(ol);x.append(d);
   }
   box.append(x);
@@ -394,8 +421,9 @@ function showFinal(bot,data,text){
   (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
   bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
-  if(data.label!=='none'&&data.answer)addFactCheck(bot,data.answer);
-  history.push({role:'user',content:text},{role:'assistant',content:data.answer});history=history.slice(-12);
+  if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);  // claims about a private file can't be checked on the web
+  history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer});history=history.slice(-12);
+  pendingNames=[];if(files.length){files.forEach(f=>{f.sent=true});renderTray()}
 }
 const VERDICT={confirmed:{mark:'✓',cls:'ok',word:'Confirmed'},contradicted:{mark:'✕',cls:'bad',word:'Contradicted'},unverified:{mark:'!',cls:'unk',word:'Unverified'},not_checkable:{mark:'–',cls:'na',word:'Not checkable'}};
 function addFactCheck(bot,answer){
@@ -448,22 +476,98 @@ async function runFactCheck(wrap,btn,answer){
   }
   scrollDown();
 }
+// ---------- photos and files ----------
+// Photos are shrunk on the phone (longest side 1568 px, JPEG), which is all the model uses and keeps uploads small.
+// Files stay attached for the rest of the chat, so follow-up questions can use them; the server caches them, so
+// asking again about the same file costs much less.
+let files=[];
+const MAXF=4,MB=1024*1024;
+const TEXT_EXT=/\.(txt|md|markdown|csv|tsv|json|xml|html?|log|ya?ml|py|js|ts|jsx|tsx|java|c|cpp|h|cs|go|rb|php|swift|kt|sql|sh|css|ini|toml|srt|vtt)$/i;
+function toast(t){const b=$('#toast');b.textContent=t;b.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>{b.hidden=true},5000)}
+function readAs(file,how){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);how==='text'?r.readAsText(file):r.readAsDataURL(file)})}
+async function shrinkImage(file){
+  let src;
+  try{src=await createImageBitmap(file,{imageOrientation:'from-image'})}
+  catch(e){src=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('decode'));i.src=URL.createObjectURL(file)})}
+  const w=src.naturalWidth||src.width,h=src.naturalHeight||src.height,sc=Math.min(1,1568/Math.max(w,h));
+  const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*sc));c.height=Math.max(1,Math.round(h*sc));
+  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(src,0,0,c.width,c.height);
+  const url=c.toDataURL('image/jpeg',0.85);
+  return {media_type:'image/jpeg',data:url.split(',')[1],thumb:url};
+}
+const extOf=n=>((n.match(/\.([a-z0-9]+)$/i)||[])[1]||'file').toUpperCase().slice(0,4);
+async function addFiles(list,fromCamera){
+  for(const f of list){
+    if(files.length>=MAXF){toast(`You can attach up to ${MAXF} files at a time.`);break}
+    try{
+      let item;
+      if(f.type.startsWith('image/')||/\.(heic|heif|jpe?g|png|gif|webp)$/i.test(f.name)){item={kind:'image',...await shrinkImage(f)}}
+      else if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+        if(f.size>10*MB)throw new Error(`“${f.name}” is over 10 MB.`);
+        item={kind:'pdf',media_type:'application/pdf',data:(await readAs(f,'url')).split(',')[1]};
+      }
+      else if(/\.docx$/i.test(f.name)){
+        if(f.size>10*MB)throw new Error(`“${f.name}” is over 10 MB.`);
+        item={kind:'docx',media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',data:(await readAs(f,'url')).split(',')[1]};
+      }
+      else if(f.type.startsWith('text/')||f.type==='application/json'||TEXT_EXT.test(f.name)){
+        if(f.size>600*1024)throw new Error(`“${f.name}” is too long to read in one go.`);
+        item={kind:'text',media_type:'text/plain',data:await readAs(f,'text')};
+      }
+      else if(/\.(doc|xls|xlsx|ppt|pptx|pages|numbers|key)$/i.test(f.name))throw new Error(`I can't open “${f.name}” directly. Save it as a PDF and attach that instead.`);
+      else throw new Error(`I can't read “${f.name}” yet. Photos, PDFs, Word documents (.docx) and text files work.`);
+      const name=fromCamera?`Photo ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`:(f.name||'file');
+      files.push({id:Math.random().toString(36).slice(2),name,sent:false,...item});
+    }catch(e){toast(e.message&&e.message!=='decode'?e.message:`I couldn't open “${f.name||'that file'}”.`)}
+  }
+  renderTray();
+}
+function fileIcon(f){if(f.kind==='image'){const i=el('img');i.src=f.thumb;i.alt='';return i}return el('span','ficon',f.kind==='docx'?'DOC':extOf(f.name))}
+function renderTray(){
+  const tray=$('#tray');tray.textContent='';tray.hidden=!files.length;if(!files.length)return;
+  tray.append(el('div','tlabel',files.some(f=>f.sent)?'In this chat. Your questions use these until you remove them.':'Attached. Ask anything about '+(files.length===1?'it':'them')+'.'));
+  const list=el('div','tlist');
+  files.forEach(f=>{const c=el('div','fchip');c.append(fileIcon(f),el('span','fname',f.name));
+    const x=el('button',null,'×');x.type='button';x.setAttribute('aria-label',`Remove ${f.name}`);x.onclick=()=>{files=files.filter(y=>y.id!==f.id);renderTray()};c.append(x);list.append(c)});
+  tray.append(list);
+}
+function openAttach(){
+  sheet((s,close)=>{
+    s.append(el('h3',null,'Add to your message'));
+    const t=el('div','tools');
+    [['f-cam','Take a photo','Use the camera: a sign, a label, a menu, homework, anything'],['f-photo','Choose photos','From your photo library or screenshots'],['f-file','Choose a file','PDF, Word (.docx) or text files, up to 10 MB']].forEach(([id,title,sub])=>{
+      const b=el('button','tool');b.type='button';b.append(el('b',null,title),el('span',null,sub));b.onclick=()=>{close();$('#'+id).click()};t.append(b)});
+    s.append(t);
+    const r=el('div','row'),c=el('button','btn','Cancel');c.type='button';c.onclick=close;r.append(c);s.append(r);
+  });
+}
+['f-cam','f-photo','f-file'].forEach(id=>{const inp=$('#'+id);inp.addEventListener('change',()=>{const l=[...inp.files];inp.value='';if(l.length)addFiles(l,id==='f-cam')})});
+$('#attach').addEventListener('click',openAttach);
+main.addEventListener('dragover',e=>{e.preventDefault()});
+main.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer&&e.dataTransfer.files.length)addFiles([...e.dataTransfer.files])});
+q.addEventListener('paste',e=>{const l=[...(e.clipboardData&&e.clipboardData.files||[])];if(l.length){e.preventDefault();addFiles(l)}});
+const payload=()=>files.map(({name,kind,media_type,data})=>({name,kind,media_type,data}));
+function defaultQuestion(){const imgs=files.filter(f=>f.kind==='image').length;return imgs===files.length?(imgs===1?'What is in this photo? Tell me anything useful about it.':'What is in these photos? Tell me anything useful about them.'):(files.length===1?'Summarize this file.':'Summarize these files.')}
+
 async function askOnce(bot,text){  // fallback when streaming isn't available
-  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history})});
+  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload()})});
   const data=await res.json().catch(()=>({}));
   if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
   showFinal(bot,data,text);
 }
 async function ask(text){
-  text=text.trim();if(!text||busy)return;
+  text=text.trim();if(busy)return;if(!text&&files.length)text=defaultQuestion();if(!text)return;
   busy=true;send.disabled=true;hello.hidden=true;resetBtn.hidden=false;
-  bubble('user').textContent=text;
+  const ub=bubble('user'),fresh=files.filter(f=>!f.sent);
+  if(fresh.length){const fl=el('div','ufiles');fresh.forEach(f=>fl.append(f.kind==='image'?fileIcon(f):el('span','ficon',f.name)));ub.append(fl,el('div','utext',text))}
+  else ub.textContent=text;
+  pendingNames=fresh.map(f=>f.name);
   const bot=bubble('bot');
   const status=el('div','status');status.innerHTML='<span class="typing"><span></span><span></span><span></span></span>';const stxt=el('span',null,'Thinking');status.append(stxt);
   const live=el('div','body');bot.append(status,live);
   let streamed='',finished=false;
   try{
-    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history})});
+    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload()})});
     const type=res.headers.get('content-type')||'';
     if(!res.ok||!type.includes('text/event-stream')){
       const data=await res.json().catch(()=>({}));
@@ -488,7 +592,7 @@ form.addEventListener('submit',e=>{e.preventDefault();const t=q.value;q.value=''
 q.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
 function grow(){q.style.height='auto';q.style.height=Math.min(q.scrollHeight,120)+'px'}
 q.addEventListener('input',grow);
-resetBtn.addEventListener('click',()=>{history=[];thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;q.focus()});
+resetBtn.addEventListener('click',()=>{history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;q.focus()});
 lockBtn.addEventListener('click',openLock);
 memBtn.addEventListener('click',openMemory);
 
