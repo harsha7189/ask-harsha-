@@ -67,10 +67,13 @@ class Agent:
         lookup: Any = None,
         strict_grounding: bool = True,
         stream: bool = False,
+        record_tools: bool = True,
     ):
         self.client = client
         self.kb = kb or KnowledgeBase.load()
         self.tools = ToolRegistry(self.kb)
+        if not record_tools:          # e.g. the PM toolkit: no access to Harsha's record, just the model (and web search)
+            self.tools._tools.clear()
         self.model = model
         self.max_steps = max_steps
         self.max_tokens = max_tokens
@@ -121,13 +124,11 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             reply.steps = step
-            response = self._call(dict(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=self.system,
-                tools=self.tools.specs() + self.server_tools,
-                messages=self.messages,
-            ))
+            call = dict(model=self.model, max_tokens=self.max_tokens, system=self.system, messages=self.messages)
+            tools = self.tools.specs() + self.server_tools
+            if tools:
+                call["tools"] = tools
+            response = self._call(call)
             usage = _get(response, "usage")
             if usage is not None:
                 cw = _get(usage, "cache_creation_input_tokens", 0) or 0

@@ -88,6 +88,21 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## PM Toolkit
+
+`/tools` holds six focused agents for product work (`agent/toolkit.py`). Each is one streamed model call with its own instructions and no access to Harsha's record; input is wrapped as data, and nothing is stored or logged.
+
+| Tool | Input | Output |
+|---|---|---|
+| Morning brief | Your topics (saved on your device) | News from the last two days (web search, with sources), a 5-minute lesson, one thing to try today, and a 3-question quiz with a daily streak |
+| Meeting | Transcript, notes or a file, or **record live** on the phone | Summary, decisions, action items with owners (tick them off), open questions, follow-up email |
+| Customer feedback | Survey answers, reviews, tickets, CSV | Themes with counts and verbatim quotes, urgent issues, feature requests, next steps |
+| Customer interview | Prepare: what you want to learn. Analyze: a transcript | A non-leading interview guide, or insights with quotes, jobs, pains and gains |
+| Release notes | Ticket titles, PR titles, commits; audience and version | Benefit-first notes grouped into New, Improved and Fixed |
+| Spec review | A PRD or spec, pasted or as PDF/Word | Verdict, scores across eight areas, top issues quoted from the spec, missing sections, stakeholder questions |
+
+Every tool has **Try an example**, and results can be copied, downloaded as Markdown or shared. The morning brief is cached per topic set per day, so everyone with the same topics shares one generation. Inputs are limited to 60,000 characters for visitors (150,000 for Harsha). Live recording uses the phone's speech recognition, restarting automatically after pauses on iPhone and keeping the screen awake; it can't tell speakers apart.
+
 ## Verified answers (tamper-proof sharing)
 
 Every answer is signed by the server with an Ed25519 key (`agent/receipts.py`): the exact question, answer, time, model, sources and grounding result. **✓ Share verified** under an answer sends the signed receipt back; the server checks the signature (so only answers it really gave can be shared), stores it, and returns a link and QR code. A share card image can be saved or shared from the phone.

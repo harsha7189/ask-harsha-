@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PM Toolkit</title>
+<meta name="description" content="Six product management agents: morning brief, meetings, customer feedback, customer interviews, release notes and spec reviews.">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PM Toolkit">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Two views on one page: the tool grid, and one tool (input on top, live output below). Phone first, one column. */
+:root{
+  --bg:#0b0b0b; --panel:#171717; --raise:#232323; --line:#2e2e2e;
+  --fg:#f5f5f1; --muted:#a3a3a3; --red:#e50914; --red-hot:#ff2a36; --good:#46d369; --warn:#f2b445; --blue:#7cb7ff;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --gl:max(16px,env(safe-area-inset-left,0px)); --gr:max(16px,env(safe-area-inset-right,0px));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+button:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(10px + env(safe-area-inset-top,0px)) var(--gr) 10px var(--gl);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.back{display:grid;place-items:center;width:44px;height:44px;margin-left:-10px;color:var(--muted);text-decoration:none;border-radius:12px}
+.back:hover{color:var(--fg)}
+.back svg{width:22px;height:22px}
+.who h1{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:28px;line-height:.95}
+.who h1 span{color:var(--red)}
+.who p{margin:0;font-size:13px;color:var(--muted)}
+main{max-width:720px;margin:0 auto;padding:18px var(--gr) calc(40px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:18px;grid-template-columns:minmax(0,1fr)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card{display:grid;gap:6px;align-content:start;text-align:left;min-height:128px;padding:14px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.card:hover{border-color:var(--muted)}
+.card .ic{font-size:26px;line-height:1}
+.card b{font-size:16px}
+.card span{font-size:13px;color:var(--muted);line-height:1.35}
+.card.wide{grid-column:1/-1;min-height:0;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--red) 22%,var(--panel)),var(--panel));border-color:color-mix(in srgb,var(--red) 50%,var(--line))}
+.card.wide .ic{font-size:34px;grid-row:span 2}
+.streak{font-size:12.5px;color:var(--warn);font-weight:600}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.thead{display:grid;gap:4px}
+.thead .crumb{justify-self:start;font-size:13px;color:var(--muted);padding:4px 0}
+.thead .crumb:hover{color:var(--fg)}
+.thead h2{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:clamp(34px,9vw,48px);line-height:.9}
+.thead p{margin:0;color:var(--muted)}
+.opts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{min-height:38px;padding:0 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
+.opts label{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--muted)}
+.opts select,.opts input[type=text]{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px;color:var(--fg);min-height:40px}
+.opts input[type=text]{width:120px}
+.topics{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.topic{display:inline-flex;align-items:center;gap:4px;background:var(--raise);border-radius:999px;padding:4px 4px 4px 12px;font-size:14px}
+.topic button{width:28px;height:28px;border-radius:50%;color:var(--muted)}
+.topic button:hover{color:var(--fg)}
+.topics input{background:transparent;border:1px dashed var(--line);border-radius:999px;padding:6px 12px;font-size:14px;color:var(--fg);width:150px}
+textarea.input{width:100%;min-height:180px;max-height:50vh;resize:vertical;background:var(--panel);border:1px solid var(--line);border-radius:16px;color:var(--fg);font:inherit;font-size:16px;line-height:1.45;padding:14px}
+textarea.input:focus{outline:none;border-color:var(--muted)}
+textarea.input[readonly]{border-color:var(--red)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{min-height:44px;padding:0 16px;border-radius:999px;background:var(--raise);font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:#2c2c2c}
+.btn.red{background:var(--red)}
+.btn.red:hover{background:var(--red-hot)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.rec{background:var(--fg);color:var(--bg)}
+.btn .dot{width:9px;height:9px;border-radius:50%;background:var(--red-hot)}
+.btn.rec .dot{animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.2}}
+.spacer{flex:1}
+.files{display:flex;gap:6px;flex-wrap:wrap}
+.fchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 4px 4px 10px;font-size:13px;max-width:100%}
+.fchip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.fchip button{width:28px;height:28px;border-radius:50%;color:var(--muted)}
+.msg{font-size:14px;color:var(--warn);margin:0}
+.recinfo{font-size:13px;color:var(--muted)}
+.out{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;display:grid;gap:10px;min-width:0}
+.status{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:14px}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--fg);animation:spin .8s linear infinite;flex:0 0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.md{display:grid;gap:8px;overflow-wrap:anywhere;min-width:0}
+.md h3{margin:10px 0 0;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--red-hot)}
+.md h3:first-child{margin-top:0}
+.md p{margin:0}
+.md ul,.md ol{margin:0;padding-left:22px;display:grid;gap:6px}
+.md li::marker{color:var(--muted)}
+.md ul.todo{list-style:none;padding-left:0}
+.md ul.todo li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
+.md ul.todo input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--good)}
+.md ul.todo li.done span{color:var(--muted);text-decoration:line-through}
+.sources{display:flex;flex-wrap:wrap;gap:6px}
+.src{font-size:12px;color:var(--fg);background:var(--raise);border:1px solid var(--line);border-radius:999px;padding:4px 10px;text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.foot{font-size:12px;color:var(--muted)}
+.quiz{border-top:1px solid var(--line);padding-top:12px;display:grid;gap:14px}
+.quiz h3{margin:0;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--warn)}
+.qq{display:grid;gap:8px}
+.qq b{font-size:15.5px}
+.qopt{text-align:left;min-height:44px;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);font-size:15px}
+.qopt:hover:not(:disabled){border-color:var(--muted)}
+.qopt.right{border-color:var(--good);background:color-mix(in srgb,var(--good) 14%,var(--bg))}
+.qopt.wrong{border-color:var(--red-hot);background:color-mix(in srgb,var(--red) 14%,var(--bg))}
+.qwhy{font-size:13.5px;color:var(--muted)}
+.score{font-weight:700;color:var(--good)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  <div class="who"><h1>PM Tool<span>k</span>it</h1><p>Six agents for product work. Paste, upload or record.</p></div>
+</header>
+<main id="main"></main>
+<input type="file" id="file" multiple hidden accept="image/*,application/pdf,.pdf,.docx,.txt,.md,.csv,.tsv,.json,.vtt,.srt,.log,.html,.xml">
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s),main=$('#main');
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const store={get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const passcode=(()=>{try{return localStorage.getItem('askh_owner')||''}catch(e){return''}})();
+const headers=()=>{const h={'Content-Type':'application/json'};if(passcode)h['X-Owner-Passcode']=passcode;return h};
+
+const TOOLS=[
+ {id:'morning',ic:'☀️',name:'Morning brief',short:'News on your topics, a 5-minute lesson and a quiz',desc:"What happened in your topics over the last two days, one short lesson you can use today, and a 3-question quiz. One brief a day; keep your streak going.",wide:true},
+ {id:'meeting',ic:'🗓️',name:'Meeting',short:'Summary, decisions, action items, follow-up email',desc:'Paste or upload a transcript (Zoom, Teams, Webex, Otter) or your notes, or record the meeting live on your phone. Get the summary, decisions, action items with owners, open questions and a ready-to-send follow-up email.',record:true,
+  ph:'Paste a transcript or your meeting notes, or tap Record.',
+  sample:"Priya: Okay, let's start. Goal today is to decide whether the bulk export feature ships in the October release.\nMarco: Engineering is 80% done. The CSV part works; Excel export still has a bug with dates over 10,000 rows.\nPriya: Can we ship CSV only and add Excel in November?\nDana (support): Customers mostly ask for CSV anyway. I'd say yes.\nPriya: Decision then: ship CSV-only bulk export in October, Excel in November. Marco, can you make sure the Excel button is hidden?\nMarco: Yes, I'll do that by Wednesday.\nDana: I'll update the help article before launch.\nPriya: Open question is whether we cap exports at 50,000 rows. Marco, check with the data team on load.\nMarco: Will do. Also a risk: the export job uses the same queue as notifications, so big exports could delay emails.\nPriya: Good catch. Let's revisit Thursday."},
+ {id:'feedback',ic:'💬',name:'Customer feedback',short:'Themes with counts, quotes, bugs and next steps',desc:'Paste survey answers, app reviews, support tickets or NPS comments, or upload a CSV export. Get ranked themes with counts and real quotes, urgent issues, feature requests and recommended next steps.',
+  ph:'Paste feedback, one per line, or attach a CSV.',
+  sample:"Love the new dashboard, so much faster.\nExport keeps timing out when I pick a full year.\nPlease add dark mode!\nThe dashboard is great but I can't find the old reports.\nExport to Excel fails every time for big accounts. Considering switching tools.\nSupport was quick and friendly.\nDark mode please, my eyes hurt at night.\nWhere did the reports tab go??\nExports are slow but they work.\nNew dashboard looks clean. Wish I could share it with my team."},
+ {id:'interview',ic:'🎙️',name:'Customer interview',short:'Prepare a guide, or turn a transcript into insights',desc:'Prepare: describe what you want to learn and get a non-leading interview guide. Analyze: paste a transcript and get insights with quotes, jobs, pains and gains.',modes:true,
+  ph:'Prepare: what do you want to learn, and from whom? Analyze: paste the transcript.',
+  sample:"I want to understand why small business owners stop using our invoicing app after the first month. Talk to owners of businesses with 1 to 10 employees who signed up in the last 6 months."},
+ {id:'release',ic:'🚀',name:'Release notes',short:'Turn tickets and commits into clear notes',desc:"Paste the changes in this release (Jira tickets, PR titles, commit messages) and choose who it's for. Get release notes written as benefits, grouped into New, Improved and Fixed.",release:true,
+  ph:'Paste ticket titles, PR titles or commit messages.',
+  sample:"PROJ-482 Add CSV bulk export for invoices\nPROJ-490 Fix date parsing for DD/MM locales in import\nPROJ-501 Speed up dashboard load (query caching)\nPROJ-505 Refactor auth middleware\nPROJ-507 Bump react to 18.3.1\nPROJ-511 Show unpaid invoice count on home screen\nPROJ-514 Fix crash when uploading logo larger than 5 MB"},
+ {id:'spec',ic:'📋',name:'Spec review',short:'Readiness verdict, scores and top issues',desc:'Paste or upload a PRD or spec. Get a readiness verdict, scores across eight areas, the top issues with quotes and fixes, missing sections and questions for stakeholders.',
+  ph:'Paste the spec or attach a PDF or Word document.',
+  sample:"Title: Smart reminders\nProblem: Users forget to pay invoices.\nSolution: Send reminders automatically before invoices are due.\nRequirements:\n- Send an email 3 days before the due date\n- Users can turn reminders off\n- Reminders should be smart\nSuccess: More invoices paid on time.\nLaunch: Q4"},
+];
+const byId=Object.fromEntries(TOOLS.map(t=>[t.id,t]));
+
+// ---------- small, safe Markdown renderer (DOM only, never innerHTML) ----------
+function inline(parent,text){
+  const re=/\*\*(.+?)\*\*/g;let last=0,m;
+  while((m=re.exec(text))){parent.append(text.slice(last,m.index),el('b',null,m[1]));last=re.lastIndex}
+  parent.append(text.slice(last));
+}
+function renderMd(box,text){
+  box.textContent='';let list=null,kind='';
+  const close=()=>{list=null;kind=''};
+  text.split('\n').forEach(raw=>{
+    const line=raw.trimEnd();let m;
+    if(!line.trim()){close();return}
+    if((m=line.match(/^#{1,4}\s+(.*)$/))){close();const h=el('h3');inline(h,m[1]);box.append(h);return}
+    if((m=line.match(/^\s*[-*]\s+\[( |x|X)\]\s+(.*)$/))){
+      if(kind!=='todo'){list=el('ul','todo');box.append(list);kind='todo'}
+      const li=el('li'),cb=el('input');cb.type='checkbox';cb.checked=m[1].toLowerCase()==='x';const sp=el('span');inline(sp,m[2]);
+      cb.onchange=()=>li.classList.toggle('done',cb.checked);li.append(cb,sp);if(cb.checked)li.classList.add('done');list.append(li);return}
+    if((m=line.match(/^\s*[-*•]\s+(.*)$/))){if(kind!=='ul'){list=el('ul');box.append(list);kind='ul'}const li=el('li');inline(li,m[1]);list.append(li);return}
+    if((m=line.match(/^\s*\d+[.)]\s+(.*)$/))){if(kind!=='ol'){list=el('ol');box.append(list);kind='ol'}const li=el('li');inline(li,m[1]);list.append(li);return}
+    close();const p=el('p');inline(p,line);box.append(p);
+  });
+}
+
+// ---------- files ----------
+const MB=1024*1024;
+function readAs(f,how){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);how==='text'?r.readAsText(f):r.readAsDataURL(f)})}
+async function shrink(f){
+  let src;try{src=await createImageBitmap(f,{imageOrientation:'from-image'})}catch(e){src=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f)})}
+  const w=src.naturalWidth||src.width,h=src.naturalHeight||src.height,k=Math.min(1,1568/Math.max(w,h));
+  const c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(src,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',.85).split(',')[1];
+}
+async function toAttachment(f){
+  const n=f.name||'file';
+  if(f.type.startsWith('image/')||/\.(heic|jpe?g|png|gif|webp)$/i.test(n))return{name:n,kind:'image',media_type:'image/jpeg',data:await shrink(f)};
+  if(f.type==='application/pdf'||/\.pdf$/i.test(n)){if(f.size>10*MB)throw new Error(`“${n}” is over 10 MB.`);return{name:n,kind:'pdf',media_type:'application/pdf',data:(await readAs(f,'url')).split(',')[1]}}
+  if(/\.docx$/i.test(n)){if(f.size>10*MB)throw new Error(`“${n}” is over 10 MB.`);return{name:n,kind:'docx',media_type:'',data:(await readAs(f,'url')).split(',')[1]}}
+  if(f.type.startsWith('text/')||/\.(txt|md|csv|tsv|json|vtt|srt|log|html?|xml)$/i.test(n)){if(f.size>600*1024)throw new Error(`“${n}” is too long.`);return{name:n,kind:'text',media_type:'text/plain',data:await readAs(f,'text')}}
+  throw new Error(`I can't read “${n}”. Use a PDF, Word (.docx), text, CSV, transcript or image file.`);
+}
+
+// ---------- morning brief state (this device only) ----------
+const MKEY='askh_brief';
+const brief=Object.assign({topics:['AI agents','product management'],history:[],days:[]},store.get(MKEY,{}));
+const saveBrief=()=>store.set(MKEY,brief);
+const dayKey=d=>d.toLocaleDateString('en-CA');
+function streak(){
+  const set=new Set(brief.days);let n=0,d=new Date();
+  if(!set.has(dayKey(d)))d.setDate(d.getDate()-1);
+  while(set.has(dayKey(d))){n++;d.setDate(d.getDate()-1)}
+  return n;
+}
+
+// ---------- views ----------
+function home(){
+  document.title='PM Toolkit';main.textContent='';
+  const g=el('div','grid');
+  TOOLS.forEach(t=>{
+    const c=el('button','card'+(t.wide?' wide':''));c.type='button';c.append(el('span','ic',t.ic),el('b',null,t.name),el('span',null,t.short));
+    if(t.id==='morning'){const s=streak();if(s)c.append(el('span','streak',`🔥 ${s}-day streak`))}
+    c.onclick=()=>{location.hash=t.id};g.append(c);
+  });
+  main.append(g,el('p','note',"Nothing you paste or upload is saved. It's sent to the AI model to get your result. For work material, check your company's policy first."));
+}
+
+let current=null;
+function openTool(t){
+  document.title=t.name+' · PM Toolkit';main.textContent='';window.scrollTo(0,0);
+  const state={files:[],mode:'prepare',audience:'customers',version:''};current={t,state};
+  const head=el('div','thead'),crumb=el('button','crumb','← All tools');crumb.type='button';crumb.onclick=()=>{stopRecording();location.hash=''};
+  head.append(crumb,el('h2',null,t.name),el('p',null,t.desc));main.append(head);
+
+  const opts=el('div','opts');
+  if(t.modes){const seg=el('div','seg');seg.setAttribute('role','group');seg.setAttribute('aria-label','Mode');
+    [['prepare','Prepare'],['analyze','Analyze']].forEach(([v,l])=>{const b=el('button',null,l);b.type='button';b.setAttribute('aria-pressed',String(state.mode===v));
+      b.onclick=()=>{state.mode=v;seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));ta.placeholder=v==='analyze'?'Paste the interview transcript.':'What do you want to learn, and from whom?'};seg.append(b)});opts.append(seg)}
+  if(t.release){
+    const l=el('label',null,'For'),s=el('select');[['customers','Customers'],['internal','Internal team'],['appstore','App store'],['executives','Executives']].forEach(([v,x])=>{const o=el('option',null,x);o.value=v;s.append(o)});
+    s.onchange=()=>state.audience=s.value;l.append(s);
+    const l2=el('label',null,'Version'),v=el('input');v.type='text';v.placeholder='e.g. 2.4';v.maxLength=40;v.oninput=()=>state.version=v.value;l2.append(v);opts.append(l,l2);
+  }
+  if(t.id==='morning'){
+    const box=el('div','topics');opts.append(el('span','note','Your topics:'),box);
+    const draw=()=>{box.textContent='';brief.topics.forEach((tp,i)=>{const c=el('span','topic',tp),x=el('button',null,'×');x.type='button';x.setAttribute('aria-label',`Remove ${tp}`);x.onclick=()=>{brief.topics.splice(i,1);saveBrief();draw()};c.append(x);box.append(c)});
+      if(brief.topics.length<5){const inp=el('input');inp.placeholder='+ Add a topic';inp.maxLength=60;inp.setAttribute('aria-label','Add a topic');
+        inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const v=inp.value.trim();if(v&&!brief.topics.some(x=>x.toLowerCase()===v.toLowerCase())){brief.topics.push(v);saveBrief();draw();box.querySelector('input')?.focus()}}};box.append(inp)}};
+    draw();
+  }
+  if(opts.children.length)main.append(opts);
+
+  const ta=el('textarea','input');
+  if(t.id==='morning'){ta.style.minHeight='0';ta.rows=2;ta.placeholder='Optional: anything specific to cover today'}else ta.placeholder=t.ph;
+  ta.setAttribute('aria-label','Input');main.append(ta);
+  const fl=el('div','files');main.append(fl);
+  const drawFiles=()=>{fl.textContent='';state.files.forEach((f,i)=>{const c=el('span','fchip');c.append(el('span',null,f.name));const x=el('button',null,'×');x.type='button';x.setAttribute('aria-label',`Remove ${f.name}`);x.onclick=()=>{state.files.splice(i,1);drawFiles()};c.append(x);fl.append(c)})};
+
+  const bar=el('div','bar'),run=el('button','btn red',t.id==='morning'?"Get today's brief":t.id==='interview'?'Run':'Run '+t.name.toLowerCase());run.type='button';
+  bar.append(run);
+  if(t.id!=='morning'){
+    const add=el('button','btn','Add file');add.type='button';add.onclick=()=>{const inp=$('#file');inp.onchange=async()=>{const l=[...inp.files];inp.value='';for(const f of l){if(state.files.length>=4){msg.textContent='Up to 4 files.';break}try{state.files.push(await toAttachment(f))}catch(e){msg.textContent=e.message}}drawFiles()};inp.click()};bar.append(add);
+  }
+  let recBtn=null;
+  if(t.record){recBtn=el('button','btn');recBtn.type='button';recBtn.append(el('span','dot'),el('span',null,'Record'));recBtn.onclick=()=>toggleRecording(ta,recBtn,recInfo,msg);bar.append(recBtn)}
+  if(t.sample){const ex=el('button','btn','Try an example');ex.type='button';ex.onclick=()=>{ta.value=t.sample;if(t.modes){state.mode='prepare';opts.querySelectorAll('.seg button').forEach((x,i)=>x.setAttribute('aria-pressed',String(i===0)))}ta.focus()};bar.append(ex)}
+  main.append(bar);
+  const recInfo=el('p','recinfo');recInfo.hidden=true;main.append(recInfo);
+  const msg=el('p','msg');main.append(msg);
+  const out=el('section','out');out.hidden=true;out.setAttribute('aria-live','polite');main.append(out);
+  run.onclick=()=>{stopRecording();msg.textContent='';go(t,ta.value,state,out,run)};
+  if(t.id==='morning')go(t,'',state,out,run,true);
+}
+
+// ---------- live meeting recording ----------
+// The phone transcribes. iPhone stops listening after pauses, so a fresh recognizer restarts automatically until you stop.
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+let recording=null;
+function stopRecording(){if(recording){recording.on=false;try{recording.rec&&recording.rec.stop()}catch(e){}}}
+async function toggleRecording(ta,btn,info,msg){
+  if(recording){stopRecording();return}
+  if(!SR){msg.textContent="Live recording isn't available in this browser. Record with your phone's Voice Memos or your meeting app, then paste the transcript.";return}
+  const r={on:true,rec:null,start:Date.now(),base:ta.value.trim(),lines:[],interim:'',lock:null};recording=r;
+  try{r.lock=await navigator.wakeLock?.request('screen')}catch(e){}
+  btn.classList.add('rec');btn.lastChild.textContent='Stop';ta.readOnly=true;info.hidden=false;
+  info.textContent='Recording. Keep this page open and the phone near the speakers. It won\'t know who is speaking.';
+  const stamp=()=>{const s=Math.floor((Date.now()-r.start)/1000);return`[${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}] `};
+  const show=()=>{ta.value=[r.base,...r.lines].filter(Boolean).join('\n')+(r.interim?'\n'+r.interim+' …':'');ta.scrollTop=ta.scrollHeight};
+  const loop=()=>{
+    if(!r.on)return finish();
+    const x=new SR();r.rec=x;x.lang=navigator.language||'en-US';x.interimResults=true;x.continuous=!IOS;
+    x.onresult=e=>{r.interim='';for(let i=e.resultIndex;i<e.results.length;i++){const res=e.results[i];if(res.isFinal){const t=res[0].transcript.trim();if(t)r.lines.push(stamp()+t)}else r.interim+=res[0].transcript}show()};
+    x.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){r.on=false;msg.textContent='Microphone or speech recognition is blocked. Allow the microphone for this site, and on iPhone turn on Dictation (Settings → General → Keyboard).'}};
+    x.onend=()=>{r.rec=null;if(r.interim.trim()){r.lines.push(stamp()+r.interim.trim());r.interim=''}show();if(r.on)setTimeout(loop,250);else finish()};
+    try{x.start()}catch(e){r.on=false;finish()}
+  };
+  const finish=()=>{if(recording!==r)return;recording=null;try{r.lock&&r.lock.release()}catch(e){}btn.classList.remove('rec');btn.lastChild.textContent='Record';ta.readOnly=false;show();
+    const mins=Math.max(1,Math.round((Date.now()-r.start)/60000));info.textContent=r.lines.length?`Recorded about ${mins} min (${r.lines.length} lines). Fix anything that looks wrong, then run.`:'Nothing was transcribed. Try again closer to the speakers, or paste a transcript.'};
+  loop();
+}
+
+// ---------- running a tool ----------
+async function readSSE(res,onEvent){
+  const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
+  for(;;){const {value,done}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);let kind=null,data='';
+      block.split('\n').forEach(l=>{if(l.startsWith('event: '))kind=l.slice(7);else if(l.startsWith('data: '))data+=l.slice(6)});
+      if(kind){let d={};try{d=JSON.parse(data||'{}')}catch(e){}onEvent(kind,d)}}}
+}
+async function go(t,text,state,out,run,auto){
+  if(run.disabled)return;
+  run.disabled=true;out.hidden=false;out.textContent='';
+  const st=el('div','status');st.append(el('span','spin'),el('span',null,auto?"Getting today's brief…":'Starting…'));const md=el('div','md');out.append(st,md);
+  if(!auto)out.scrollIntoView({behavior:'smooth',block:'start'});
+  const options=t.id==='morning'?{topics:brief.topics,history:brief.history.slice(-10)}:t.id==='interview'?{mode:state.mode}:t.id==='release'?{audience:state.audience,version:state.version}:{};
+  let streamed='',done=false,pending=false;
+  const paint=()=>{if(pending)return;pending=true;requestAnimationFrame(()=>{pending=false;renderMd(md,streamed.split('```quiz')[0])})};
+  try{
+    const res=await fetch(`/api/tools/${t.id}/stream`,{method:'POST',headers:headers(),body:JSON.stringify({text,attachments:state.files,options})});
+    if(!res.ok||!(res.headers.get('content-type')||'').includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||'Something went wrong. Please try again.')}
+    await readSSE(res,(k,d)=>{
+      if(k==='status'){st.lastChild.textContent=d.label+'…'}
+      else if(k==='text'){streamed+=d.delta;paint()}
+      else if(k==='text_reset'){streamed='';md.textContent=''}
+      else if(k==='final'){done=true;st.remove();finalize(t,d,out,md)}
+      else if(k==='error'){throw new Error(d.message)}
+    });
+    if(!done)throw new Error('The connection dropped before it finished. Please try again.');
+  }catch(e){st.remove();const p=el('p','msg',e.message);out.prepend(p)}
+  finally{run.disabled=false}
+}
+function finalize(t,d,out,md){
+  renderMd(md,d.text||'');
+  if(d.web_sources&&d.web_sources.length){const s=el('div','sources');d.web_sources.forEach(w=>{let host='';try{host=new URL(w.url).hostname.replace(/^www\./,'')}catch(e){}const a=el('a','src',host||w.title);a.href=w.url;a.target='_blank';a.rel='noopener';a.title=w.title||'';s.append(a)});out.append(s)}
+  if(t.id==='morning'){
+    if(d.lesson&&!brief.history.includes(d.lesson)){brief.history.push(d.lesson);brief.history=brief.history.slice(-30);saveBrief()}
+    if(d.quiz)out.append(quiz(d.quiz));
+  }
+  const bar=el('div','bar');
+  const cp=el('button','btn','Copy');cp.type='button';cp.onclick=async()=>{try{await navigator.clipboard.writeText(d.text);cp.textContent='Copied'}catch(e){cp.textContent='Select and copy'}};
+  const dl=el('button','btn','Download');dl.type='button';dl.onclick=()=>{const b=new Blob([d.text],{type:'text/markdown'});const u=URL.createObjectURL(b);const a=el('a');a.href=u;a.download=`${t.id}-${dayKey(new Date())}.md`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)};
+  bar.append(cp,dl);
+  if(navigator.share){const sh=el('button','btn','Share');sh.type='button';sh.onclick=()=>navigator.share({title:t.name,text:d.text}).catch(()=>{});bar.append(sh)}
+  out.append(bar);
+  out.append(el('p','foot',(d.cached?"Today's brief for these topics was already made, so this one was free.":`${d.cost_usd<0.01?'Under 1¢':Math.round(d.cost_usd*100)+'¢'} · ${Math.round(d.seconds)}s`)+(d.cut_off?' · The result hit the length limit; try a shorter input.':'')));
+}
+function quiz(qz){
+  const box=el('div','quiz');box.append(el('h3',null,'Quick quiz'));let answered=0,right=0;
+  const score=el('p','score');score.hidden=true;
+  qz.questions.forEach((q,qi)=>{
+    const w=el('div','qq');w.append(el('b',null,`${qi+1}. ${q.q}`));
+    const btns=q.options.map((o,i)=>{const b=el('button','qopt',o);b.type='button';b.onclick=()=>{
+      btns.forEach((x,j)=>{x.disabled=true;if(j===q.answer)x.classList.add('right')});if(i!==q.answer)b.classList.add('wrong');else right++;
+      if(q.why)w.append(el('p','qwhy',q.why));answered++;
+      if(answered===qz.questions.length){score.hidden=false;const today=dayKey(new Date());if(!brief.days.includes(today)){brief.days.push(today);brief.days=brief.days.slice(-60);saveBrief()}
+        const s=streak();score.textContent=`${right} of ${qz.questions.length} right · 🔥 ${s}-day streak`}
+    };w.append(b);return b});
+    box.append(w);
+  });
+  box.append(score);return box;
+}
+
+function route(){const t=byId[location.hash.slice(1)];if(t)openTool(t);else home()}
+window.addEventListener('hashchange',()=>{stopRecording();route()});
+route();
+})();
+</script>
+</body>
+</html>

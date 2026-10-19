@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agent import assist, attachments as files, factcheck, inbox as inboxmod, receipts as rcpt  # noqa: E402
+from agent import assist, attachments as files, factcheck, inbox as inboxmod, receipts as rcpt, toolkit  # noqa: E402
 from server import mcp  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
@@ -109,6 +109,12 @@ class Settings:
 class Turn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=8000)
+
+
+class ToolRequest(BaseModel):
+    text: str = Field(default="", max_length=150_000)
+    attachments: list[Attachment] = Field(default_factory=list, max_length=files.MAX_FILES)
+    options: dict = Field(default_factory=dict)
 
 
 class ShareRequest(BaseModel):
@@ -272,6 +278,92 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
     def too_many_wrong(ip: str) -> bool:
         return not passcode_failures.allow(ip)
+
+    # ---------- PM Toolkit ----------
+    brief_cache: dict = {}   # (date, topics) -> final payload; one morning brief per topic set per day
+
+    @app.get("/tools")
+    def tools_page():
+        return FileResponse(STATIC / "tools.html", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/tools/{tool_id}/stream")
+    def run_tool(tool_id: str, req: ToolRequest, request: Request):
+        tool = toolkit.TOOLS.get(tool_id)
+        if tool is None:
+            return error(404, "not_found", "That tool doesn't exist.")
+        ip = client_ip(request)
+        status = owner_status(request)
+        if status == "denied" and too_many_wrong(ip):
+            return error(429, "locked", "Too many wrong passcodes. Try again in an hour.")
+        owner = status == "owner"
+        limit = 150_000 if owner else 60_000
+        text = req.text.strip()
+        if len(text) > limit:
+            return error(400, "too_long", f"That's too long. Please keep it under {limit:,} characters, or split it in two.")
+        options = {k: v for k, v in (req.options or {}).items() if k in ("topics", "history", "mode", "audience", "version")}
+        if isinstance(options.get("history"), list):
+            options["history"] = [" ".join(str(h).split())[:120] for h in options["history"][-10:]]
+        if tool_id != "morning" and not text and not req.attachments:
+            return error(400, "empty", "Paste some text or attach a file first.")
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+        cache_key = None
+        if tool_id == "morning" and not text:
+            cache_key = (today, tuple(t.lower() for t in sorted(toolkit._clean_topics(options.get("topics")), key=str.lower)))
+            if cache_key in brief_cache:
+                q: queue.Queue = queue.Queue()
+                q.put(("final", {**brief_cache[cache_key], "cached": True, "cost_usd": 0}))
+                q.put(None)
+                return StreamingResponse(stream_events(q), media_type="text/event-stream", headers=SSE_HEADERS)
+        if not owner and not limiter.allow(ip):
+            wait = limiter.retry_after(ip)
+            return error(429, "rate_limited", f"That's a lot at once. Try again in about {max(1, wait // 60)} minute(s).", {"Retry-After": str(wait)})
+        if budget.exhausted():
+            return error(503, "resting", f"Ask Harsha is resting for today. You can reach Harsha directly at {settings.contact_email}.")
+        try:
+            prepared = files.prepare(req.attachments, max_pdf_pages=100 if owner else 30)
+        except files.AttachmentError as e:
+            return error(400, "attachment", str(e))
+        q = queue.Queue()
+
+        def on_event(kind: str, data: dict) -> None:
+            if kind == "text":
+                q.put(("text", {"delta": data["delta"]}))
+            elif kind == "text_reset":
+                q.put(("text_reset", {}))
+            elif kind == "web_search_start":
+                q.put(("status", {"label": "Searching the web"}))
+
+        agent = Agent(get_client(), kb=kb, model=settings.model, max_steps=4, max_tokens=tool.max_tokens,
+                      system=toolkit.system_prompt(tool_id, today, options), on_event=on_event,
+                      server_tools=[{**WEB_SEARCH_TOOL, "max_uses": 5}] if (tool.web and settings.web_search) else [],
+                      strict_grounding=False, stream=True, record_tools=False)
+        agent.messages = file_turns(prepared.blocks)
+
+        def work():
+            started = time.monotonic()
+            q.put(("status", {"label": "Reading your files" if prepared.blocks else ("Finding today's news" if tool.web else "Working on it")}))
+            try:
+                reply = agent.ask(toolkit.user_message(tool_id, text, options))
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": UPSTREAM_MSG}))
+                return
+            cost = budget.add(reply.input_tokens, reply.output_tokens) + budget.add_flat(reply.web_searches * settings.price_per_search)
+            body, quiz = toolkit.split_quiz(reply.text) if tool_id == "morning" else (reply.text, None)
+            payload = {"tool": tool_id, "text": body, "quiz": quiz, "lesson": toolkit.lesson_title(body) if tool_id == "morning" else "",
+                       "web_sources": reply.web_sources[:10], "cost_usd": round(cost, 4),
+                       "seconds": round(time.monotonic() - started, 1), "cut_off": reply.stop_reason == "max_tokens"}
+            if cache_key and body and reply.stop_reason == "end_turn":
+                if len(brief_cache) > 30:
+                    brief_cache.clear()
+                brief_cache[cache_key] = payload
+            log.info(json.dumps({"event": "tool", "tool": tool_id, "owner": owner, "chars": len(text),
+                                 "attachments": [a["kind"] for a in prepared.summary], "web_searches": reply.web_searches,
+                                 "tokens_in": reply.input_tokens, "tokens_out": reply.output_tokens,
+                                 "cost_usd": round(cost, 5), "spent_today_usd": round(budget.spent, 4)}))
+            q.put(("final", payload))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
 
     # ---------- Verified answers ----------
     def origin(request: Request) -> str:
