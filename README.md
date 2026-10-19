@@ -88,6 +88,10 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Chat history and Recents
+
+Every conversation is saved in the visitor's own browser (never on the server) and listed under **Recents** (the clock icon): grouped by Today, Yesterday, Previous 7 days and so on, searchable by title and content. Tap a chat to reopen it and keep going (the agent gets the earlier turns as context); each chat can be renamed, downloaded as Markdown or deleted, and everything can be downloaded as JSON or deleted at once. Saving can be turned off. Up to 100 chats are kept, oldest dropped first when storage fills; attached files aren't kept, only their names. The Memory screen moved into the owner menu to keep the header to icons.
+
 ## Second opinions (model jury)
 
 Under a general or web answer, **⚖️ Second opinions** asks ChatGPT and Gemini the same question in parallel (`agent/jury.py`, plain HTTPS, no extra SDKs), shows each answer as it arrives, then has Claude compare all three: an agreement level (strong, partly, disagree), what they agree on, where they differ with each model's position, what only one said, and what to double-check. It doesn't pick a winner; it shows where to look.
