@@ -58,6 +58,17 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .heard.partner b{color:var(--blue)}
 .heard .x{justify-self:start;font-size:13px;color:var(--muted);padding:6px 0;text-decoration:underline;text-underline-offset:3px}
 .heard.live q{color:var(--muted)}
+.heard b{display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red-hot);animation:blink 1s infinite}
+.heard.partner .dot{background:var(--blue)}
+@keyframes blink{50%{opacity:.25}}
+.check{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--panel)}
+.checklog{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:15px}
+.checklog li{padding-left:24px;position:relative}
+.checklog li::before{content:"•";position:absolute;left:6px;color:var(--muted)}
+.checklog li.ok::before{content:"✓";left:4px;color:var(--good);font-weight:700}
+.checklog li.bad::before{content:"✕";left:4px;color:var(--red-hot);font-weight:700}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
 
 .guesses{display:grid;gap:10px}
 .guess{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;text-align:left;min-height:64px;padding:14px 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line);font-size:20px;line-height:1.3;font-weight:500}
@@ -204,6 +215,7 @@ function speak(text){
   const u=new SpeechSynthesisUtterance(text);
   const v=voices.find(v=>v.voiceURI===data.voice);if(v){u.voice=v;u.lang=v.lang}else if(data.lang)u.lang=data.lang;
   u.rate=data.rate||1;
+  u.onend=()=>{lastSpoke=Date.now()};
   try{synth.speak(u)}catch(e){say(text)}  // the sentence is still on screen and in "Show big" if the voice fails
 }
 function showSaid(text){
@@ -310,51 +322,104 @@ $('#typeform').addEventListener('submit',e=>{e.preventDefault();const t=typed.va
 typed.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#typeform').requestSubmit()}});
 
 // ---------- listening ----------
+// The phone does the speech-to-text. iPhone Safari is the fussy one: it may only report words at the end, it can hang
+// on a second start right after the phone has spoken, and some failures end silently. So: a fresh recognizer every time,
+// no continuous mode on iPhone, a short pause after speaking, a watchdog, live mic status, and a message for every way it can fail.
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let rec=null,who=null;
+const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const STANDALONE=window.navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+let rec=null,who=null,lastSpoke=0,checkLog=null,pending=null;
+const ERRORS={
+  'not-allowed':'Microphone access is blocked for this site. On iPhone: Settings → Apps → Safari → Microphone → Allow, then reload this page.',
+  'service-not-allowed':IOS?"Your iPhone didn't allow speech recognition here. Check that Siri or Dictation is turned on (Settings → General → Keyboard → Enable Dictation)"+(STANDALONE?', and try opening this page in Safari instead of from the home-screen icon.':'.'):'Speech recognition is blocked in this browser.',
+  'no-speech':"I didn't hear any speech. Try again a little closer to the phone.",
+  'audio-capture':"I couldn't use the microphone. Another app might be using it.",
+  'network':"Speech recognition needs the internet and couldn't reach it.",
+  'aborted':'Listening stopped before any words came through.',
+  'language-not-supported':"Speech recognition doesn't support this language here."
+};
 function stopListening(){if(rec){try{rec.stop()}catch(e){}}}
+function logStep(ok,text){if(checkLog){const li=el('li',ok===true?'ok':ok===false?'bad':'',text);checkLog.append(li)}}
+function listenStatus(target,label,words){
+  if(target==='check')return;
+  inputView.textContent='';
+  if(partner&&target==='me'){const p=el('div','heard partner');p.append(el('b',null,'They said'),el('q',null,partner));inputView.append(p)}
+  const h=el('div','heard live'+(target==='them'?' partner':''));
+  const b=el('b');b.append(el('i','dot'),label);h.append(b,el('q',null,words||'…'));inputView.append(h);
+}
+function failHelp(msg){
+  guessView.textContent='';guessView.append(el('p','err',msg));
+  const r=el('div','acts');r.style.marginTop='10px';
+  const k=el('button','act','Use the keyboard mic instead');k.type='button';k.onclick=()=>typed.focus();
+  const c=el('button','act','Run a mic check');c.type='button';c.onclick=()=>listen('check');
+  r.append(k,c);guessView.append(r);
+}
+function resetButtons(){mic.classList.remove('listening');hear.classList.remove('listening');mic.querySelector('span').textContent='Speak';hear.querySelector('span').textContent='Hear them';mic.disabled=hear.disabled=false}
 function listen(target){
   if(rec){stopListening();return}
-  if(!SR){
-    guessView.textContent='';
-    guessView.append(el('p','err',"Listening isn't available here. Tap the text box and use the microphone on your keyboard instead. I'll still work out what you mean."));
-    typed.focus();return;
-  }
-  if(synth)synth.cancel();
+  if(pending){clearTimeout(pending);pending=null;resetButtons();inputView.textContent='';if(partner)showInput('','');return}  // tapped again while starting: cancel
+  if(target==='check'){
+    guessView.textContent='';inputView.textContent='';
+    const box=el('div','check');box.append(el('h2','label','Mic check'));checkLog=el('ul','checklog');box.append(checkLog);guessView.append(box);
+    logStep(!!SR,SR?`Speech recognition is available (${window.SpeechRecognition?'SpeechRecognition':'webkitSpeechRecognition'}).`:'This browser has no speech recognition.');
+    logStep(null,`${IOS?'iPhone or iPad':'Not an iPhone'}, ${STANDALONE?'opened from the home-screen icon':'opened in the browser'}, ${window.isSecureContext?'secure page':'NOT a secure page'}.`);
+    if(!SR){logStep(null,'Use the microphone on your keyboard instead. Assist still works out what you meant.');return}
+    logStep(null,'Say a few words now…');
+  }else checkLog=null;
+  if(!SR){failHelp("Listening isn't available in this browser. Tap the text box and use the microphone on your keyboard instead. I'll still work out what you mean.");return}
+  if(synth&&synth.speaking){synth.cancel();lastSpoke=Date.now()}
+  const wait=Math.max(0,400-(Date.now()-lastSpoke));  // let the phone's speaker hand the audio back before the mic starts
+  const btn=target==='them'?hear:mic;
+  btn.classList.add('listening');btn.querySelector('span').textContent='Starting…';(btn===mic?hear:mic).disabled=true;
+  listenStatus(target,'Starting the mic');
+  pending=setTimeout(()=>{pending=null;startRecognizer(target,btn)},wait);
+}
+function startRecognizer(target,btn){
   const r=new SR();rec=r;who=target;
-  r.lang=data.lang||navigator.language||'en-US';r.interimResults=true;r.continuous=true;r.maxAlternatives=5;
-  const segs=[];let interim='',timer=setTimeout(stopListening,30000);
-  const btn=target==='me'?mic:hear;btn.classList.add('listening');btn.querySelector('span').textContent='Tap when done';
-  (target==='me'?hear:mic).disabled=true;
-  if(target==='me'){guessView.textContent='';showInput('heard','…',true)}
+  r.lang=data.lang||navigator.language||'en-US';r.interimResults=true;r.continuous=!IOS;r.maxAlternatives=IOS?1:5;
+  const segs=[];let interim='',error='',started=false,heardSound=false;
+  const setBtn=t=>{btn.querySelector('span').textContent=t};
+  const watchdog=setTimeout(()=>{if(!started){error='watchdog';try{r.abort()}catch(e){}}},6000);
+  const cap=setTimeout(stopListening,30000);
+  r.onstart=()=>{started=true;setBtn('Tap when done');listenStatus(target,target==='them'?'Listening to them':'Mic is on. Start talking');logStep(true,'The mic started.')};
+  r.onsoundstart=()=>{heardSound=true;listenStatus(target,'Hearing sound',current());logStep(true,'It heard sound.')};
+  r.onspeechstart=()=>{listenStatus(target,target==='them'?'Hearing them':'Hearing your voice',current());logStep(true,'It recognised speech.')};
+  const current=()=>(segs.filter(Boolean).map(x=>x[0]).join(' ')+' '+interim).trim();
   r.onresult=e=>{
     interim='';
     for(let i=e.resultIndex;i<e.results.length;i++){
       const res=e.results[i];
-      if(res.isFinal)segs[i]=Array.from(res).map(a=>a.transcript.trim());
+      if(res.isFinal)segs[i]=Array.from(res).map(a=>a.transcript.trim()).filter(Boolean);
       else interim+=res[0].transcript;
     }
-    const sofar=(segs.filter(Boolean).map(s=>s[0]).join(' ')+' '+interim).trim()||'…';
-    if(target==='me')showInput('heard',sofar,true);
-    else{inputView.textContent='';const p=el('div','heard partner live');p.append(el('b',null,'Listening to them…'),el('q',null,sofar));inputView.append(p)}
+    listenStatus(target,target==='them'?'Hearing them':'Hearing your voice',current());
   };
-  r.onerror=e=>{
-    const msg={'not-allowed':'Microphone access is off. Allow it for this site in Settings, or type instead.','service-not-allowed':'Microphone access is off. Allow it for this site in Settings, or type instead.','no-speech':"I didn't hear anything. Try again a little closer to the phone.",'audio-capture':"I couldn't use the microphone."}[e.error];
-    if(msg){guessView.textContent='';guessView.append(el('p','err',msg))}
-  };
+  r.onerror=e=>{error=e.error||'unknown';logStep(false,`The phone reported an error: ${error}.`)};
   r.onend=()=>{
-    clearTimeout(timer);rec=null;btn.classList.remove('listening');
-    mic.querySelector('span').textContent='Speak';hear.querySelector('span').textContent='Hear them';mic.disabled=hear.disabled=false;
-    const finals=segs.filter(Boolean);
+    clearTimeout(watchdog);clearTimeout(cap);rec=null;resetButtons();
+    const finals=segs.filter(s=>s&&s.length);
     if(!finals.length&&interim.trim())finals.push([interim.trim()]);
-    if(!finals.length){if(target==='me')inputView.textContent='';showInput('',''); return}
-    // Several readings of the whole utterance: the top one, plus each alternative of the least certain part.
+    if(target==='check'){
+      if(finals.length){logStep(true,`Words came through: “${finals.map(s=>s[0]).join(' ')}”. Listening works on this phone.`)}
+      else if(!error){logStep(false,heardSound?'It heard sound but no words came through.':'No sound and no words came through.')}
+      if(!finals.length)logStep(null,error&&ERRORS[error]?ERRORS[error]:error==='watchdog'?"The mic never started. Close other apps using the mic, reload the page, and try again.":'Try again in a quiet spot, or use the keyboard microphone instead.');
+      checkLog=null;return;
+    }
+    if(!finals.length){
+      inputView.textContent='';if(partner)showInput('','');
+      failHelp(error==='watchdog'?"The mic didn't start. Reload the page and try again, or use the keyboard mic.":ERRORS[error]||(heardSound?"I heard sound but couldn't make out any words. Try again, or type a few words.":"I couldn't hear anything. Check the mic isn't covered and try again."));
+      return;
+    }
+    // Several readings of the whole utterance: the top one, plus each alternative for each part.
     const top=finals.map(s=>s[0]).join(' ');const alts=new Set([top]);
-    finals.forEach((s,i)=>s.slice(1).forEach(a=>{const c=finals.map((x,j)=>j===i?a:x[0]).join(' ');if(alts.size<5)alts.add(c)}));
+    finals.forEach((s,i)=>s.slice(1).forEach(a=>{if(alts.size<5)alts.add(finals.map((x,j)=>j===i?a:x[0]).join(' '))}));
     if(target==='me'){showInput('heard',top);guess({heard:[...alts]})}
     else{partner=top;showInput('','');guess({})}
   };
-  try{r.start()}catch(e){rec=null;btn.classList.remove('listening');mic.disabled=hear.disabled=false}
+  try{r.start()}catch(e){
+    clearTimeout(watchdog);clearTimeout(cap);rec=null;resetButtons();
+    logStep(false,`The mic couldn't start: ${e.message||e}.`);if(target!=='check')failHelp("The mic couldn't start. Reload the page and try again, or use the keyboard mic.");
+  }
 }
 mic.onclick=()=>{if(rec&&who!=='me')return;listen('me')};
 hear.onclick=()=>{if(rec&&who!=='them')return;listen('them')};
@@ -374,6 +439,9 @@ $('#gear').onclick=()=>{
   rng.oninput=()=>{data.rate=+rng.value;save()};rl.append(rng);
   const test=el('button','btn','Test the voice');test.type='button';test.onclick=()=>speak('Hello. This is how I sound.');
   s.append(vl,rl,el('div','row'));s.lastChild.append(test);
+  s.append(el('h3',null,'Microphone'));
+  const mc=el('button','btn','Run a mic check');mc.type='button';mc.onclick=()=>{close();listen('check')};
+  const r0=el('div','row');r0.style.justifyContent='flex-start';r0.append(mc);s.append(el('p',null,'Shows step by step what your phone reports while it listens.'),r0);
   s.append(el('h3',null,'Saved phrases'));
   const list=el('div','saved-list');
   const drawSaved=()=>{list.textContent='';if(!data.saved.length)list.append(el('p',null,'None yet.'));data.saved.forEach(t=>{const r=el('div','saved-row');const x=el('button',null,'Remove');x.type='button';x.onclick=()=>{toggleSaved(t);drawSaved()};r.append(el('span',null,t),x);list.append(r)})};
