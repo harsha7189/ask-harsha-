@@ -29,14 +29,15 @@ from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agent import assist, attachments as files, factcheck, inbox as inboxmod  # noqa: E402
+from agent import assist, attachments as files, factcheck, inbox as inboxmod, receipts as rcpt  # noqa: E402
+from server import mcp  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
@@ -108,6 +109,11 @@ class Settings:
 class Turn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=8000)
+
+
+class ShareRequest(BaseModel):
+    receipt: dict
+    signature: str = Field(min_length=10, max_length=200)
 
 
 class InboxRequest(BaseModel):
@@ -219,7 +225,7 @@ class _Lookup:
 
 
 def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings | None = None, notes: NotesStore | None = None,
-               inbox: "inboxmod.InboxStore | None" = None) -> FastAPI:
+               inbox: "inboxmod.InboxStore | None" = None, receipts: "rcpt.ReceiptStore | None" = None) -> FastAPI:
     settings = settings or Settings()
     kb = kb or KnowledgeBase.load()
     store = notes if notes is not None else default_notes_store()
@@ -227,6 +233,14 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     inbox = inbox if inbox is not None else default_inbox_store()
     inbox_limiter = RateLimiter(5, 86400)        # questions sent to Harsha: 5 a day per visitor
     ticket_limiter = RateLimiter(120, 600)
+    signer = rcpt.Signer.from_secrets(os.environ.get("SIGNING_KEY", ""), os.environ.get("INBOX_KEY", ""), settings.owner_passcode)
+    if receipts is None:
+        fkey = inboxmod.make_key(os.environ.get("INBOX_KEY", ""), settings.owner_passcode)
+        token, repo = os.environ.get("GITHUB_TOKEN", ""), os.environ.get("NOTES_REPO", "")
+        receipts = (rcpt.GitHubReceiptStore(repo, token, fkey, branch=os.environ.get("NOTES_BRANCH", "notes"))
+                    if token and repo else rcpt.ReceiptStore(fkey))
+    share_limiter = RateLimiter(20, 86400)       # shared receipts: 20 a day per visitor
+    mcp_limiter = RateLimiter(30, 600)           # agent questions over MCP, per client address
     limiter = RateLimiter(settings.rate_limit, settings.rate_window)
     assist_limiter = RateLimiter(settings.assist_rate_limit, settings.rate_window)
     passcode_failures = RateLimiter(5, 3600)  # 5 wrong passcodes per hour per visitor
@@ -258,6 +272,163 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
     def too_many_wrong(ip: str) -> bool:
         return not passcode_failures.allow(ip)
+
+    # ---------- Verified answers ----------
+    def origin(request: Request) -> str:
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+        return f"{proto}://{request.headers.get('host', request.url.netloc)}"
+
+    RID = re.compile(r"[A-Za-z0-9_-]{8,32}")
+
+    @app.post("/api/receipts")
+    def share_receipt(req: ShareRequest, request: Request):
+        if signer is None or not receipts.enabled:
+            return error(503, "receipts", "Verified sharing isn't set up on this server.")
+        if len(rcpt.canonical(req.receipt)) > rcpt.MAX_RECEIPT_BYTES:
+            return error(400, "too_large", "That answer is too long to share as a verified link.")
+        if not signer.verify(req.receipt, req.signature):
+            return error(400, "not_verified", "This answer couldn't be verified as coming from Ask Harsha, so it can't be shared as verified.")
+        if owner_status(request) != "owner" and not share_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "You've shared a lot today. Please try again tomorrow.")
+        try:
+            rid = receipts.put(req.receipt, req.signature)
+        except rcpt.ReceiptError as e:
+            return error(503, "receipts", str(e))
+        log.info(json.dumps({"event": "receipt_shared"}))
+        return {"id": rid, "url": f"{origin(request)}/v/{rid}"}
+
+    def load_receipt(rid: str):
+        if not RID.fullmatch(rid):
+            return None
+        return receipts.get(rid)
+
+    @app.get("/api/receipts/{rid}")
+    def get_receipt(rid: str, request: Request):
+        if not ticket_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "Too many checks at once. Try again in a few minutes.")
+        try:
+            data = load_receipt(rid)
+        except rcpt.ReceiptError as e:
+            return error(503, "receipts", str(e))
+        if data is None:
+            return error(404, "not_found", "There's no verified answer at this link.")
+        valid = signer is not None and signer.verify(data["receipt"], data["sig"])
+        return {"receipt": data["receipt"], "signature": data["sig"], "valid": valid,
+                "public_key": signer.public_b64 if signer else "", "fingerprint": signer.fingerprint if signer else ""}
+
+    @app.get("/api/receipts/{rid}/qr.svg")
+    def receipt_qr(rid: str, request: Request):
+        if not RID.fullmatch(rid):
+            return error(404, "not_found", "Not found.")
+        import io
+        import qrcode
+        import qrcode.image.svg
+        img = qrcode.make(f"{origin(request)}/v/{rid}", image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2)
+        buf = io.BytesIO()
+        img.save(buf)
+        return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/v/{rid}")
+    def verify_page(rid: str):
+        return FileResponse(STATIC / "verify.html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/.well-known/ask-harsha-key.json")
+    def public_key():
+        if signer is None:
+            return error(404, "not_found", "Signing isn't set up on this server.")
+        return {"alg": "Ed25519", "public_key": signer.public_b64, "fingerprint": signer.fingerprint,
+                "signed_bytes": "JSON of the receipt with sorted keys, no spaces (separators ',' and ':'), UTF-8",
+                "encoding": "base64url without padding, for both the key and the signature"}
+
+    # ---------- MCP: other AIs can use this agent ----------
+    def mcp_ask(args: dict, ip: str) -> str:
+        question = str(args.get("question", "")).strip()
+        if not question:
+            raise mcp.ToolFailure("Pass a question.")
+        if len(question) > settings.max_question_chars:
+            raise mcp.ToolFailure(f"Keep the question under {settings.max_question_chars} characters.")
+        if not mcp_limiter.allow(ip):
+            raise mcp.ToolFailure("Too many questions from this client right now. Try again in a few minutes, or use search_harsha_facts, which is free.")
+        if budget.exhausted():
+            raise mcp.ToolFailure("Ask Harsha is resting for today (daily budget reached). search_harsha_facts and get_harsha_topic still work.")
+        agent = build_agent(owner=False)
+        try:
+            reply = agent.ask(question)
+        except Exception as e:
+            upstream_failed(e)
+            raise mcp.ToolFailure("The agent couldn't reach its model just now. Please try again.")
+        data = finish(agent, reply, False, question, event="mcp_answer")
+        out = [data["answer"]]
+        if data["citations"]:
+            out.append("Sources from Harsha's record:\n" + "\n".join(f"- [{c['id']}] {c['text']}" for c in data["citations"]))
+        if data["web_sources"]:
+            out.append("Web sources:\n" + "\n".join(f"- {w['title']}: {w['url']}" for w in data["web_sources"]))
+        if data.get("receipt") and receipts.enabled:
+            try:
+                rid = receipts.put(data["receipt"], data["signature"])
+                out.append(f"Verify this answer (signed by Ask Harsha): {settings_origin['url']}/v/{rid}")
+            except rcpt.ReceiptError:
+                pass
+        return "\n\n".join(out)
+
+    def mcp_search(args: dict) -> str:
+        query = str(args.get("query", "")).strip()
+        if not query:
+            raise mcp.ToolFailure("Pass a query, for example 'AI agent adoption'.")
+        k = args.get("k", 5)
+        k = k if isinstance(k, int) and 1 <= k <= 10 else 5
+        hits = kb.search(query, k=k)
+        if not hits:
+            return json.dumps({"query": query, "results": [], "note": "No matching facts. Try other keywords or get_harsha_topic."})
+        return json.dumps({"query": query, "results": [f.to_dict() for f, _ in hits]}, ensure_ascii=False)
+
+    def mcp_topic(args: dict) -> str:
+        topic = str(args.get("topic", "")).strip().lower()
+        facts = kb.by_topic(topic)
+        if not facts:
+            raise mcp.ToolFailure(f"Unknown topic. Topics: {', '.join(sorted(kb.topics()))}.")
+        return json.dumps({"topic": topic, "results": [f.to_dict() for f in facts]}, ensure_ascii=False)
+
+    def mcp_verify(args: dict) -> str:
+        link = str(args.get("link", "")).strip().rstrip("/")
+        rid = link.rsplit("/v/", 1)[-1].split("?")[0].split("#")[0]
+        try:
+            data = load_receipt(rid)
+        except rcpt.ReceiptError as e:
+            raise mcp.ToolFailure(str(e))
+        if data is None:
+            return "Not verified: there's no Ask Harsha answer at that link."
+        r = data["receipt"]
+        ok = signer is not None and signer.verify(r, data["sig"])
+        status = "Verified: the signature matches, so this is exactly what Ask Harsha said." if ok else "Not verified: the signature doesn't match."
+        return f"{status}\nAsked: {r['question']}\nAnswered at {r['issued_at']} by {r['model']}:\n{r['answer']}"
+
+    settings_origin = {"url": ""}
+
+    @app.post("/mcp")
+    async def mcp_endpoint(request: Request):
+        settings_origin["url"] = origin(request)
+        message, err = mcp.parse(await request.body())
+        if err:
+            return JSONResponse(err, status_code=400)
+        ip = client_ip(request)
+        tools = {"ask_harsha_agent": lambda a: mcp_ask(a, ip), "search_harsha_facts": mcp_search,
+                 "get_harsha_topic": mcp_topic, "verify_answer": mcp_verify}
+        topics = sorted(kb.topics())
+        from starlette.concurrency import run_in_threadpool  # the agent call blocks; keep the event loop free
+        if isinstance(message, list):  # JSON-RPC batch (older protocol versions)
+            replies = [r for r in [await run_in_threadpool(mcp.handle, m, tools, topics) for m in message] if r is not None]
+            return JSONResponse(replies) if replies else Response(status_code=202)
+        reply = await run_in_threadpool(mcp.handle, message, tools, topics)
+        if reply is None:
+            return Response(status_code=202)
+        if isinstance(message, dict) and message.get("method") == "tools/call":
+            log.info(json.dumps({"event": "mcp_call", "tool": (message.get("params") or {}).get("name")}))
+        return JSONResponse(reply)
+
+    @app.get("/mcp")
+    def mcp_get():
+        return Response(status_code=405, headers={"Allow": "POST"})
 
     @app.get("/healthz")
     def healthz():
@@ -481,7 +652,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                   "declined": bool(DECLINE.search(reply.text)), "spent_today_usd": round(budget.spent, 4),
                   "attachments": [a["kind"] for a in getattr(agent, "attached", [])],
                   "cache_read": reply.cache_read_tokens, "cache_write": reply.cache_write_tokens}
-        if settings.log_questions or event != "answer":
+        if settings.log_questions or event == "eval_case":  # eval questions are our own test cases
             record["question"] = question[:200]
         log.info(json.dumps(record))
         return {
@@ -500,7 +671,15 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "sources": {i: {"text": lookup[i].text, "kind": "note" if i.startswith("N") else "fact"} for i in agent.tools.retrieved if i in lookup},
             "steps": reply.steps,
             "cost_usd": round(cost, 5),
+            **sign_answer(question, reply.text, label, report.ok, cited, reply.web_sources[:8],
+                          [a["kind"] for a in getattr(agent, "attached", [])]),
         }
+
+    def sign_answer(question, answer, label, grounded, cited, web_sources, attachments) -> dict:
+        if signer is None or not answer:
+            return {}
+        receipt = rcpt.build(question, answer, settings.model, label, grounded, cited, web_sources, attachments, signer.fingerprint)
+        return {"receipt": receipt, "signature": signer.sign(receipt)}
 
     def upstream_failed(e: Exception) -> None:
         log.error(json.dumps({"event": "upstream_error", "type": type(e).__name__, "detail": str(e)[:300]}))

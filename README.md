@@ -88,6 +88,25 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Verified answers (tamper-proof sharing)
+
+Every answer is signed by the server with an Ed25519 key (`agent/receipts.py`): the exact question, answer, time, model, sources and grounding result. **✓ Share verified** under an answer sends the signed receipt back; the server checks the signature (so only answers it really gave can be shared), stores it, and returns a link and QR code. A share card image can be saved or shared from the phone.
+
+Anyone opening `/v/<id>` sees **Verified** or **Not verified**, the original question and answer with sources, and a box to paste what they were shown: an edited screenshot is caught word by word. The public key is at `/.well-known/ask-harsha-key.json`, and the signed receipt can be downloaded, so it can be checked without trusting this server. Receipts are stored encrypted on the `notes` branch, only when someone shares. Set `SIGNING_KEY` (base64 of 32 random bytes) to keep the same key if the passcode changes.
+
+## Other AIs can use it (MCP)
+
+`/mcp` is a Model Context Protocol server (Streamable HTTP, stateless, no sign-in), so Claude or any MCP client can use Ask Harsha as a tool:
+
+| Tool | What it does | Cost |
+|---|---|---|
+| `ask_harsha_agent` | The full agent's answer, with sources and a verification link | one model call |
+| `search_harsha_facts` | Search Harsha's verified facts (IDs like F14) | free |
+| `get_harsha_topic` | Every fact on one topic | free |
+| `verify_answer` | Check an Ask Harsha verification link | free |
+
+To try it in Claude, add a custom connector with the URL `https://<your-app>.onrender.com/mcp`. Agent questions over MCP share the daily budget and are limited to 30 per 10 minutes per client.
+
 ## Ask the real Harsha
 
 When a question needs a human, the agent says so. It calls `suggest_asking_harsha` when a question about Harsha isn't covered by his record, or when a general question is genuinely complex or uncertain and a real person's judgment would help (never for emergencies or medical, legal or financial decisions). It still answers first; then a card pops up under the answer: **Ask the real Harsha?**

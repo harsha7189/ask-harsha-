@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verified Answer</title>
+<meta name="description" content="Check that an Ask Harsha answer is genuine: the original question and answer, signed by the agent, with its sources.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* One column: status banner first (the answer to "is this real?"), then the original, its sources, and a compare box. */
+:root{
+  --bg:#0b0b0b; --panel:#171717; --raise:#232323; --line:#2e2e2e;
+  --fg:#f5f5f1; --muted:#a3a3a3; --red:#e50914; --red-hot:#ff2a36; --good:#46d369; --warn:#f2b445; --blue:#7cb7ff;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --gl:max(16px,env(safe-area-inset-left,0px)); --gr:max(16px,env(safe-area-inset-right,0px));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+header{padding:calc(14px + env(safe-area-inset-top,0px)) var(--gr) 14px var(--gl);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.mark{width:38px;height:38px;border-radius:8px;background:var(--red);display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:24px}
+header b{font-size:16px;display:block;line-height:1.2}
+header span{font-size:13px;color:var(--muted)}
+header a{margin-left:auto;font-size:13px;color:var(--muted);text-decoration:none;white-space:nowrap}
+header a:hover{color:var(--fg)}
+main{max-width:680px;margin:0 auto;padding:20px var(--gr) calc(40px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:18px;grid-template-columns:minmax(0,1fr)}
+.banner{border-radius:16px;padding:16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center}
+.banner.ok{background:color-mix(in srgb,var(--good) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--good) 55%,var(--line))}
+.banner.bad{background:color-mix(in srgb,var(--red) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--red) 60%,var(--line))}
+.seal{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:800}
+.ok .seal{background:var(--good);color:#06210f}
+.bad .seal{background:var(--red);color:#fff}
+.banner h1{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:30px;line-height:.95;letter-spacing:.01em}
+.ok h1{color:var(--good)}.bad h1{color:var(--red-hot)}
+.banner p{margin:4px 0 0;font-size:14.5px;color:var(--fg)}
+.label{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+.q{background:var(--raise);border-radius:16px;padding:12px 15px;font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.a{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16.5px}
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tag{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.tag.good{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
+.cite{display:inline-block;vertical-align:1px;font-size:11px;font-weight:700;line-height:1;color:var(--red-hot);border:1px solid color-mix(in srgb,var(--red) 60%,transparent);border-radius:5px;padding:3px 5px;margin:0 1px}
+.cite.note{color:var(--blue);border-color:color-mix(in srgb,var(--blue) 55%,transparent)}
+.srcs{display:grid;gap:8px}
+.src{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
+.src a{color:var(--fg);overflow-wrap:anywhere}
+.cmp textarea{width:100%;min-height:110px;resize:vertical;background:var(--panel);border:1px solid var(--line);border-radius:14px;color:var(--fg);font:inherit;font-size:16px;padding:12px 14px}
+.cmp textarea:focus{outline:none;border-color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{min-height:44px;padding:0 16px;border-radius:999px;background:var(--raise);font-size:15px;font-weight:600}
+.btn.red{background:var(--red)}
+.btn.red:hover{background:var(--red-hot)}
+.result{margin-top:12px;border-radius:12px;padding:12px 14px;font-size:15px}
+.result.same{background:color-mix(in srgb,var(--good) 12%,var(--panel));color:var(--good);font-weight:600}
+.result.diff{background:var(--panel);border:1px solid color-mix(in srgb,var(--red) 55%,var(--line))}
+.result.diff b{color:var(--red-hot);display:block;margin-bottom:6px}
+.result .words{line-height:1.8}
+del{color:var(--red-hot);text-decoration:line-through;background:color-mix(in srgb,var(--red) 14%,transparent);border-radius:3px;padding:0 2px}
+ins{color:var(--good);text-decoration:none;background:color-mix(in srgb,var(--good) 14%,transparent);border-radius:3px;padding:0 2px}
+.key{font-size:14px;color:var(--muted)}
+.key summary{cursor:pointer;color:var(--fg);font-weight:600}
+.key code{font-size:12px;overflow-wrap:anywhere;color:var(--fg)}
+.loading{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark" aria-hidden="true">H</div>
+  <div><b>Ask Harsha</b><span>Answer verification</span></div>
+  <a href="/">Ask your own →</a>
+</header>
+<main id="main"><p class="loading">Checking the signature…</p></main>
+<script>
+(()=>{
+'use strict';
+const main=document.getElementById('main');
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const rid=decodeURIComponent(location.pathname.split('/v/')[1]||'').replace(/\/$/,'');
+const words=t=>t.replace(/\[(F\d{2,3}|N\d{3,4})\]/g,' ').replace(/[‘’]/g,"'").replace(/[“”]/g,'"').split(/\s+/).map(w=>w.replace(/^[^\p{L}\p{N}$%]+|[^\p{L}\p{N}%]+$/gu,'').toLowerCase()).filter(Boolean);
+
+function answerWithTags(box,text,cites){
+  const byId=Object.fromEntries((cites||[]).map(c=>[c.id,c.text]));
+  const re=/\[((?:F\d{2,3})|(?:N\d{3,4}))\]/g;let last=0,m;
+  while((m=re.exec(text))){box.append(text.slice(last,m.index));const id=m[1];const t=el('span','cite'+(id.startsWith('N')?' note':''),id);if(byId[id])t.title=byId[id];box.append(t);last=re.lastIndex}
+  box.append(text.slice(last));
+}
+// Word-level difference (longest common subsequence), so an edited screenshot shows exactly what changed.
+function diff(a,b){
+  a=a.slice(0,800);b=b.slice(0,800);
+  const n=a.length,m=b.length,dp=Array.from({length:n+1},()=>new Uint16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=a[i]===b[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  const out=[];let i=0,j=0;
+  while(i<n&&j<m){if(a[i]===b[j]){out.push(['=',a[i]]);i++;j++}else if(dp[i+1][j]>=dp[i][j+1]){out.push(['-',a[i]]);i++}else{out.push(['+',b[j]]);j++}}
+  while(i<n)out.push(['-',a[i++]]);while(j<m)out.push(['+',b[j++]]);
+  return out;
+}
+async function load(){
+  let d;
+  try{const res=await fetch('/api/receipts/'+encodeURIComponent(rid));d=await res.json();if(!res.ok)throw new Error(d.message||'Not found.')}
+  catch(e){main.textContent='';const b=el('div','banner bad');b.append(el('div','seal','✕'));const t=el('div');t.append(el('h1',null,'Not verified'),el('p',null,e.message||"There's no verified answer at this link."));b.append(t);main.append(b);return}
+  const r=d.receipt;main.textContent='';
+  const when=new Date(r.issued_at);const whenTxt=isNaN(when)?r.issued_at:when.toLocaleString([],{dateStyle:'medium',timeStyle:'short'});
+  const b=el('div','banner '+(d.valid?'ok':'bad'));b.append(el('div','seal',d.valid?'✓':'✕'));
+  const bt=el('div');bt.append(el('h1',null,d.valid?'Verified':'Not verified'),el('p',null,d.valid?`This is exactly what Ask Harsha said on ${whenTxt}. It's digitally signed, so any edit would break the signature.`:"The signature doesn't match, so this may have been altered."));
+  b.append(bt);main.append(b);
+
+  const qs=el('section');qs.append(el('h2','label','The question'),el('div','q',r.question));main.append(qs);
+  const as=el('section');as.append(el('h2','label','The original answer'));const a=el('div','a');answerWithTags(a,r.answer,r.citations);as.append(a);
+  const meta=el('div','meta');
+  if(r.grounded&&['record','memory','mixed'].includes(r.label))meta.append(el('span','tag good',"✓ Passed the grounding check against Harsha's record"));
+  if(r.label==='web')meta.append(el('span','tag','Used web search'));
+  if(r.label==='general')meta.append(el('span','tag','From general knowledge'));
+  if(r.label==='file')meta.append(el('span','tag','Answered from a file the person attached (the file itself isn\'t shared)'));
+  meta.append(el('span','tag',r.model),el('span','tag',whenTxt));as.append(meta);main.append(as);
+
+  if((r.citations&&r.citations.length)||(r.web_sources&&r.web_sources.length)){
+    const ss=el('section');ss.append(el('h2','label','Sources'));const box=el('div','srcs');
+    (r.citations||[]).forEach(c=>{const s=el('div','src');s.append(el('span','cite'+(c.id.startsWith('N')?' note':''),c.id),el('span',null,c.text));box.append(s)});
+    (r.web_sources||[]).forEach(w=>{const s=el('div','src');let host='';try{host=new URL(w.url).hostname.replace(/^www\./,'')}catch(e){}s.append(el('span','tag',host||'web'));const l=el('a',null,w.title||w.url);l.href=w.url;l.target='_blank';l.rel='noopener';s.append(l);box.append(s)});
+    ss.append(box);main.append(ss);
+  }
+
+  const cs=el('section','cmp');cs.append(el('h2','label','Check what you were shown'));
+  const ta=el('textarea');ta.placeholder='Paste the answer from the screenshot or message you saw';ta.setAttribute('aria-label','Text to compare');
+  const row=el('div','row'),go=el('button','btn red','Compare');go.type='button';row.append(go);const out=el('div');cs.append(ta,row,out);main.append(cs);
+  go.onclick=()=>{
+    out.textContent='';const theirs=words(ta.value);if(!theirs.length)return;
+    const orig=words(r.answer),dd=diff(orig,theirs),changed=Math.max(dd.filter(x=>x[0]==='-').length,dd.filter(x=>x[0]==='+').length);
+    if(!changed){out.append(el('div','result same','✓ Matches the original word for word.'));return}
+    const res=el('div','result diff');res.append(el('b',null,`✕ This doesn't match what Ask Harsha said. ${changed} word${changed===1?' was':'s were'} changed.`));
+    const w=el('div','words');dd.forEach(([k,t])=>{w.append(k==='='?document.createTextNode(t+' '):el(k==='-'?'del':'ins',null,t),k==='='?'':' ')});
+    res.append(w,el('p','key','Struck out: in the original but missing. Highlighted: added or changed.'));out.append(res);
+  };
+
+  const ks=el('details','key');ks.append(el('summary',null,'How verification works'));
+  ks.append(el('p',null,"When Ask Harsha answers, its server signs the exact question, answer, time, model and sources with a private Ed25519 key that only the server has. This page checks that signature with the matching public key. Change one character and the check fails."));
+  const p=el('p');p.append('Public key fingerprint: ',el('code',null,d.fingerprint||'unknown'),'. Full key: ');const kl=el('a',null,'/.well-known/ask-harsha-key.json');kl.href='/.well-known/ask-harsha-key.json';kl.style.color='var(--fg)';p.append(kl);ks.append(p);
+  const dl=el('button','btn','Download the signed receipt');dl.type='button';
+  dl.onclick=()=>{const blob=new Blob([JSON.stringify({receipt:r,signature:d.signature,public_key:d.public_key},null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const x=el('a');x.href=u;x.download=`ask-harsha-receipt-${rid}.json`;document.body.append(x);x.click();x.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)};
+  const r2=el('div','row');r2.append(dl);ks.append(r2);main.append(ks);
+}
+load();
+})();
+</script>
+</body>
+</html>

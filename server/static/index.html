@@ -78,6 +78,18 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .saved{font-size:12.5px;color:var(--blue);border-left:2px solid var(--blue);padding-left:8px}
 .how{font-size:13px;color:var(--muted)}
 .fcwrap{display:grid;gap:8px;margin-top:10px;white-space:normal}
+.arow{display:flex;gap:8px;flex-wrap:wrap}
+.vcard{border-radius:16px;overflow:hidden;border:1px solid var(--line);background:var(--bg)}
+.vcard .vtop{background:var(--red);padding:10px 14px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.vcard .vtop i{width:20px;height:20px;border-radius:50%;background:#fff;color:var(--red);display:grid;place-items:center;font-style:normal;font-size:12px}
+.vcard .vbody{padding:12px 14px;display:grid;gap:8px}
+.vcard .vq{font-size:13px;color:var(--muted)}
+.vcard .va{font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
+.vcard .vfoot{display:flex;gap:12px;align-items:center;border-top:1px solid var(--line);padding:10px 14px}
+.vcard .vfoot img{width:84px;height:84px;background:#fff;border-radius:8px;padding:4px;flex:0 0 auto}
+.vcard .vfoot b{display:block;font-size:14px}
+.vcard .vfoot span{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.fcbtn.ok{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
 .fcbtn{justify-self:start;font-size:12.5px;font-weight:600;color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:var(--raise)}
 .fcbtn:hover{border-color:var(--muted)}
 .fcbtn:disabled{opacity:.6}
@@ -447,15 +459,21 @@ function showFinal(bot,data,text){
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
   bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
   if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);
+  if(data.receipt&&data.signature)addShare(bot,data);
   if(data.ask_harsha&&!passcode)addAskHarsha(bot,text,data);
   else if(data.ask_harsha&&passcode){const n=el('p','fcfoot','Visitors would see an "Ask the real Harsha" pop-up here: '+data.ask_harsha.reason);n.style.marginTop='8px';bot.append(n)}  // claims about a private file can't be checked on the web
   history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer});history=history.slice(-12);
   pendingNames=[];if(files.length){files.forEach(f=>{f.sent=true});renderTray()}
 }
 const VERDICT={confirmed:{mark:'✓',cls:'ok',word:'Confirmed'},contradicted:{mark:'✕',cls:'bad',word:'Contradicted'},unverified:{mark:'!',cls:'unk',word:'Unverified'},not_checkable:{mark:'–',cls:'na',word:'Not checkable'}};
+function actionsFor(bot){
+  let w=bot.querySelector('.fcwrap');
+  if(!w){w=el('div','fcwrap');w.append(el('div','arow'));bot.append(w)}
+  return w;
+}
 function addFactCheck(bot,answer){
-  const wrap=el('div','fcwrap'),btn=el('button','fcbtn','Fact-check this answer');btn.type='button';
-  wrap.append(btn);bot.append(wrap);
+  const wrap=actionsFor(bot),btn=el('button','fcbtn','Fact-check this answer');btn.type='button';
+  wrap.querySelector('.arow').prepend(btn);
   btn.onclick=()=>runFactCheck(wrap,btn,answer);
 }
 async function runFactCheck(wrap,btn,answer){
@@ -575,6 +593,70 @@ main.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer&&e.dataTra
 q.addEventListener('paste',e=>{const l=[...(e.clipboardData&&e.clipboardData.files||[])];if(l.length){e.preventDefault();addFiles(l)}});
 const payload=()=>files.map(({name,kind,media_type,data})=>({name,kind,media_type,data}));
 function defaultQuestion(){const imgs=files.filter(f=>f.kind==='image').length;return imgs===files.length?(imgs===1?'What is in this photo? Tell me anything useful about it.':'What is in these photos? Tell me anything useful about them.'):(files.length===1?'Summarize this file.':'Summarize these files.')}
+
+// ---------- Verified answers ----------
+// Every answer arrives signed by the server. "Share verified" sends the signed receipt back, the server checks the
+// signature and stores it, and the person gets a link and QR code anyone can use to prove the answer is real.
+function addShare(bot,data){
+  const row=actionsFor(bot).querySelector('.arow');
+  const b=el('button','fcbtn');b.type='button';b.textContent='✓ Share verified';b.setAttribute('aria-label','Share this answer as a verified, tamper-proof link');
+  b.onclick=()=>shareVerified(b,data);row.append(b);
+}
+async function shareVerified(btn,data){
+  if(btn.dataset.url){openShareSheet(btn.dataset.id,btn.dataset.url,data);return}
+  btn.disabled=true;btn.textContent='Signing…';
+  try{
+    const res=await fetch('/api/receipts',{method:'POST',headers:headers(),body:JSON.stringify({receipt:data.receipt,signature:data.signature})});
+    const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.message||"Couldn't create the link.");
+    btn.dataset.id=d.id;btn.dataset.url=d.url;btn.textContent='✓ Verified link ready';btn.classList.add('ok');openShareSheet(d.id,d.url,data);
+  }catch(e){btn.textContent='✓ Share verified';toast(e.message)}finally{btn.disabled=false}
+}
+function wrapLines(ctx,text,maxW,maxLines){
+  const out=[];let line='';
+  for(const w of text.replace(/\s+/g,' ').split(' ')){const t=line?line+' '+w:w;if(ctx.measureText(t).width>maxW&&line){out.push(line);line=w;if(out.length===maxLines)break}else line=t}
+  if(out.length<maxLines&&line)out.push(line);
+  if(out.length===maxLines&&ctx.measureText(out[maxLines-1]+' …').width<=maxW&&text.length>out.join(' ').length)out[maxLines-1]+=' …';
+  return out;
+}
+async function cardImage(id,url,r){
+  const W=1080,H=1350,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');
+  await document.fonts?.ready;
+  g.fillStyle='#0b0b0b';g.fillRect(0,0,W,H);g.fillStyle='#e50914';g.fillRect(0,0,W,120);
+  g.fillStyle='#fff';g.font='700 34px "Instrument Sans", system-ui, sans-serif';g.fillText('✓  ASK HARSHA · VERIFIED ANSWER',60,74);
+  g.fillStyle='#a3a3a3';g.font='500 32px "Instrument Sans", system-ui, sans-serif';
+  let y=200;wrapLines(g,'Q: '+r.question,W-120,3).forEach(l=>{g.fillText(l,60,y);y+=46});
+  y+=30;g.fillStyle='#f5f5f1';g.font='500 40px "Instrument Sans", system-ui, sans-serif';
+  wrapLines(g,r.answer.replace(/\[(F\d{2,3}|N\d{3,4})\]/g,'[$1]'),W-120,14).forEach(l=>{g.fillText(l,60,y);y+=56});
+  g.fillStyle='#232323';g.fillRect(0,H-330,W,330);
+  const img=new Image();img.src=`/api/receipts/${id}/qr.svg`;await img.decode().catch(()=>{});
+  g.fillStyle='#fff';g.fillRect(60,H-290,250,250);try{g.drawImage(img,70,H-280,230,230)}catch(e){}
+  g.fillStyle='#f5f5f1';g.font='700 44px "Instrument Sans", system-ui, sans-serif';g.fillText('Scan to verify',350,H-200);
+  g.fillStyle='#a3a3a3';g.font='500 30px "Instrument Sans", system-ui, sans-serif';
+  wrapLines(g,'Digitally signed by Ask Harsha. Any edit breaks the signature.',W-410,2).forEach((l,i)=>g.fillText(l,350,H-150+i*40));
+  g.fillText(url.replace(/^https?:\/\//,''),350,H-60);
+  return new Promise(res=>c.toBlob(res,'image/png'));
+}
+function openShareSheet(id,url,data){
+  const r=data.receipt;
+  sheet((s,close)=>{
+    s.append(el('h3',null,'Verified answer'));
+    const card=el('div','vcard'),top=el('div','vtop');top.append(el('i',null,'✓'),'Ask Harsha · verified answer');
+    const body=el('div','vbody');body.append(el('div','vq','Q: '+r.question),el('div','va',r.answer.length>320?r.answer.slice(0,320)+'…':r.answer));
+    const foot=el('div','vfoot'),qr=el('img');qr.src=`/api/receipts/${id}/qr.svg`;qr.alt='QR code for the verification link';
+    const ft=el('div');ft.append(el('b',null,'Scan to verify'),el('span',null,url));foot.append(qr,ft);card.append(top,body,foot);s.append(card);
+    s.append(el('small',null,"Anyone with this link can see this question and answer, and check they haven't been changed."));
+    const row=el('div','row');
+    const cp=el('button','btn','Copy link');cp.type='button';cp.onclick=async()=>{try{await navigator.clipboard.writeText(url);cp.textContent='Copied'}catch(e){cp.textContent='Long-press to copy'}};
+    const im=el('button','btn','Save image');im.type='button';
+    im.onclick=async()=>{im.disabled=true;try{const blob=await cardImage(id,url,r);const f=new File([blob],'ask-harsha-verified.png',{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:'Verified answer'});
+      else{const u=URL.createObjectURL(blob);const a=el('a');a.href=u;a.download='ask-harsha-verified.png';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}}
+      catch(e){}finally{im.disabled=false}};
+    row.append(cp,im);
+    if(navigator.share){const sh=el('button','btn red','Share');sh.type='button';sh.onclick=()=>navigator.share({title:'Verified answer from Ask Harsha',text:'Q: '+r.question,url}).catch(()=>{});row.append(sh)}
+    const done=el('button','btn','Done');done.type='button';done.onclick=close;row.append(done);s.append(row);
+  });
+}
 
 // ---------- Ask the real Harsha ----------
 // When the agent says a human would answer better, a card pops up under the answer. Sending is the visitor's choice.

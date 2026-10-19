@@ -16,6 +16,7 @@ is kept: no IP address, name or email.
 from __future__ import annotations
 
 import base64
+import functools
 import hashlib
 import json
 import secrets
@@ -68,6 +69,7 @@ class Item:
                 "answered_at": self.answered_at if self.status == "answered" else ""}
 
 
+@functools.lru_cache(maxsize=8)
 def make_key(inbox_key: str = "", owner_passcode: str = "") -> bytes | None:
     if inbox_key:
         raw = hashlib.sha256(inbox_key.encode()).digest()
