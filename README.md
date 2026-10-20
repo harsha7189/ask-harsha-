@@ -100,20 +100,15 @@ Optional attributes: `data-label`, `data-greeting` (`""` turns off the greeting 
 
 `/portfolio` serves Harsha's streaming-style portfolio with the pop-up built in, so one link gives visitors both.
 
-## Chat history: "Previously on…"
+## Accounts with passkeys, and saved chats
 
-Every conversation is saved in the visitor's own browser (never on the server), and it's easy to find:
+Anyone can chat without an account, and **nothing of theirs is saved**. To keep chats, people **sign in with a passkey**: Face ID, a fingerprint or the device PIN, with no password or email (`agent/accounts.py`, WebAuthn via `py_webauthn`).
 
-- **Continue where you left off**: the home screen shows your latest chats as cards, with "All chats" next to the heading.
-- A labeled **Chats** button (history icon) in the header opens **Your chats**, a drawer styled like a streaming show. After the first saved chat, a one-time note points to it.
-
-Inside the drawer:
-
-- **The recap.** It opens with a short reel, "Previously on Ask Harsha", flying in one line from each of your latest chats with its day and weather. Skip or replay it; tap a line to jump into that chat. With reduced motion turned on, it shows the latest line without animating.
-- **Seasons and episodes.** Chats are grouped into seasons, one per week counted from your first chat ("Season 3 · This week"), and numbered as episodes. Each shows the weather of the day it started, its first answer line, and how it was sourced: ✓ verified (cited and checked against Harsha's record), web, or file.
-- **+ New episode**, search across titles and answers, and ⋯ on each episode to rename, download as Markdown or delete. Download all, delete all, or turn saving off at the bottom.
-
-Up to 100 chats are kept, oldest dropped first when storage fills; attached files aren't kept, only their names. The Memory screen lives in the owner menu to keep the header to icons.
+- **Create a passkey** (an optional first name labels it in their password manager) or **Sign in with a passkey**. The server keeps only the public key; passkeys sync through iCloud Keychain or Google Password Manager, so the account works on the person's other devices.
+- Sessions are random tokens in an HttpOnly, SameSite=Lax cookie; the database stores only their SHA-256 hash. Sessions last 90 days.
+- Signed out, a small bar after the first answer says the chat isn't saved, with **Sign in to save it**. Signing in mid-chat saves the chat on screen. Chats saved on a device by the earlier version can be added to the account once.
+- Signed in, chats save after every answer and appear under **Chats** and in **Continue where you left off**. The drawer ("Your chats") keeps the "Previously on…" recap and weekly seasons, searches inside chats on the server, and lets people rename, download or delete chats, download everything, sign out, or **delete their account** with all its chats.
+- Storage is Postgres via `DATABASE_URL` (Supabase's Session pooler URI); tables are created on first start. Without `DATABASE_URL`, sign-in is hidden and nothing is saved.
 
 ## Second opinions (model jury)
 

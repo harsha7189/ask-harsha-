@@ -42,6 +42,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
+from agent import accounts as acct  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -117,6 +118,31 @@ class ToolRequest(BaseModel):
     text: str = Field(default="", max_length=150_000)
     attachments: list[Attachment] = Field(default_factory=list, max_length=files.MAX_FILES)
     options: dict = Field(default_factory=dict)
+
+
+class PasskeyStart(BaseModel):
+    name: str = Field(default="", max_length=60)
+
+
+class PasskeyFinish(BaseModel):
+    cid: str = Field(min_length=10, max_length=60)
+    credential: dict
+
+
+class ChatBody(BaseModel):
+    title: str = Field(default="", max_length=200)
+    created: int = 0
+    updated: int = 0
+    wx: dict | None = None
+    messages: list = Field(default_factory=list, max_length=400)
+
+
+class ChatImport(BaseModel):
+    chats: list[dict] = Field(default_factory=list, max_length=150)
+
+
+class Rename(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
 
 
 class JuryRequest(BaseModel):
@@ -239,7 +265,7 @@ class _Lookup:
 
 def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings | None = None, notes: NotesStore | None = None,
                inbox: "inboxmod.InboxStore | None" = None, receipts: "rcpt.ReceiptStore | None" = None,
-               weather: Weather | None = None, jury: Jury | None = None) -> FastAPI:
+               weather: Weather | None = None, jury: Jury | None = None, accounts: "acct.Accounts | None | bool" = None) -> FastAPI:
     settings = settings or Settings()
     kb = kb or KnowledgeBase.load()
     store = notes if notes is not None else default_notes_store()
@@ -257,6 +283,9 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     mcp_limiter = RateLimiter(30, 600)           # agent questions over MCP, per client address
     weather = weather or Weather()
     greet_limiter = RateLimiter(60, 600)
+    # accounts=None: use DATABASE_URL if set; accounts=False: turned off (tests)
+    accounts = acct.connect(os.environ.get("DATABASE_URL", "")) if accounts is None else (accounts or None)
+    auth_limiter = RateLimiter(30, 600)
     jury = jury or Jury(os.environ.get("OPENAI_API_KEY", ""), os.environ.get("OPENAI_MODEL", ""),
                         os.environ.get("GEMINI_API_KEY", ""), os.environ.get("GEMINI_MODEL", ""))
     jury_limiter = RateLimiter(5, 3600)          # second opinions: 5 an hour per visitor
@@ -292,6 +321,170 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
     def too_many_wrong(ip: str) -> bool:
         return not passcode_failures.allow(ip)
+
+    # ---------- Accounts: passkey sign-in and saved chats ----------
+    COOKIE = "askh_session"
+
+    def rp(request: Request) -> tuple[str, str]:
+        """(relying-party id, origin) for passkeys: this site's host name and https origin."""
+        o = origin(request)
+        return os.environ.get("PASSKEY_RP_ID", "") or o.split("://", 1)[1].split(":")[0], o
+
+    def current_user(request: Request):
+        if accounts is None:
+            return None
+        try:
+            return accounts.session_user(request.cookies.get(COOKIE, ""))
+        except Exception as e:
+            log.error(json.dumps({"event": "accounts_error", "detail": str(e)[:200]}))
+            return None
+
+    def signed_in(request: Request):
+        user = current_user(request)
+        return user if user else error(401, "signed_out", "Sign in to save and see your chats.")
+
+    def with_session(payload: dict, request: Request, token: str) -> JSONResponse:
+        resp = JSONResponse(payload)
+        resp.set_cookie(COOKIE, token, max_age=acct.SESSION_DAYS * 86400, httponly=True, samesite="lax",
+                        secure=origin(request).startswith("https://"), path="/")
+        return resp
+
+    def auth_guard(request: Request):
+        if accounts is None:
+            return error(503, "accounts", "Saving chats isn't set up on this server yet.")
+        if not auth_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "Too many sign-in attempts. Please wait a few minutes.")
+        return None
+
+    def account_error(e: Exception) -> JSONResponse:
+        log.info(json.dumps({"event": "passkey_failed", "type": type(e).__name__}))
+        msg = str(e) if isinstance(e, ValueError) and len(str(e)) < 160 else "That passkey couldn't be verified. Please try again."
+        return error(400, "passkey", msg)
+
+    @app.get("/api/me")
+    def me(request: Request):
+        user = current_user(request)
+        return {"enabled": accounts is not None, "user": {"name": user.name, "created": user.created} if user else None}
+
+    @app.post("/api/auth/register/options")
+    def register_options(req: PasskeyStart, request: Request):
+        if (g := auth_guard(request)):
+            return g
+        rp_id, _ = rp(request)
+        cid, options = accounts.registration_options(rp_id, req.name)
+        return {"cid": cid, "options": json.loads(options)}
+
+    @app.post("/api/auth/register/verify")
+    def register_verify(req: PasskeyFinish, request: Request):
+        if (g := auth_guard(request)):
+            return g
+        try:
+            user = accounts.register(req.cid, req.credential, rp(request)[1])
+        except Exception as e:
+            return account_error(e)
+        log.info(json.dumps({"event": "account_created"}))
+        return with_session({"user": {"name": user.name, "created": user.created}, "new": True}, request, accounts.start_session(user))
+
+    @app.post("/api/auth/login/options")
+    def login_options(request: Request):
+        if (g := auth_guard(request)):
+            return g
+        cid, options = accounts.authentication_options(rp(request)[0])
+        return {"cid": cid, "options": json.loads(options)}
+
+    @app.post("/api/auth/login/verify")
+    def login_verify(req: PasskeyFinish, request: Request):
+        if (g := auth_guard(request)):
+            return g
+        try:
+            user = accounts.authenticate(req.cid, req.credential, rp(request)[1])
+        except Exception as e:
+            return account_error(e)
+        return with_session({"user": {"name": user.name, "created": user.created}}, request, accounts.start_session(user))
+
+    @app.post("/api/auth/logout")
+    def logout(request: Request):
+        if accounts is not None:
+            accounts.end_session(request.cookies.get(COOKIE, ""))
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(COOKIE, path="/")
+        return resp
+
+    @app.delete("/api/me")
+    def delete_me(request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.delete_user(user.id)
+        log.info(json.dumps({"event": "account_deleted"}))
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(COOKIE, path="/")
+        return resp
+
+    @app.get("/api/chats")
+    def list_chats(request: Request, q: str = ""):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"chats": accounts.list_chats(user.id, q[:100])}
+
+    @app.get("/api/chats/{chat_id}")
+    def get_chat(chat_id: str, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        if chat_id == "export":
+            return {"exported": datetime.now().isoformat(), "chats": accounts.export(user.id)}
+        chat = accounts.get_chat(user.id, chat_id)
+        return chat if chat else error(404, "not_found", "That chat isn't in your account.")
+
+    @app.put("/api/chats/{chat_id}")
+    def save_chat(chat_id: str, req: ChatBody, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            return accounts.save_chat(user.id, {**req.model_dump(), "id": chat_id})
+        except ValueError as e:
+            return error(400, "chat", str(e))
+
+    @app.patch("/api/chats/{chat_id}")
+    def rename_chat(chat_id: str, req: Rename, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.rename_chat(user.id, chat_id, req.title)
+        return {"ok": True}
+
+    @app.delete("/api/chats/{chat_id}")
+    def delete_chat(chat_id: str, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.delete_chat(user.id, chat_id)
+        return {"ok": True}
+
+    @app.delete("/api/chats")
+    def delete_all_chats(request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.delete_all_chats(user.id)
+        return {"ok": True}
+
+    @app.post("/api/chats/import")
+    def import_chats(req: ChatImport, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        saved = 0
+        for c in req.chats:
+            try:
+                accounts.save_chat(user.id, c)
+                saved += 1
+            except (ValueError, TypeError):
+                continue
+        return {"saved": saved}
 
     # ---------- Second opinions (model jury) ----------
     @app.get("/api/jury")

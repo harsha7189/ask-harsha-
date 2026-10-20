@@ -326,6 +326,29 @@ textarea.listening{border-color:var(--fg)}
 .ep-badge.plain{color:var(--muted);background:var(--raise)}
 .ep-more{width:40px;flex:0 0 auto;color:var(--muted);font-size:18px;border-radius:12px}
 .ep-more:hover{color:var(--fg);background:var(--raise)}
+.savebar{max-width:720px;margin:0 auto 8px;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-size:13.5px;color:var(--muted)}
+.savebar span{flex:1}
+.savebar #savebar-in{color:var(--fg);font-weight:700;padding:6px 10px;border-radius:8px;background:var(--red)}
+.savebar #savebar-in:hover{background:var(--red-hot)}
+.savebar #savebar-x{width:30px;height:30px;border-radius:50%;color:var(--muted);font-size:18px}
+.sheet.signin{gap:10px}
+.si-lead{font-size:15.5px}
+.si-big{display:grid;gap:2px;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--bg)}
+.si-big b{font-size:16px}
+.si-big span{font-size:13px;color:var(--muted)}
+.si-big:hover{border-color:var(--muted)}
+.si-big.red{background:var(--red);border-color:var(--red)}
+.si-big.red span{color:color-mix(in srgb,var(--fg) 80%,transparent)}
+.si-big.red:hover{background:var(--red-hot)}
+.si-big:disabled{opacity:.5}
+.si-or{text-align:center;font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.si-name{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.ep-whorow{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.ep-who{display:flex;align-items:center;gap:10px;min-width:0}
+.ep-who b{display:block;font-size:14.5px}
+.ep-who small{font-size:12px}
+.ep-whorow .btn{white-space:nowrap}
+.ep-av{width:36px;height:36px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-weight:800;flex:0 0 auto}
 .ep-foot{margin-top:auto;display:grid;gap:8px;border-top:1px solid var(--line);padding:14px 16px 0}
 .ep-foot small{color:var(--muted);font-size:12.5px}
 .ep-foot .row{justify-content:flex-start}
@@ -377,7 +400,7 @@ textarea.listening{border-color:var(--fg)}
   <a class="hbtn" id="toolkit" href="/tools" aria-label="PM Toolkit" title="PM Toolkit"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></a>
   <a class="hbtn" id="assist" href="/assist" aria-label="Assist mode: speak or type and it talks for you" title="Assist mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
   <button class="hbtn" id="memory" hidden aria-label="Manage memory">Memory</button>
-  <button class="hbtn chats-btn" id="recents" aria-label="Your chats: past conversations" title="Your chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v3.7h3.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Chats</span></button>
+  <button class="hbtn chats-btn" id="recents" hidden aria-label="Your chats: past conversations" title="Your chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v3.7h3.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Chats</span></button>
   <button class="hbtn" id="reset" hidden aria-label="New chat" title="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.5 4.5l2 2L13 13l-2.7.7.7-2.7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
   <button class="hbtn" id="lock" aria-label="Owner sign-in"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
 </header>
@@ -396,6 +419,7 @@ textarea.listening{border-color:var(--fg)}
 </main>
 
 <footer>
+  <div class="savebar" id="savebar" hidden><span>This chat isn't saved.</span><button type="button" id="savebar-in">Sign in to save it</button><button type="button" id="savebar-x" aria-label="Dismiss">×</button></div>
   <div class="tray" id="tray" hidden></div>
   <p class="toast" id="toast" role="status" hidden></p>
   <form class="ask" id="form">
@@ -467,15 +491,15 @@ function greet(w){
 }
 function renderContinue(){
   const box=$('#cont');if(!box)return;box.textContent='';
-  const recent=(typeof chats!=='undefined'?[...chats]:[]).sort((a,b)=>b.updated-a.updated).slice(0,5);
+  const recent=(signedIn()?[...summaries]:[]).sort((a,b)=>b.updated-a.updated).slice(0,5);
   if(EMBED||!recent.length){box.hidden=true;return}
   const h=el('div','cont-h');h.append(el('b',null,'Continue where you left off'));
-  const all=el('button',null,`All chats (${chats.length}) ›`);all.type='button';all.onclick=openRecents;h.append(all);
+  const all=el('button',null,`All chats (${summaries.length}) ›`);all.type='button';all.onclick=openRecents;h.append(all);
   const row=el('div','cont-row');
   recent.forEach(c=>{
     const b=el('button','cc');b.type='button';
-    const top=el('div','cc-top');top.append(el('span',null,`${c.wx?c.wx.icon+' ':''}${new Date(c.updated).toLocaleDateString([],{weekday:'short'})}`),el('span',null,`${Math.ceil(c.messages.length/2)} Q`));
-    const bar=el('span','cc-bar');const fill=el('i');fill.style.width=Math.min(100,25*Math.ceil(c.messages.length/2))+'%';bar.append(fill);
+    const top=el('div','cc-top');top.append(el('span',null,`${c.wx?c.wx.icon+' ':''}${new Date(c.updated).toLocaleDateString([],{weekday:'short'})}`),el('span',null,`${c.questions} Q`));
+    const bar=el('span','cc-bar');const fill=el('i');fill.style.width=Math.min(100,25*c.questions)+'%';bar.append(fill);
     b.append(top,el('b',null,c.title),el('span','cc-sub',highlight(c)),bar);b.onclick=()=>openChat(c.id);row.append(b);
   });
   const more=el('button','cc all','See all your chats ›');more.type='button';more.onclick=openRecents;row.append(more);
@@ -684,50 +708,157 @@ function renderBot(bot,data,text,live){
   else if(live&&data.ask_harsha&&passcode){const n=el('p','fcfoot','Visitors would see an "Ask the real Harsha" pop-up here: '+data.ask_harsha.reason);n.style.marginTop='8px';bot.append(n)}
 }
 
-// ---------- chat history: saved on this device, listed under Recents ----------
-// Chats live in this browser's storage only (never on the server). Up to 100 chats; the oldest go first when full.
-const CKEY='askh_chats',SKEY='askh_save_chats';
-const saving={get(){try{return localStorage.getItem(SKEY)!=='off'}catch(e){return false}},set(on){try{localStorage.setItem(SKEY,on?'on':'off')}catch(e){}}};
-let chats=(()=>{try{const d=JSON.parse(localStorage.getItem(CKEY)||'{}');return Array.isArray(d.chats)?d.chats:[]}catch(e){return[]}})();
-let chatId=null;
-function saveChats(){
-  chats.sort((a,b)=>b.updated-a.updated);chats=chats.slice(0,100);
-  for(let i=0;i<30;i++){try{localStorage.setItem(CKEY,JSON.stringify({v:1,chats}));return}catch(e){if(chats.length<=1)return;chats.pop()}}  // storage full: drop the oldest
-}
+// ---------- accounts and chat history ----------
+// Signed out: chat works, nothing is saved. Signed in (passkey): every chat is saved to the account on the server
+// and shown under "Chats". The current chat is always kept in memory, so signing in mid-chat saves it too.
+let me={enabled:false,user:null},summaries=[],chatId=null,cur=null;
+const LEGACY=(()=>{try{const d=JSON.parse(localStorage.getItem('askh_chats')||'{}');return Array.isArray(d.chats)?d.chats:[]}catch(e){return[]}})();  // chats saved on this device before accounts existed
 const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature'];
-function recordTurn(question,names,data){
-  if(!saving.get()||!data.answer)return;
-  let c=chats.find(x=>x.id===chatId);
-  if(!c){c={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:question.replace(/\s+/g,' ').slice(0,70),created:Date.now(),updated:Date.now(),messages:[]};
-    if(weatherData&&weatherData.ok){const k=WX[weatherData.condition]||WX.cloudy;c.wx={icon:weatherData.condition==='sunny'&&!weatherData.is_day?WX.clear.icon:k.icon,temp:weatherData.temp,unit:weatherData.unit}}
-    chats.unshift(c);chatId=c.id}
-  const keep={};KEEP.forEach(k=>{if(data[k]!=null)keep[k]=data[k]});
-  c.messages.push({role:'user',content:question,files:names&&names.length?names:undefined},{role:'assistant',data:keep});
-  c.messages=c.messages.slice(-200);c.updated=Date.now();saveChats();
-  try{if(!localStorage.getItem('askh_chats_hint')){localStorage.setItem('askh_chats_hint','1');const cb=$('#recents');cb.classList.add('nudge');toast('Saved. Your chats are under “Chats” at the top.')}}catch(e){}
+const signedIn=()=>!!(me&&me.user);
+async function api(method,url,body){
+  const res=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok){if(res.status===401&&me.user){me.user=null;renderAccount();renderContinue()}throw new Error(d.message||'Something went wrong. Please try again.')}
+  return d;
 }
-function openChat(id){
-  const c=chats.find(x=>x.id===id);if(!c||busy)return;
-  stopDictation();chatId=c.id;history=[];files=[];renderTray();
+function summarize(c){
+  const answers=c.messages.filter(m=>m.role==='assistant').map(m=>m.data||{});
+  return {id:c.id,title:c.title,created:c.created,updated:c.updated,wx:c.wx,questions:c.messages.filter(m=>m.role==='user').length,
+    last_answer:(answers.length?answers[answers.length-1].answer||'':'').slice(0,400),labels:answers.map(a=>[a.label,!!a.grounded]).slice(-20)};
+}
+let saveTimer=null;
+function persist(){
+  if(!signedIn()||!cur)return;
+  clearTimeout(saveTimer);
+  const snap=JSON.parse(JSON.stringify(cur));
+  saveTimer=setTimeout(()=>api('PUT','/api/chats/'+encodeURIComponent(snap.id),snap).catch(e=>toast("This chat couldn't be saved: "+e.message)),150);
+  const s=summarize(cur);summaries=[s,...summaries.filter(x=>x.id!==s.id)];
+}
+function recordTurn(question,names,data){
+  if(!data.answer)return;
+  if(!cur){cur={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:question.replace(/\s+/g,' ').slice(0,70),created:Date.now(),updated:Date.now(),messages:[]};
+    if(weatherData&&weatherData.ok){const k=WX[weatherData.condition]||WX.cloudy;cur.wx={icon:weatherData.condition==='sunny'&&!weatherData.is_day?WX.clear.icon:k.icon,temp:weatherData.temp,unit:weatherData.unit}}
+    chatId=cur.id}
+  const keep={};KEEP.forEach(k=>{if(data[k]!=null)keep[k]=data[k]});
+  cur.messages.push({role:'user',content:question,files:names&&names.length?names:undefined},{role:'assistant',data:keep});
+  cur.messages=cur.messages.slice(-200);cur.updated=Date.now();
+  if(signedIn()){
+    persist();
+    try{if(!localStorage.getItem('askh_chats_hint')){localStorage.setItem('askh_chats_hint','1');$('#recents').classList.add('nudge');toast('Saved to your account. Find it under “Chats” at the top.')}}catch(e){}
+  }else showSaveBar();
+}
+function showSaveBar(){
+  const bar=$('#savebar');if(!bar||EMBED||!me.enabled||signedIn())return;
+  try{if(sessionStorage.getItem('askh_savebar_off'))return}catch(e){}
+  bar.hidden=false;
+}
+async function openChat(id){
+  if(busy)return;
+  let c;try{c=await api('GET','/api/chats/'+encodeURIComponent(id))}catch(e){toast(e.message);return}
+  stopDictation();cur=c;chatId=c.id;history=[];files=[];renderTray();
   thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=true;resetBtn.hidden=false;
   let hadFiles=false,lastQ='';
   for(const m of c.messages){
     if(m.role==='user'){lastQ=m.content;const ub=bubble('user');if(m.files&&m.files.length){hadFiles=true;const fl=el('div','ufiles');m.files.forEach(n=>fl.append(el('span','ficon',n)));ub.append(fl,el('div','utext',m.content))}else ub.textContent=m.content;
       history.push({role:'user',content:m.content+(m.files&&m.files.length?`\n[Attached: ${m.files.join(', ')}]`:'')})}
-    else{const bot=bubble('bot');renderBot(bot,m.data,lastQ,false);history.push({role:'assistant',content:m.data.answer})}
+    else{const bot=bubble('bot');renderBot(bot,m.data||{},lastQ,false);history.push({role:'assistant',content:(m.data||{}).answer||''})}
   }
   history=history.slice(-12);
   if(hadFiles)toast("Files from this chat aren't kept. Attach them again to ask more about them.");
   requestAnimationFrame(()=>{main.scrollTop=main.scrollHeight});
 }
 function chatMarkdown(c){
-  return `# ${c.title}\n\n`+c.messages.map(m=>m.role==='user'?`**You:** ${m.content}${m.files?` _(attached: ${m.files.join(', ')})_`:''}`:`**Ask Harsha:** ${m.data.answer}`).join('\n\n')+'\n';
+  return `# ${c.title}\n\n`+c.messages.map(m=>m.role==='user'?`**You:** ${m.content}${m.files?` _(attached: ${m.files.join(', ')})_`:''}`:`**Ask Harsha:** ${(m.data||{}).answer||''}`).join('\n\n')+'\n';
 }
 function download(name,text,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=el('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}
-function whenGroup(t){
-  const d=new Date(t),now=new Date(),start=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
-  if(t>=start)return'Today';if(t>=start-864e5)return'Yesterday';if(t>=start-6*864e5)return'Previous 7 days';if(t>=start-29*864e5)return'Previous 30 days';
-  return d.toLocaleDateString([],{month:'long',year:'numeric'});
+async function loadSummaries(){if(!signedIn()){summaries=[];return}try{summaries=(await api('GET','/api/chats')).chats||[]}catch(e){summaries=[]}}
+
+// ---------- passkeys ----------
+// The browser creates or uses a passkey (Face ID, fingerprint or device PIN); the server checks it.
+const b64uToBuf=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');const bin=atob(s+'='.repeat((4-s.length%4)%4));const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a.buffer};
+const bufToB64u=b=>{const a=new Uint8Array(b);let s='';for(let i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const passkeysOK=()=>!!(window.PublicKeyCredential&&navigator.credentials&&navigator.credentials.create);
+function credJSON(c){
+  const r=c.response,out={id:c.id,rawId:bufToB64u(c.rawId),type:c.type,clientExtensionResults:c.getClientExtensionResults?c.getClientExtensionResults():{},response:{clientDataJSON:bufToB64u(r.clientDataJSON)}};
+  if(c.authenticatorAttachment)out.authenticatorAttachment=c.authenticatorAttachment;
+  if(r.attestationObject){out.response.attestationObject=bufToB64u(r.attestationObject);if(r.getTransports)out.response.transports=r.getTransports()}
+  if(r.authenticatorData){out.response.authenticatorData=bufToB64u(r.authenticatorData);out.response.signature=bufToB64u(r.signature);if(r.userHandle)out.response.userHandle=bufToB64u(r.userHandle)}
+  return out;
+}
+async function createPasskey(name){
+  const {cid,options:o}=await api('POST','/api/auth/register/options',{name});
+  o.challenge=b64uToBuf(o.challenge);o.user.id=b64uToBuf(o.user.id);(o.excludeCredentials||[]).forEach(x=>x.id=b64uToBuf(x.id));
+  const cred=await navigator.credentials.create({publicKey:o});
+  return api('POST','/api/auth/register/verify',{cid,credential:credJSON(cred)});
+}
+async function usePasskey(){
+  const {cid,options:o}=await api('POST','/api/auth/login/options');
+  o.challenge=b64uToBuf(o.challenge);(o.allowCredentials||[]).forEach(x=>x.id=b64uToBuf(x.id));
+  const cred=await navigator.credentials.get({publicKey:o});
+  return api('POST','/api/auth/login/verify',{cid,credential:credJSON(cred)});
+}
+function passkeyError(e){
+  if(e&&e.name==='NotAllowedError')return'Cancelled, or it timed out. Try again when you are ready.';
+  if(e&&e.name==='InvalidStateError')return'This device already has a passkey for Ask Harsha. Use "Sign in with a passkey" instead.';
+  if(e&&e.name==='SecurityError')return"Passkeys don't work on this address. Open ask-harsha.onrender.com directly.";
+  return (e&&e.message)||'Something went wrong. Please try again.';
+}
+async function afterSignIn(d,fresh){
+  me.user=d.user;$('#savebar').hidden=true;
+  if(cur&&cur.messages.length)persist();               // keep the chat that's on screen
+  await loadSummaries();
+  if(cur&&cur.messages.length&&!summaries.some(x=>x.id===cur.id))summaries.unshift(summarize(cur));
+  renderAccount();renderContinue();
+  if(LEGACY.length)offerImport();
+  toast(fresh?`Welcome${d.user.name&&d.user.name!=='Ask Harsha user'?', '+d.user.name:''}! Your chats are saved from now on.`:'Signed in. Your chats are under “Chats”.');
+}
+function openSignIn(){
+  if(!me.enabled)return;
+  sheet((s,close)=>{
+    s.classList.add('signin');
+    s.append(el('h3',null,'Save your chats'));
+    const p=el('p','si-lead');p.append('Sign in with a ',el('b',null,'passkey'),': Face ID, your fingerprint or your device PIN. No password, no email.');s.append(p);
+    if(!passkeysOK()){s.append(el('p','msgline',"This browser doesn't support passkeys. Try Safari on iPhone or a recent Chrome."));const r=el('div','row'),c=el('button','btn','Close');c.type='button';c.onclick=close;r.append(c);s.append(r);return}
+    const line=el('p','msgline');
+    const has=el('button','si-big red primary');has.type='button';has.append(el('b',null,'Sign in with a passkey'),el('span',null,'I made one here before'));
+    const lbl=el('label','si-name');const inp=el('input','field');inp.id='si-name';inp.placeholder='Your first name (optional)';inp.maxLength=40;inp.autocomplete='given-name';inp.dataset.nofocus='1';
+    lbl.append(el('span',null,'New here? Name your passkey'),inp);
+    const mk=el('button','si-big');mk.type='button';mk.append(el('b',null,'Create a passkey'),el('span',null,'Takes a few seconds'));
+    const busyOn=on=>{has.disabled=mk.disabled=on};
+    has.onclick=async()=>{busyOn(true);line.textContent='';try{const d=await usePasskey();close();afterSignIn(d,false)}catch(e){line.textContent=passkeyError(e)}finally{busyOn(false)}};
+    mk.onclick=async()=>{busyOn(true);line.textContent='';try{const d=await createPasskey(inp.value.trim());close();afterSignIn(d,true)}catch(e){line.textContent=passkeyError(e)}finally{busyOn(false)}};
+    s.append(has,el('div','si-or','or'),lbl,mk,line);
+    const how=el('details','how');how.append(el('summary',null,'How passkeys keep this private'));
+    how.append(el('p','direct',"Your device makes a key that only works on this site and keeps the secret half. Ask Harsha stores only the public half, so there's no password to leak. Passkeys sync through iCloud Keychain or Google Password Manager, so they work on your other devices too. Without signing in you can still chat; nothing is saved."));
+    s.append(how);
+    const r=el('div','row'),c=el('button','btn','Not now');c.type='button';c.onclick=close;r.append(c);s.append(r);
+  });
+}
+function offerImport(){
+  sheet((s,close)=>{
+    s.append(el('h3',null,'Chats on this device'),el('p',null,`This device has ${LEGACY.length} chat${LEGACY.length===1?'':'s'} saved from before accounts. Add ${LEGACY.length===1?'it':'them'} to your account?`));
+    const line=el('p','msgline'),r=el('div','row'),no=el('button','btn','Delete them'),yes=el('button','btn red primary','Add to my account');[no,yes].forEach(b=>b.type='button');
+    const clear=()=>{try{localStorage.removeItem('askh_chats')}catch(e){}LEGACY.length=0};
+    no.onclick=()=>{if(no.dataset.sure){clear();close()}else{no.dataset.sure='1';no.textContent='Tap again to delete'}};
+    yes.onclick=async()=>{yes.disabled=true;try{const d=await api('POST','/api/chats/import',{chats:LEGACY});clear();await loadSummaries();renderContinue();close();toast(`Added ${d.saved} chat${d.saved===1?'':'s'} to your account.`)}catch(e){line.textContent=e.message}finally{yes.disabled=false}};
+    r.append(no,yes);s.append(line,r);
+  });
+}
+const ICON_HISTORY='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v3.7h3.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_KEY='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12h8.5M17 12v3M20 12v2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+function renderAccount(){
+  const b=$('#recents');if(!b)return;
+  const svg=b.querySelector('svg');if(svg)svg.outerHTML=signedIn()?ICON_HISTORY:ICON_KEY;
+  b.hidden=EMBED||!me.enabled;
+  if(signedIn()){b.lastChild.textContent='Chats';b.setAttribute('aria-label','Your chats');b.title='Your chats';b.onclick=openRecents}
+  else{b.lastChild.textContent='Sign in';b.setAttribute('aria-label','Sign in to save your chats');b.title='Sign in to save your chats';b.onclick=openSignIn}
+  b.classList.toggle('signed-in',signedIn());
+}
+async function loadMe(){
+  try{me=await api('GET','/api/me')}catch(e){me={enabled:false,user:null}}
+  if(signedIn())await loadSummaries();
+  renderAccount();renderContinue();
+  if(signedIn()&&LEGACY.length)offerImport();
 }
 // ---------- "Previously on…": past chats as a show ----------
 // A drawer from the left. It opens with a short recap of your latest chats, then lists every chat as an episode,
@@ -737,15 +868,14 @@ const DAY=864e5;
 function weekStart(t){const d=new Date(t);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getTime()}  // Monday
 function cleanLine(t){return (t||'').replace(/\[(F\d{2,3}|N\d{3,4})\]/g,'').replace(/[*#>`]/g,'').replace(/\s+/g,' ').replace(/\s+([.,;:!?])/g,'$1').trim()}
 function highlight(c){
-  const last=[...c.messages].reverse().find(m=>m.role==='assistant');if(!last)return'';
-  const t=cleanLine(last.data.answer);const m=t.match(/^.{20,140}?[.!?](\s|$)/);return (m?m[0]:t.slice(0,120)+(t.length>120?'…':'')).trim();
+  const t=cleanLine(c.last_answer||'');if(!t)return'';const m=t.match(/^.{20,140}?[.!?](\s|$)/);return (m?m[0]:t.slice(0,120)+(t.length>120?'…':'')).trim();
 }
 function badge(c){
-  const ds=c.messages.filter(m=>m.role==='assistant').map(m=>m.data);
-  if(ds.some(d=>['record','memory','mixed'].includes(d.label)&&d.grounded))return['✓ verified','ok'];
-  if(ds.some(d=>['record','memory','mixed'].includes(d.label)))return['! check','warn'];
-  if(ds.some(d=>d.label==='web'))return['web','plain'];
-  if(ds.some(d=>d.label==='file'))return['file','plain'];
+  const ls=c.labels||[];
+  if(ls.some(([l,g])=>['record','memory','mixed'].includes(l)&&g))return['✓ verified','ok'];
+  if(ls.some(([l])=>['record','memory','mixed'].includes(l)))return['! check','warn'];
+  if(ls.some(([l])=>l==='web'))return['web','plain'];
+  if(ls.some(([l])=>l==='file'))return['file','plain'];
   return null;
 }
 function openRecents(){
@@ -756,11 +886,11 @@ function openRecents(){
   function esc(e){if(e.key==='Escape')close()}
   document.addEventListener('keydown',esc);bg.onclick=e=>{if(e.target===bg)close()};
 
-  const top=el('div','ep-top');const brand=el('div','ep-brand');const bt=el('div');bt.append(el('b',null,'Your chats'),el('small',null,`${chats.length} saved on this device`));brand.append(el('span','ep-h','H'),bt);
+  const top=el('div','ep-top');const brand=el('div','ep-brand');const bt=el('div');bt.append(el('b',null,'Your chats'),el('small',null,`${summaries.length} saved to your account`));brand.append(el('span','ep-h','H'),bt);
   const x=el('button','ep-x','×');x.type='button';x.setAttribute('aria-label','Close');x.onclick=close;top.append(brand,x);dr.append(top);
 
   // the recap reel
-  const recent=[...chats].sort((a,b)=>b.updated-a.updated).filter(c=>highlight(c)).slice(0,4).reverse();
+  const recent=[...summaries].sort((a,b)=>b.updated-a.updated).filter(c=>highlight(c)).slice(0,4).reverse();
   const reel=el('section','ep-reel');
   if(recent.length){
     reel.append(el('div','ep-prev','Previously on'),el('div','ep-show',"Ask Harsha"));
@@ -781,7 +911,7 @@ function openRecents(){
     if(matchMedia('(prefers-reduced-motion: reduce)').matches){show(recent.length-1);finish()}
     else{step();timer=setInterval(step,2100)}
   }else{
-    reel.classList.add('empty');reel.append(el('div','ep-prev','Coming soon'),el('div','ep-show','Episode 1'),el('p','ep-note',saving.get()?'Your chats will appear here after you ask something.':'Saving chats is off, so nothing is saved here.'));
+    reel.classList.add('empty');reel.append(el('div','ep-prev','Coming soon'),el('div','ep-show','Episode 1'),el('p','ep-note','Your chats will appear here after you ask something.'));
   }
   dr.append(reel);
 
@@ -791,12 +921,14 @@ function openRecents(){
   tools.append(nb,search);dr.append(tools);
   const list=el('div','ep-list');dr.append(list);
 
-  const first=chats.length?Math.min(...chats.map(c=>c.created||c.updated)):Date.now();
+  const first=summaries.length?Math.min(...summaries.map(c=>c.created||c.updated)):Date.now();
   const thisWeek=weekStart(Date.now());
+  let found=null,seq=0;
   const draw=()=>{
-    list.textContent='';const term=search.value.trim().toLowerCase();
-    const hits=chats.filter(c=>!term||c.title.toLowerCase().includes(term)||c.messages.some(m=>(m.content||m.data&&m.data.answer||'').toLowerCase().includes(term)));
-    if(chats.length&&!hits.length){list.append(el('p','ep-note','No chats match.'));return}
+    list.textContent='';const term=search.value.trim();
+    const hits=term?(found||[]):summaries;
+    if(term&&found===null){list.append(el('p','ep-note','Searching…'));return}
+    if(summaries.length&&!hits.length){list.append(el('p','ep-note','No chats match.'));return}
     const seasons=new Map();
     hits.forEach(c=>{const w=weekStart(c.created||c.updated);if(!seasons.has(w))seasons.set(w,[]);seasons.get(w).push(c)});
     [...seasons.keys()].sort((a,b)=>b-a).forEach(w=>{
@@ -810,33 +942,40 @@ function openRecents(){
         const n=el('span','ep-num',`E${num}`),wx=el('span','ep-wx',c.wx?c.wx.icon:'·');wx.title=c.wx?`${c.wx.temp}°${c.wx.unit}`:'';
         const tx=el('span','ep-tx');tx.append(el('b',null,c.title),el('span',null,highlight(c)));
         const meta=el('span','ep-meta');const bd=badge(c);if(bd)meta.append(el('i','ep-badge '+bd[1],bd[0]));
-        open.append(n,wx,tx,meta);open.title=`${new Date(c.updated).toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})} · ${Math.ceil(c.messages.length/2)} question${c.messages.length>2?'s':''}`;open.onclick=()=>{close();openChat(c.id)};
+        open.append(n,wx,tx,meta);open.title=`${new Date(c.updated).toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})} · ${c.questions} question${c.questions===1?'':'s'}`;open.onclick=()=>{close();openChat(c.id)};
         const more=el('button','ep-more','⋯');more.type='button';more.setAttribute('aria-label',`Options for ${c.title}`);
         const acts=el('div','racts');acts.hidden=true;
         const rn=el('button','btn','Rename'),dl=el('button','btn','Download'),del=el('button','btn','Delete');[rn,dl,del].forEach(b=>b.type='button');
         rn.onclick=()=>{const inp=el('input','field');inp.value=c.title;inp.maxLength=80;acts.textContent='';const ok=el('button','btn red','Save');ok.type='button';
-          ok.onclick=()=>{const v=inp.value.trim();if(v){c.title=v;saveChats()}draw()};inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};acts.append(inp,ok);inp.focus()};
-        dl.onclick=()=>download(`${c.title.replace(/[^\w\- ]+/g,'').slice(0,40)||'chat'}.md`,chatMarkdown(c),'text/markdown');
-        del.onclick=()=>{if(del.dataset.sure){chats=chats.filter(y=>y.id!==c.id);saveChats();if(chatId===c.id)newChat();draw()}else{del.dataset.sure='1';del.textContent='Tap again to delete';del.classList.add('red')}};
+          ok.onclick=async()=>{const v=inp.value.trim();if(v){try{await api('PATCH','/api/chats/'+encodeURIComponent(c.id),{title:v});c.title=v;if(cur&&cur.id===c.id)cur.title=v}catch(e){toast(e.message)}}draw()};inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};acts.append(inp,ok);inp.focus()};
+        dl.onclick=async()=>{try{const full=await api('GET','/api/chats/'+encodeURIComponent(c.id));download(`${c.title.replace(/[^\w\- ]+/g,'').slice(0,40)||'chat'}.md`,chatMarkdown(full),'text/markdown')}catch(e){toast(e.message)}};
+        del.onclick=async()=>{if(del.dataset.sure){try{await api('DELETE','/api/chats/'+encodeURIComponent(c.id));summaries=summaries.filter(y=>y.id!==c.id);if(found)found=found.filter(y=>y.id!==c.id);if(chatId===c.id)newChat();renderContinue()}catch(e){toast(e.message)}draw()}else{del.dataset.sure='1';del.textContent='Tap again to delete';del.classList.add('red')}};
         acts.append(rn,dl,del);more.onclick=()=>{acts.hidden=!acts.hidden};
         const line=el('div','ep-line-row');line.append(open,more);row.append(line,acts);sec.append(row);
       });
       list.append(sec);
     });
   };
-  search.oninput=draw;draw();
+  search.oninput=()=>{const term=search.value.trim();found=null;const my=++seq;draw();if(!term)return;
+    clearTimeout(search.t);search.t=setTimeout(async()=>{try{const d=await api('GET','/api/chats?q='+encodeURIComponent(term));if(my===seq){found=d.chats||[];draw()}}catch(e){if(my===seq){found=[];draw()}}},250)};
+  draw();
 
   const foot=el('div','ep-foot');
-  const lb=el('label','rtoggle'),cb=el('input');cb.type='checkbox';cb.checked=saving.get();cb.onchange=()=>{saving.set(cb.checked);draw()};
-  lb.append(cb,'Save chats on this device');
-  const r=el('div','row'),exp=el('button','btn','Download all'),wipe=el('button','btn','Delete all');[exp,wipe].forEach(b=>b.type='button');
-  exp.onclick=()=>download('ask-harsha-chats.json',JSON.stringify({exported:new Date().toISOString(),chats},null,2),'application/json');
-  wipe.onclick=()=>{if(wipe.dataset.sure){chats=[];saveChats();newChat();draw();wipe.textContent='Deleted'}else{wipe.dataset.sure='1';wipe.textContent='Tap again to delete all';wipe.classList.add('red')}};
-  r.append(exp,wipe);foot.append(lb,el('small',null,'Chats stay in this browser only, never on the server.'),r);dr.append(foot);
+  const who=el('div','ep-who');const av=el('span','ep-av',(me.user.name||'A').trim().charAt(0).toUpperCase()||'A');
+  const wt=el('div');wt.append(el('b',null,me.user.name||'Ask Harsha user'),el('small',null,'Signed in with a passkey · since '+new Date(me.user.created).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})));who.append(av,wt);
+  const out=el('button','btn','Sign out');out.type='button';
+  out.onclick=async()=>{try{await api('POST','/api/auth/logout')}catch(e){}me.user=null;summaries=[];close();newChat();renderAccount();toast('Signed out. New chats won’t be saved until you sign in again.')};
+  const r=el('div','row'),exp=el('button','btn','Download all'),wipe=el('button','btn','Delete all chats'),gone=el('button','btn','Delete account');[exp,wipe,gone].forEach(b=>b.type='button');
+  exp.onclick=async()=>{try{const d=await api('GET','/api/chats/export');download('ask-harsha-chats.json',JSON.stringify(d,null,2),'application/json')}catch(e){toast(e.message)}};
+  wipe.onclick=async()=>{if(wipe.dataset.sure){try{await api('DELETE','/api/chats');summaries=[];found=null;newChat();draw();wipe.textContent='Deleted'}catch(e){toast(e.message)}}else{wipe.dataset.sure='1';wipe.textContent='Tap again to delete all';wipe.classList.add('red')}};
+  gone.onclick=async()=>{if(gone.dataset.sure){try{await api('DELETE','/api/me');me.user=null;summaries=[];close();newChat();renderAccount();toast('Your account and all its chats were deleted. You may also remove the passkey from your password manager.')}catch(e){toast(e.message)}}else{gone.dataset.sure='1';gone.textContent='Tap again: deletes everything';gone.classList.add('red')}};
+  r.append(exp,wipe,gone);
+  const wr=el('div','ep-whorow');wr.append(who,out);
+  foot.append(wr,el('small',null,'Your chats are saved to your account, so they follow you to any device where you sign in with this passkey.'),r);dr.append(foot);
 
   bg.append(dr);document.body.append(bg);x.focus();
 }
-function newChat(){stopDictation();chatId=null;history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;greet(weatherData);renderContinue()}
+function newChat(){stopDictation();chatId=null;cur=null;history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;greet(weatherData);renderContinue()}
 const VERDICT={confirmed:{mark:'✓',cls:'ok',word:'Confirmed'},contradicted:{mark:'✕',cls:'bad',word:'Contradicted'},unverified:{mark:'!',cls:'unk',word:'Unverified'},not_checkable:{mark:'–',cls:'na',word:'Not checkable'}};
 function actionsFor(bot){
   let w=bot.querySelector('.fcwrap');
@@ -1253,11 +1392,12 @@ q.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefau
 function grow(){q.style.height='auto';q.style.height=Math.min(q.scrollHeight,120)+'px'}
 q.addEventListener('input',grow);
 resetBtn.addEventListener('click',()=>{newChat();q.focus()});
-$('#recents').addEventListener('click',openRecents);
+$('#savebar-in').addEventListener('click',openSignIn);
+$('#savebar-x').addEventListener('click',()=>{$('#savebar').hidden=true;try{sessionStorage.setItem('askh_savebar_off','1')}catch(e){}});
 lockBtn.addEventListener('click',openLock);
 memBtn.addEventListener('click',openMemory);
 
-passcode=store.get();setOwner(!!passcode);checkTickets();if(!EMBED)loadWeather();
+passcode=store.get();setOwner(!!passcode);checkTickets();if(!EMBED)loadWeather();loadMe();
 {const preset=(PARAMS.get('q')||'').trim().slice(0,500);if(preset){window.history.replaceState(null,'',location.pathname+(EMBED?'?embed=1':''));setTimeout(()=>ask(preset),50)}}
 if(passcode){fetch('/api/owner/check',{method:'POST',headers:{'X-Owner-Passcode':passcode}}).then(r=>{if(!r.ok){passcode='';store.set('');setOwner(false)}}).catch(()=>{})}
 })();
