@@ -21,6 +21,7 @@ PREF_VALUES = {
     "tone": ("", "friendly", "professional", "direct"),
     "read_aloud": (True, False),
     "jury": (True, False),
+    "proof": (True, False),
 }
 ACTIONS = ("open_section", "open_project", "open_chat", "search_chats", "search_saved", "new_chat", "create_project",
            "set_pref", "open_tool", "ask", "sign_in", "channel_up", "channel_down", "reply")
@@ -44,7 +45,7 @@ TOOL_SPEC = {
             "name": {"type": "string", "description": "Name for a new project."},
             "icon": {"type": "string", "description": "One emoji for a new project."},
             "instructions": {"type": "string", "description": "Instructions for a new project, if they gave any."},
-            "pref": {"type": "string", "enum": ["length", "tone", "read_aloud", "jury", "name", "city", "about"]},
+            "pref": {"type": "string", "enum": ["length", "tone", "read_aloud", "jury", "proof", "name", "city", "about"]},
             "value": {"description": "length: short|balanced|detailed. tone: ''|friendly|professional|direct. read_aloud/jury: true|false. name/city/about: text."},
             "tool": {"type": "string", "enum": list(TOOLS)},
             "say": {"type": "string", "description": "One short, friendly line confirming what you did (under 12 words)."},
@@ -107,6 +108,10 @@ def quick(text: str, context: dict) -> Command | None:
         return Command("set_pref", {"pref": "length", "value": "detailed"}, "Answers set to Detailed.")
     if has("normal length", "balanced"):
         return Command("set_pref", {"pref": "length", "value": "balanced"}, "Answers set to Balanced.")
+    if has("proof mode off", "turn off proof", "stop proof", "disable proof"):
+        return Command("set_pref", {"pref": "proof", "value": False}, "Proof Mode is off. Files are still checked.")
+    if has("proof mode", "turn on proof", "prove it", "verify my tasks", "check your work"):
+        return Command("set_pref", {"pref": "proof", "value": True}, "Proof Mode is on. I'll check every task against what you asked.")
     if has("stop reading", "don't read", "dont read", "stop talking", "turn off read", "mute", "no voice", "quiet"):
         return Command("set_pref", {"pref": "read_aloud", "value": False}, "I'll stop reading answers aloud.")
     if has("read aloud", "read answers", "read it out", "read out loud", "talk back", "speak answers", "read to me"):

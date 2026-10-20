@@ -454,6 +454,48 @@ html.embed .side,html.embed .side-bg{display:none!important}
 .sb-who small{font-size:12px}
 .side .ep-av{width:32px;height:32px;font-size:14px}
 .side .ep-top{padding:2px 8px 10px 8px}
+/* Proof Mode */
+.modebar{display:flex;max-width:720px;margin:0 auto 8px}
+html.embed .modebar{display:none}
+.proofchip{display:flex;align-items:center;gap:6px;padding:5px 11px 5px 8px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:12.5px;font-weight:600;color:var(--muted)}
+.proofchip svg{width:16px;height:16px}
+.proofchip small{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:1px 6px;border-radius:999px;background:var(--raise)}
+.proofchip.on{color:var(--fg);border-color:color-mix(in srgb,var(--good) 55%,var(--line));background:color-mix(in srgb,var(--good) 10%,var(--panel))}
+.proofchip.on svg{color:var(--good)}
+.proofchip.on small{background:var(--good);color:#0b0b0b}
+.proof{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--bg);overflow:hidden;--pc:var(--muted)}
+.proof.st-verified{--pc:var(--good)}.proof.st-partial{--pc:var(--warn)}.proof.st-failed{--pc:#ff6b6b}.proof.st-unverified{--pc:var(--muted)}
+.proof{border-color:color-mix(in srgb,var(--pc) 45%,var(--line))}
+.pf-head{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;text-align:left;background:color-mix(in srgb,var(--pc) 9%,transparent)}
+.pf-ic{width:30px;height:30px;flex:0 0 auto;border-radius:9px;display:grid;place-items:center;color:var(--pc);background:color-mix(in srgb,var(--pc) 16%,transparent)}
+.pf-ic svg{width:18px;height:18px}
+.pf-ht{flex:1;min-width:0;display:grid}
+.pf-ht b{font-size:14.5px;color:var(--pc)}
+.pf-ht small{font-size:12px;color:var(--muted)}
+.pf-chev{color:var(--muted);transition:transform .15s}
+.pf-head[aria-expanded=true] .pf-chev{transform:rotate(180deg)}
+.pf-body{display:grid;gap:10px;padding:10px 12px 12px}
+.pf-ask{margin:0;font-size:13px;color:var(--muted)}
+.pf-ask span{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+.pf-checks{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.pf-checks li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px}
+.pf-checks li i{width:20px;height:20px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:800;margin-top:1px}
+.pf-checks li.pass i{background:var(--good);color:#0b0b0b}
+.pf-checks li.fail i{background:#ff6b6b;color:#0b0b0b}
+.pf-checks li.unverified i{background:var(--raise);color:var(--muted);border:1px solid var(--line)}
+.pf-checks li div{display:grid;min-width:0}
+.pf-checks li small{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.pf-note{margin:0;font-size:13px;padding:8px 10px;border-radius:10px;background:var(--panel)}
+.pf-note.warn{color:var(--warn)}
+.pf-time{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px}
+.pf-time li{display:grid;position:relative;padding-left:12px}
+.pf-time li::before{content:"";position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:50%;background:var(--pc)}
+.pf-time b{font-weight:600}
+.pf-time small{color:var(--muted)}
+.pf-foot{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:10px}
+.pf-sig{font-size:12px;color:var(--muted)}
+.pf-sig.ok{color:var(--good)}
+.pf-foot .btn{padding:6px 12px;font-size:12.5px}
 /* files the agent made */
 .files{display:grid;gap:8px;margin-top:10px}
 .filecard{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
@@ -653,6 +695,7 @@ a.ep-card:hover,button.ep-card:hover{border-color:color-mix(in srgb,var(--c,var(
 <footer>
   <div class="savebar" id="savebar" hidden><span>This chat isn't saved.</span><button type="button" id="savebar-in">Sign in to save it</button><button type="button" id="savebar-x" aria-label="Dismiss">×</button></div>
   <div class="projchip" id="projchip" hidden></div>
+  <div class="modebar" id="modebar"><button type="button" class="proofchip" id="proofchip" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Proof Mode</span><small id="proofstate">off</small></button></div>
   <div class="tray" id="tray" hidden></div>
   <p class="toast" id="toast" role="status" hidden></p>
   <form class="ask" id="form">
@@ -689,7 +732,7 @@ const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturda
 function partOfDay(h){return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night'}
 const PARAMS=new URLSearchParams(location.search),EMBED=PARAMS.has('embed');
 // Customize settings (see "Customize" below): kept on this device, and in the account when signed in.
-const PREF_DEFAULTS={name:'',length:'balanced',tone:'',about:'',city:'',voice:'',rate:1,read_aloud:false,jury:true,memory:true};
+const PREF_DEFAULTS={name:'',length:'balanced',tone:'',about:'',city:'',voice:'',rate:1,read_aloud:false,jury:true,memory:true,proof:false};
 let prefs=(()=>{try{return {...PREF_DEFAULTS,...JSON.parse(localStorage.getItem('askh_prefs')||'{}')}}catch(e){return {...PREF_DEFAULTS}}})();
 if(EMBED)document.documentElement.classList.add('embed');
 const EMBED_CHIPS=["What does Harsha do at IBM?","Has Harsha shipped anything with AI?","What are his strongest results?","How can I contact Harsha?"];
@@ -953,6 +996,50 @@ async function fileBlob(f){
   if(!res.ok){const d=await res.json().catch(()=>({}));throw new Error(d.message||"That file couldn't be made.")}
   return res.blob();
 }
+// ---------- Proof Mode: what actually worked, checked by code ----------
+// The server writes a checklist from the request alone, does the work, opens the real result with independent
+// readers, fixes what failed (at most twice), and signs the report. "Verified" means code checked it, not that a
+// model said so.
+const PROOF_META={verified:['Verified complete','✓'],partial:['Partially complete','◐'],failed:['Failed','✕'],unverified:['Unverified','?']};
+function renderModebar(){
+  const b=$('#proofchip');if(!b)return;const on=!!prefs.proof;
+  b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);$('#proofstate').textContent=on?'on':'off';
+  b.title=on?'Proof Mode is on: every task is checked against what you asked':'Turn on Proof Mode: every task is checked against what you asked (files are always checked)';
+  q.placeholder=on?'Give me a task':'Ask anything';
+}
+function renderProof(bot,p){
+  const [word,mark]=PROOF_META[p.status]||PROOF_META.unverified;
+  const c=p.counts||{},checkable=(c.pass||0)+(c.fail||0);
+  const box=el('section','proof st-'+p.status);
+  const head=el('button','pf-head');head.type='button';head.setAttribute('aria-expanded',p.status!=='verified');
+  const ic=el('span','pf-ic');ic.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ht=el('span','pf-ht');ht.append(el('b',null,word),el('small',null,[`${c.pass||0} of ${checkable} checks passed`,c.unverified?`${c.unverified} for you to review`:'',p.attempts>1?`${p.attempts} attempts`:'',p.seconds?`${p.seconds.toFixed(1)}s`:''].filter(Boolean).join(' · ')));
+  head.append(ic,ht,el('span','pf-chev','▾'));
+  const body=el('div','pf-body');body.hidden=p.status==='verified';
+  head.onclick=()=>{body.hidden=!body.hidden;head.setAttribute('aria-expanded',!body.hidden)};
+  const ask=el('p','pf-ask');ask.append(el('span',null,'You asked'),`“${p.request.length>180?p.request.slice(0,180)+'…':p.request}”`);body.append(ask);
+  const ol=el('ol','pf-checks');
+  (p.checks||[]).forEach(ch=>{const li=el('li',ch.result);li.append(el('i',null,ch.result==='pass'?'✓':ch.result==='fail'?'✕':'?'));
+    const t=el('div');t.append(el('b',null,ch.label),el('small',null,ch.evidence));li.append(t);ol.append(li)});
+  body.append(ol);
+  if(p.attempts>1){const h=p.history||[];const first=h[0]||{};
+    body.append(el('p','pf-note',`Attempt 1 found ${first.problems?first.problems.length:0} problem${(first.problems||[]).length===1?'':'s'}${first.problems&&first.problems.length?' ('+first.problems.slice(0,3).join('; ')+')':''}. `+(p.status==='verified'?`Fixed in attempt ${p.attempts}.`:`After ${p.attempts} attempts, ${c.fail} still fail${c.fail===1?'s':''}. Ask me to try a different way, or adjust it yourself.`)))}
+  else if(p.status==='failed'||p.status==='partial')body.append(el('p','pf-note','These problems are still there. Tell me how you’d like to fix them, or ask me to try again.'));
+  if(p.caught)body.append(el('p','pf-note warn','The first draft said it was done before it really was. Proof Mode caught it.'));
+  const tl=el('ol','pf-time');const fmt=s=>new Date(s).toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});
+  const NAMES={pending:'Pending',in_progress:'In progress',verification:'Verification',verified:'Verified complete',partial:'Partially complete',failed:'Failed',unverified:'Unverified'};
+  (p.states||[]).forEach(s=>{const li=el('li');li.append(el('b',null,NAMES[s.state]||s.state),el('small',null,fmt(s.at)+(s.note?' · '+s.note:'')));tl.append(li)});
+  body.append(tl);
+  if(p.receipt&&p.signature){
+    const f=el('div','pf-foot');const r=el('div','row');
+    const vb=el('button','btn','Check signature'),dl=el('button','btn','Download report');[vb,dl].forEach(b=>b.type='button');
+    const line=el('small','pf-sig','🔏 Signed by Ask Harsha. The signature proves this report wasn’t changed. It isn’t proof of events outside Ask Harsha.');
+    vb.onclick=async()=>{vb.disabled=true;try{const d=await api('POST','/api/proof/verify',{receipt:p.receipt,signature:p.signature});line.textContent=(d.valid?'✓ Signature valid. ':'✕ ')+d.meaning;line.classList.toggle('ok',d.valid)}catch(e){toast(e.message)}finally{vb.disabled=false}};
+    dl.onclick=()=>download(`proof-${p.id}.json`,JSON.stringify({receipt:p.receipt,signature:p.signature,public_key:location.origin+'/.well-known/ask-harsha-key.json'},null,2),'application/json');
+    r.style.justifyContent='flex-start';r.append(vb,dl);f.append(line,r);body.append(f);
+  }
+  box.append(head,body);bot.append(box);
+}
 function renderFiles(bot,fs){
   const box=el('div','files');
   fs.forEach(f=>{
@@ -995,7 +1082,7 @@ function renderBot(bot,data,text,live){
   Object.entries(data.sources||{}).forEach(([id,v])=>{cache[id]=v});
   (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
-  bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);if(data.files&&data.files.length)renderFiles(bot,data.files);renderExtras(bot,data);
+  bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);if(data.files&&data.files.length)renderFiles(bot,data.files);if(data.proof)renderProof(bot,data.proof);renderExtras(bot,data);
   if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);
   addStar(bot,text,data);
   if(juryOn&&['general','web'].includes(data.label)&&data.answer)addJury(bot,text,data.answer);
@@ -1009,7 +1096,7 @@ function renderBot(bot,data,text,live){
 // and shown under "Chats". The current chat is always kept in memory, so signing in mid-chat saves it too.
 let me={enabled:false,user:null},summaries=[],chatId=null,cur=null;
 const LEGACY=(()=>{try{const d=JSON.parse(localStorage.getItem('askh_chats')||'{}');return Array.isArray(d.chats)?d.chats:[]}catch(e){return[]}})();  // chats saved on this device before accounts existed
-const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature','timing','files'];
+const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature','timing','files','proof'];
 const signedIn=()=>!!(me&&me.user);
 async function api(method,url,body){
   const res=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
@@ -1642,6 +1729,7 @@ function mountSidebar(){
     const assist=el('a','btn','Open');assist.href='/assist';
     row('🗣️','Assist mode','Speak or type and it talks for you. Made for people who can’t speak.',assist);
     if(juryAvail){row('⚖️','Second opinions',`Ask ${juryNames.join(' and ')} the same question and compare`,toggle(prefs.jury,v=>{setPref('jury',v);juryOn=juryAvail&&v},'Second opinions'))}
+    row('🛡️','Proof Mode','Checks that a task really worked, fixes what didn’t, and signs the evidence',toggle(!!prefs.proof,x=>setPref('proof',x),'Proof Mode'));
     row('✓','Fact-check','Checks every claim in an answer against sources');
     row('🔏','Share verified','A signed link and QR code that prove an answer is real');
     row('🙋','Ask the real Harsha','When a question needs a person, send it to Harsha');
@@ -1675,6 +1763,9 @@ function mountSidebar(){
     const applyCity=async()=>{setPref('city',city.value.trim());cs.textContent='Updating…';await loadWeather();cs.textContent=weatherData&&prefs.city&&weatherData.city?`✓ ${weatherData.city}`:'Update'};
     cs.onclick=applyCity;city.onkeydown=e=>{if(e.key==='Enter')applyCity()};
     const l=el('label','ep-field');l.append(el('span',null,'Weather greeting for'),cr,el('small',null,'Type a city, like “Chicago” or “Hyderabad, India”. Leave empty to use where you are.'));h.append(l);
+    const pf=sec('Proof Mode');
+    const pi=el('div','ep-item');const pt=el('span');pt.append(el('b',null,'Check every task'),el('small',null,'Code checks the real result against what you asked, fixes what fails, and shows the evidence. Files are always checked.'));
+    pi.append(pt,toggle(!!prefs.proof,x=>setPref('proof',x),'Proof Mode'));pf.append(pi);
     const mem=sec('Memory');
     const mi=el('div','ep-item');const mt=el('span');mt.append(el('b',null,'Remember things I tell you'),el('small',null,signedIn()?'Like your role, goals or city, so you don’t have to repeat them':'Sign in to turn this on'));
     mi.append(mt,toggle(prefs.memory!==false,x=>{setPref('memory',x);toast(x?'Memory is on.':'Memory is off. Nothing new is saved, and saved memories aren’t used.')},'Remember things I tell you'));mem.append(mi);
@@ -1761,6 +1852,7 @@ let prefTimer=null;
 function setPref(k,v){
   prefs[k]=v;try{localStorage.setItem('askh_prefs',JSON.stringify(prefs))}catch(e){}
   if(k==='name')greet(weatherData);
+  if(k==='proof')renderModebar();
   if(signedIn()){clearTimeout(prefTimer);prefTimer=setTimeout(()=>api('PUT','/api/account/prefs',prefs).catch(e=>toast("Settings couldn't be saved: "+e.message)),500)}
 }
 async function syncPrefs(){
@@ -2158,7 +2250,7 @@ function showMemory(bot,d){
   if(d.project)loadProjects();
 }
 async function askOnce(bot,text){  // fallback when streaming isn't available
-  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||'',summary:(cur&&cur.summary)||''})});
+  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||'',summary:(cur&&cur.summary)||'',proof:!!prefs.proof})});
   const data=await res.json().catch(()=>({}));
   if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
   showFinal(bot,data,text);
@@ -2176,7 +2268,7 @@ async function ask(text){
   const live=el('div','body');bot.append(status,live);
   let streamed='',finished=false;
   try{
-    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||'',summary:(cur&&cur.summary)||''})});
+    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||'',summary:(cur&&cur.summary)||'',proof:!!prefs.proof})});
     const type=res.headers.get('content-type')||'';
     if(!res.ok||!type.includes('text/event-stream')){
       const data=await res.json().catch(()=>({}));
@@ -2236,6 +2328,8 @@ function grow(){q.style.height='auto';q.style.height=Math.min(q.scrollHeight,120
 q.addEventListener('input',grow);
 resetBtn.addEventListener('click',()=>{newChat();q.focus()});
 $('#savebar-in').addEventListener('click',openSignIn);
+$('#proofchip').addEventListener('click',()=>{setPref('proof',!prefs.proof);toast(prefs.proof?'Proof Mode is on. I’ll check every task against what you asked, fix what fails, and show you the evidence.':'Proof Mode is off. Files are still checked.')});
+renderModebar();
 $('#savebar-x').addEventListener('click',()=>{$('#savebar').hidden=true;try{sessionStorage.setItem('askh_savebar_off','1')}catch(e){}});
 lockBtn.addEventListener('click',openLock);
 memBtn.addEventListener('click',openMemory);

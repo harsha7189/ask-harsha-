@@ -73,3 +73,18 @@ def _stream(self, **kwargs):
 
 
 FakeClient.stream = _stream
+
+
+class RoutingClient(FakeClient):
+    """Like FakeClient, but Proof Mode's checklist call (which runs in parallel) gets its own answer."""
+
+    def __init__(self, script, plan=None):
+        super().__init__(script)
+        self.plan = plan or {"expects_file": False, "file_types": [], "checks": [], "cannot_check": []}
+        self.plan_requests = []
+
+    def create(self, **kwargs):
+        if (kwargs.get("tool_choice") or {}).get("name") == "set_checklist":
+            self.plan_requests.append(kwargs)
+            return response([tool_use("plan", "set_checklist", self.plan)], "tool_use")
+        return super().create(**kwargs)

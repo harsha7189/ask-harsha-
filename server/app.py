@@ -42,7 +42,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, memory, personal, remote  # noqa: E402
+from agent import accounts as acct, memory, personal, proof, remote  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -207,6 +207,7 @@ class ChatRequest(BaseModel):
     prefs: dict | None = None        # Customize: name, answer length, tone, about them
     project: str = Field(default="", max_length=40)   # a project id; its instructions are read from the account
     summary: str = Field(default="", max_length=4000)  # the rolling summary of this chat's older turns
+    proof: bool = False   # Proof Mode: verify the result against the request (files are always verified)
 
 
 class ProjectBody(BaseModel):
@@ -222,6 +223,11 @@ class MemoryEdit(BaseModel):
 
 class ChatProject(BaseModel):
     project: str = Field(default="", max_length=40)
+
+
+class ProofCheck(BaseModel):
+    receipt: dict
+    signature: str = Field(min_length=10, max_length=200)
 
 
 class FileBuild(BaseModel):
@@ -738,6 +744,26 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         if len(json.dumps(prefs)) > 8000:
             return error(400, "prefs", "Those settings are too long.")
         return {"prefs": accounts.save_prefs(user.id, prefs)}
+
+    # ---------- Proof Mode ----------
+    from concurrent.futures import ThreadPoolExecutor
+    proof_pool = ThreadPoolExecutor(max_workers=4)
+    proof_stats = proof.Stats()
+
+    @app.post("/api/proof/verify")
+    def proof_verify(req: ProofCheck):
+        """Check a proof report's signature. Valid means Ask Harsha issued it and it wasn't changed afterwards."""
+        valid = signer is not None and req.receipt.get("type") == "proof" and signer.verify(req.receipt, req.signature)
+        return {"valid": valid, "fingerprint": signer.fingerprint if signer else "",
+                "meaning": "Ask Harsha issued this report and it hasn't been altered. It records what was checked; it isn't proof of events outside Ask Harsha."
+                if valid else "The signature doesn't match. The report was changed, or it wasn't issued by this Ask Harsha."}
+
+    @app.get("/api/owner/proof-stats")
+    def proof_stats_view(request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        return proof_stats.summary()
 
     # ---------- Files the agent made ----------
     files_limiter = RateLimiter(60, 600)
@@ -1300,8 +1326,20 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                      "summary": summary if summarized else None, "summarized": summarized,
                      "prep_s": round(time.monotonic() - prep_start, 2)}
         agent.messages = file_turns(prepared.blocks) + recent
+        # Proof Mode: write down what success means from the request alone, while the agent starts working.
+        if req.proof or proof.looks_like_task(question):
+            agent.proof = {"on": req.proof, "id": proof.new_task_id(), "t0": time.monotonic(),
+                           "states": [{"state": "pending", "at": proof.now_iso()}],
+                           "plan": proof_pool.submit(proof.capture, get_client(), settings.assist_model, question)}
+            agent.proof["states"].append({"state": "in_progress", "at": proof.now_iso()})
+            if req.proof:
+                agent.context += PROOF_NOTE
         agent.attached = prepared.summary
         return agent, owner, question
+
+    PROOF_NOTE = ("\n\nProof Mode is on: after you answer, code will check the actual result against the person's request "
+                  "(files are opened and inspected). Do exactly what was asked. If you can't do part of it, say so plainly "
+                  "instead of implying it's done, and never describe a file, section or row that isn't really there.")
 
     MCP_NOTE = ("\n\nYou're being called as a tool by another AI assistant, not chatting with a person in the app. There are no "
                 "buttons or pop-ups: never mention them. Answer the question as asked; if Harsha's record doesn't cover it, say so plainly.")
@@ -1382,13 +1420,81 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return prep
         agent, owner, question = prep
         try:
-            reply = agent.ask(question)
+            reply, proof_out = run_task(agent, question, lambda k, d: None)
         except Exception as e:  # API outage, bad key, network: log the cause, show a friendly message
             upstream_failed(e)
             return error(502, "upstream", UPSTREAM_MSG)
         out = finish(agent, reply, owner, question)
+        if proof_out:
+            out["proof"] = proof_out
         threading.Thread(target=learn_from, args=(agent, question, reply.text), daemon=True).start()
         return out
+
+    def run_task(agent: Agent, question: str, emit) -> tuple:
+        """Answer, then (for tasks) verify the real result, fix what failed (bounded), and build the proof report."""
+        reply = agent.ask(question)
+        pr = getattr(agent, "proof", None)
+        files = {f["filename"]: f for f in agent.tools.files}
+        if not pr or (not pr["on"] and not files):
+            if pr:
+                pr["plan"].cancel()
+            return reply, None
+        emit("status", {"label": "Checking the work"})
+        pr["states"].append({"state": "verification", "at": proof.now_iso()})
+        try:
+            plan, pi, po = pr["plan"].result(timeout=12)
+            budget.add(pi, po)
+        except Exception:
+            plan = proof.rules_plan(question)
+        result = proof.verify(plan, list(files.values()), reply.text)
+        caught = bool(result.fixable) and proof.claims_success(reply.text)
+        attempts, history = 1, [{"attempt": 1, "status": result.status, "problems": [c["label"] for c in result.fixable]}]
+        while result.fixable and attempts < proof.MAX_ATTEMPTS and not budget.exhausted():
+            attempts += 1
+            pr["states"].append({"state": "in_progress", "at": proof.now_iso(), "note": f"fix attempt {attempts - 1}"})
+            n = len(result.fixable)
+            emit("text_reset", {})
+            emit("status", {"label": f"Fixing {n} problem{'s' if n != 1 else ''} (attempt {attempts} of {proof.MAX_ATTEMPTS})"})
+            nxt = agent.ask(proof.fix_prompt(result, attempts))
+            for f in agent.tools.files:
+                files[f["filename"]] = f
+            reply = merge_replies(reply, nxt)
+            pr["states"].append({"state": "verification", "at": proof.now_iso()})
+            result = proof.verify(plan, list(files.values()), reply.text)
+            history.append({"attempt": attempts, "status": result.status, "problems": [c["label"] for c in result.fixable]})
+        pr["states"].append({"state": result.status, "at": proof.now_iso()})
+        agent.tools.files = list(files.values())
+        seconds = round(time.monotonic() - pr["t0"], 2)
+        out = {"id": pr["id"], "status": result.status, "status_word": proof.STATUS_WORDS[result.status], "on": pr["on"],
+               "request": question[:600], "plan": plan.to_dict(), "checks": [{k: v for k, v in c.items() if k != "fixable"} for c in result.checks],
+               "counts": result.counts, "attempts": attempts, "history": history, "states": pr["states"], "seconds": seconds, "caught": caught}
+        if signer is not None:
+            r = proof.receipt(pr["id"], question, plan, result, pr["states"], attempts, settings.model, signer.fingerprint)
+            out["receipt"], out["signature"] = r, signer.sign(r)
+        run = {"status": result.status, "attempts": attempts, "seconds": seconds, "caught": caught, **result.counts,
+               "kinds": sorted({i.kind for i in result.inspections}) or ["reply"]}
+        proof_stats.add(run)
+        log.info(json.dumps({"event": "proof", **run}))
+        return reply, out
+
+    def merge_replies(prev, nxt):
+        """One reply for the whole task: the latest text (or the earlier one if the fix had none), all costs added up."""
+        nxt.input_tokens += prev.input_tokens
+        nxt.output_tokens += prev.output_tokens
+        nxt.web_searches += prev.web_searches
+        nxt.cache_read_tokens += prev.cache_read_tokens
+        nxt.cache_write_tokens += prev.cache_write_tokens
+        nxt.steps += prev.steps
+        nxt.steps_log = prev.steps_log + nxt.steps_log
+        nxt.web_sources = prev.web_sources + [w for w in nxt.web_sources if w not in prev.web_sources]
+        t1, t2 = prev.timing or {}, nxt.timing or {}
+        nxt.timing = {"total_s": round((t1.get("total_s") or 0) + (t2.get("total_s") or 0), 2),
+                      "model_s": round((t1.get("model_s") or 0) + (t2.get("model_s") or 0), 2),
+                      "tools_s": round((t1.get("tools_s") or 0) + (t2.get("tools_s") or 0), 2),
+                      "calls_s": (t1.get("calls_s") or []) + (t2.get("calls_s") or []), "first_text_s": t1.get("first_text_s")}
+        if not nxt.text.strip():
+            nxt.text = prev.text
+        return nxt
 
     def learn_from(agent: Agent, question: str, answer: str) -> dict | None:
         """Update the person's memory and the project's notes from one exchange. Returns what changed, if anything."""
@@ -1484,8 +1590,11 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                 n = len(agent.attached)
                 if n:
                     q.put(("status", {"label": "Reading your file" if n == 1 else f"Reading your {n} files"}))
-                reply = agent.ask(question)
-                q.put(("final", finish(agent, reply, owner, question)))
+                reply, proof_out = run_task(agent, question, lambda k, d: q.put((k, d)))
+                out = finish(agent, reply, owner, question)
+                if proof_out:
+                    out["proof"] = proof_out
+                q.put(("final", out))
             except Exception as e:
                 upstream_failed(e)
                 q.put(("error", {"message": UPSTREAM_MSG}))

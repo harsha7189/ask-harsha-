@@ -45,17 +45,19 @@ def test_the_agent_makes_a_file_and_the_page_can_download_it():
     from fastapi.testclient import TestClient
     from agent import inbox as inboxmod, receipts as rcpt
     from agent.notes import MemoryNotesStore
-    from fakes import FakeClient, response, text, tool_use
+    from fakes import RoutingClient, response, text, tool_use
     from server.app import Settings, create_app
     spec = {"filename": "budget.xlsx", "sheets": [{"name": "Budget", "rows": [["Item", "Cost"], ["Desk", 300]]}]}
-    client = FakeClient([response([tool_use("t1", "create_file", spec)], "tool_use"),
-                         response([text("Here's your budget spreadsheet with one item.")], "end_turn")])
+    client = RoutingClient([response([tool_use("t1", "create_file", spec)], "tool_use"),
+                            response([text("Here's your budget spreadsheet with one item.")], "end_turn")],
+                           plan={"expects_file": True, "file_types": ["xlsx"], "checks": [], "cannot_check": []})
     s = Settings(daily_budget_usd=5.0, rate_limit=50, allowed_origins=[], owner_passcode="open-sesame")
     app = create_app(client=client, settings=s, notes=MemoryNotesStore(), inbox=inboxmod.MemoryInboxStore(),
                      receipts=rcpt.ReceiptStore(inboxmod.make_key("k")), accounts=False)
     c = TestClient(app)
     d = c.post("/api/chat", json={"question": "Make me a budget spreadsheet"}).json()
     assert d["files"][0]["filename"] == "budget.xlsx" and d["files"][0]["sheets"][0]["rows"] == 2
+    assert d["proof"]["status"] == "verified" and d["proof"]["attempts"] == 1          # files are always verified
     assert client.requests[0]["max_tokens"] == 8000 and any(t["name"] == "create_file" for t in client.requests[0]["tools"])
     tool_reply = json.loads(client.requests[1]["messages"][-1]["content"][0]["content"])
     assert tool_reply["ok"] is True
