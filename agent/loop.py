@@ -115,6 +115,7 @@ class Agent:
         self.container_id = container   # code execution sandbox to reuse across calls (files carry over)
         self.fallback_model = fallback_model   # used for a call when the main model is overloaded or unreachable
         self.used_fallback = ""
+        self.speed_override: dict = {}   # Tune's chat settings (effort, thinking); env vars still win
         self._first_text: float | None = None
         self.messages: list[dict] = []  # full conversation, kept across turns
 
@@ -153,7 +154,7 @@ class Agent:
         self.on_event("text_reset", {})
         self.on_event("fallback", {"model": self.fallback_model, "reason": type(first).__name__})
         backup = {k: v for k, v in kwargs.items() if k not in ("output_config", "thinking")}
-        backup.update(model=self.fallback_model, **speed.params(self.fallback_model, self.speed))
+        backup.update(model=self.fallback_model, **speed.params(self.fallback_model, self.speed, self.speed_override))
         backup["messages"] = [strip_thinking(m) for m in kwargs["messages"]]   # thinking blocks belong to the model that wrote them
         self.used_fallback = self.fallback_model
         return self._call_once(backup)
@@ -203,7 +204,7 @@ class Agent:
         for step in range(1, self.max_steps + 1):
             reply.steps = step
             call = dict(model=self.model, max_tokens=self.max_tokens, system=self.system_param(), messages=self.messages,
-                        **speed.params(self.model, self.speed))
+                        **speed.params(self.model, self.speed, self.speed_override))
             tools = self.tools.specs() + self.server_tools
             if tools:
                 call["tools"] = tools

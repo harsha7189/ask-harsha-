@@ -1,0 +1,10 @@
+{
+  "settings": {
+    "chat_effort": "medium",
+    "chat_thinking": "between_tools",
+    "simple_to_fast_model": false,
+    "web_max_searches": 3
+  },
+  "evidence": null,
+  "note": "Written by Ask Harsha's Tune. Environment variables (CHAT_EFFORT, CHAT_THINKING) override these."
+}

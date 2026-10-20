@@ -955,10 +955,12 @@ function openLock(){
       te.onclick=()=>{close();openTrustEval()};
       const hb=el('button','tool');hb.type='button';hb.append(el('b',null,'Health & history'),el('span',null,'Run the health check, see speed and cost over time, and every evaluation run so far.'));
       hb.onclick=()=>{close();openHealth()};
+      const tn=el('button','tool');tn.type='button';tn.append(el('b',null,'Tune Ask Harsha'),el('span',null,'Measure faster settings on real questions with quality locked, then propose the winner as a GitHub pull request. About $1 and 10 minutes.'));
+      tn.onclick=()=>{close();openTune()};
       const ib=el('button','tool');ib.type='button';ib.append(el('b',null,inboxCount?`Inbox · ${inboxCount} waiting`:'Inbox'),el('span',null,'Questions visitors sent to the real you. Answer once, and optionally teach the agent.'));
       ib.onclick=()=>{close();openInbox()};
       const mb=el('button','tool');mb.type='button';mb.append(el('b',null,'Memory'),el('span',null,'Everything you have taught the agent. Remove any note.'));
-      mb.onclick=()=>{close();openMemory()};tools.append(ib,mb,hb,ev,te);s.append(tools);
+      mb.onclick=()=>{close();openMemory()};tools.append(ib,mb,hb,tn,ev,te);s.append(tools);
       const r=el('div','row'),out=el('button','btn','Sign out'),ok=el('button','btn red primary','Done');
       out.type=ok.type='button';out.onclick=()=>{passcode='';store.set('');setOwner(false);close()};ok.onclick=close;r.append(out,ok);s.append(r);
     });return;
@@ -1045,6 +1047,39 @@ function openHealth(){
         h.trust_evals.slice().reverse().forEach(e=>{const tr=el('tr');tr.append(el('td',null,new Date(e.ts).toLocaleDateString([],{month:'short',day:'numeric'})),el('td',null,`${pc(e.baseline.hallucination_rate)} → ${pc(e.engine.hallucination_rate)}`),el('td',null,pc(e.engine.correction_success_rate)),el('td',null,pc(e.engine.false_verification_rate)));tb.append(tr)});hist.append(tb)}
       if((h.evals||[]).length){hist.append(el('h4',null,'Record evals'));const ul=el('ul','tr-list');h.evals.slice().reverse().slice(0,10).forEach(e=>ul.append(el('li',null,`${new Date(e.ts).toLocaleDateString([],{month:'short',day:'numeric'})}: ${e.passed} of ${e.total} passed · $${(e.cost_usd||0).toFixed(2)}`)));hist.append(ul)}
     }catch(e){perf.textContent='Couldn’t load the history.'}
+  });
+}
+// ---------- owner: Tune (self-optimization with a quality guard) ----------
+const TUNE_NAMES={chat_effort:'Thinking effort',chat_thinking:'Thinking style',simple_to_fast_model:'Simple questions to fast model',web_max_searches:'Max web searches'};
+function cfgDiff(cfg,base){const d=Object.keys(TUNE_NAMES).filter(k=>cfg[k]!==base[k]).map(k=>`${TUNE_NAMES[k]}: ${base[k]} → ${cfg[k]}`);return d.length?d.join(', '):'Current settings'}
+function openTune(){
+  sheet(async (s,close)=>{
+    s.append(el('h3',null,'Tune Ask Harsha'),el('small',null,'It tries faster settings on fixed benchmark questions through the real pipeline. A setting only wins if it’s at least 10% faster, costs no more, and gets every question right that the current one does. Then it’s measured again. The trust check and safety rules are never changed.'));
+    const cur=el('div','hl-box'),live=el('p','tr-meta'),table=el('div','hl-box'),out=el('div','hl-box');
+    const r=el('div','row'),go=el('button','btn red','Run Tune'),c=el('button','btn','Close');go.type=c.type='button';c.onclick=close;r.append(c,go);
+    s.append(cur,live,table,out,r);
+    let st=null,base=null;const rows=[];
+    const drawTable=()=>{table.textContent='';if(!rows.length)return;const tb=el('table','te-table');const hd=el('tr');['Settings','Typical','First words','Cost','Right'].forEach(x=>hd.append(el('th',null,x)));tb.append(hd);
+      rows.forEach(x=>{const tr=el('tr');tr.append(el('td',null,x.label),el('td',null,x.s.p50_seconds!=null?x.s.p50_seconds.toFixed(1)+'s':'–'),el('td',null,x.s.p50_first_words!=null?x.s.p50_first_words.toFixed(1)+'s':'–'),el('td',null,'$'+x.s.cost_usd.toFixed(3)),el('td',null,`${x.s.correct}/${x.s.answers}`));tb.append(tr)});table.append(tb)};
+    const drawFinal=d=>{out.textContent='';out.append(el('h4',null,'Decision'),el('p','tr-lead',d.decision));
+      (d.candidates||[]).forEach(v=>out.append(el('p','tr-meta',`${cfgDiff(v.config,d.current)}: ${v.why}`)));
+      if(d.winner){const b=d.baseline.summary,w=d.winner.summary;out.append(el('p','tr-meta',`Measured twice: ${b.p50_seconds}s → ${w.p50_seconds}s typical, $${b.cost_usd.toFixed(3)} → $${w.cost_usd.toFixed(3)} for the benchmark, ${w.correct}/${w.answers/2} right both times.`));
+        const pr=el('button','btn red',d.pr?'Open the pull request':'Propose as a pull request');pr.type='button';const line=el('p','tr-meta');
+        pr.onclick=async()=>{if(d.pr){window.open(d.pr.url,'_blank','noopener');return}pr.disabled=true;try{const res=await fetch('/api/owner/tune/pr',{method:'POST',headers:headers()});const x=await res.json();if(!res.ok)throw new Error(x.message);d.pr=x;
+          line.textContent=x.pull_request?'Pull request opened. Review it on GitHub; merging deploys it.':x.note;const a=el('a',null,x.url);a.href=x.url;a.target='_blank';a.rel='noopener';line.append(' ',a);pr.textContent='Open the pull request'}catch(e){line.textContent=e.message}finally{pr.disabled=false}};
+        out.append(pr,line)}
+      out.append(el('p','tr-meta',`${d.seconds<90?Math.round(d.seconds)+'s':Math.round(d.seconds/60)+' min'} · $${(d.cost_usd||0).toFixed(2)}`))};
+    try{st=await fetch('/api/owner/tune',{headers:headers()}).then(x=>x.json());base=st.current;
+      cur.append(el('h4',null,'Current settings'));const ul=el('ul','tr-list');Object.keys(TUNE_NAMES).forEach(k=>ul.append(el('li',null,`${TUNE_NAMES[k]}: ${st.current[k]}${(st.env_locked||[]).includes(k)?' (fixed by an environment variable)':''}`)));cur.append(ul);
+      if(!st.github)cur.append(el('p','tr-meta','GitHub isn’t connected (GITHUB_TOKEN and NOTES_REPO), so a winner can’t be proposed as a pull request yet.'));
+      if(st.last){live.textContent=`Last run ${new Date(st.last.ran_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}.`;drawFinal(st.last)}}catch(e){}
+    go.onclick=async()=>{go.disabled=true;rows.length=0;drawTable();out.textContent='';live.textContent='Starting…';
+      try{const res=await fetch('/api/owner/tune',{method:'POST',headers:headers()});const type=res.headers.get('content-type')||'';
+        if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||'Tune couldn’t start.')}
+        await readSSE(res,(k,d)=>{if(k==='status'||k==='stage')live.textContent=d.label+(k==='status'?'…':'');
+          else if(k==='measured'){rows.push({label:d.which==='current'?'Current settings':cfgDiff(d.config,base||d.config),s:d.summary});drawTable()}
+          else if(k==='final'){live.textContent='Done.';drawFinal(d)}else if(k==='error')throw new Error(d.message)})}
+      catch(e){live.textContent=e.message}finally{go.disabled=false}};
   });
 }
 function openTrustEval(){

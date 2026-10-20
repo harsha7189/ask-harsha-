@@ -18,6 +18,7 @@ import logging
 import os
 import queue
 import re
+import hashlib
 import secrets
 import sys
 import threading
@@ -43,7 +44,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, interview as iv, lab, memory, personal, proof, remote, solve as solver, telemetry as tele  # noqa: E402
+from agent import accounts as acct, interview as iv, lab, memory, personal, proof, remote, solve as solver, telemetry as tele, tuning  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -396,6 +397,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         accounts = accounts or None
     telemetry = tele.Telemetry(accounts.db if accounts is not None else None)   # performance history, stats, eval results
     backup_model = "" if settings.fallback_model.lower() == "off" else (settings.fallback_model or settings.assist_model)
+    tuned = tuning.load_tuned()   # settings Tune proposed and you merged (agent/tuned.json)
     auth_limiter = RateLimiter(30, 600)
     jury = jury or Jury(os.environ.get("OPENAI_API_KEY", ""), os.environ.get("OPENAI_MODEL", ""),
                         os.environ.get("GEMINI_API_KEY", ""), os.environ.get("GEMINI_MODEL", ""))
@@ -1171,7 +1173,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     @app.post("/api/proof/verify")
     def proof_verify(req: ProofCheck):
         """Check a proof report's signature. Valid means Ask Harsha issued it and it wasn't changed afterwards."""
-        valid = signer is not None and req.receipt.get("type") in ("proof", "lab", "interview", "solve") and signer.verify(req.receipt, req.signature)
+        valid = signer is not None and req.receipt.get("type") in ("proof", "lab", "interview", "solve", "tune") and signer.verify(req.receipt, req.signature)
         return {"valid": valid, "fingerprint": signer.fingerprint if signer else "",
                 "meaning": "Ask Harsha issued this report and it hasn't been altered. It records what was checked; it isn't proof of events outside Ask Harsha."
                 if valid else "The signature doesn't match. The report was changed, or it wasn't issued by this Ask Harsha."}
@@ -1881,7 +1883,14 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             if req.proof:
                 agent.context += PROOF_NOTE
         agent.attached = prepared.summary
+        route_simple(agent, question, has_files=bool(prepared.blocks), proof_on=req.proof)
         return agent, owner, question
+
+    def route_simple(agent: Agent, question: str, has_files: bool = False, proof_on: bool = False) -> None:
+        """Tune setting: short, simple questions go to the fast model (never Harsha, files, tasks or anything risky)."""
+        if getattr(agent, "tune_cfg", {}).get("simple_to_fast_model") and not has_files and not proof_on and tuning.is_simple(question):
+            agent.model = settings.assist_model
+            agent.speed_override = {}
 
     PROOF_NOTE = ("\n\nProof Mode is on: after you answer, code will check the actual result against the person's request "
                   "(files are opened and inspected). Do exactly what was asked. If you can't do part of it, say so plainly "
@@ -1890,14 +1899,17 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     MCP_NOTE = ("\n\nYou're being called as a tool by another AI assistant, not chatting with a person in the app. There are no "
                 "buttons or pop-ups: never mention them. Answer the question as asked; if Harsha's record doesn't cover it, say so plainly.")
 
-    def build_agent(owner: bool, stream: bool = False, channel: str = "web") -> Agent:
+    def build_agent(owner: bool, stream: bool = False, channel: str = "web", tune: dict | None = None) -> Agent:
         today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+        cfg = tune or tuned
         agent = Agent(
             get_client(), kb=kb, model=settings.model, max_steps=8, max_tokens=8000 if channel == "web" else 1600,
             system=build_general_prompt(today, owner=owner, web=settings.web_search) + (MCP_NOTE if channel == "mcp" else ""),
-            server_tools=[WEB_SEARCH_TOOL] if settings.web_search else [],
+            server_tools=[{**WEB_SEARCH_TOOL, "max_uses": cfg["web_max_searches"]}] if settings.web_search else [],
             lookup=_Lookup(kb, store), strict_grounding=False, stream=stream, fallback_model=backup_model or None,
         )
+        agent.speed_override = tuning.speed_override(cfg)
+        agent.tune_cfg = cfg
         add_notes_tools(agent.tools, index, store, owner=owner)
         if inbox.enabled and channel == "web":  # the "Ask the real Harsha" pop-up only exists in the app
             add_ask_harsha_tool(agent.tools)
@@ -2390,6 +2402,131 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         if denied:
             return denied
         return telemetry.get("trust_eval:last") or {"summary": None, "rows": []}
+
+    # ---------- Tune: measure our own settings, propose faster ones as a pull request ----------
+    tune_lock = threading.Lock()
+
+    @app.get("/api/owner/tune")
+    def tune_status(request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        return {"current": tuned, "knobs": tuning.KNOBS, "env_locked": tuning.env_locked(), "benchmark": len(tuning.BENCH),
+                "last": telemetry.get("tune:last"), "github": bool(os.environ.get("GITHUB_TOKEN") and (os.environ.get("TUNE_REPO") or os.environ.get("NOTES_REPO")))}
+
+    @app.post("/api/owner/tune")
+    def tune_run(request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        if budget.exhausted():
+            return error(503, "resting", "Today's budget is used up, so Tune can't run until tomorrow.")
+        if not tune_lock.acquire(blocking=False):
+            return error(409, "busy", "Tune is already running.")
+        q: queue.Queue = queue.Queue()
+        bench = [b for b in tuning.BENCH if settings.web_search or not b.get("web")]
+
+        def measure(cfg: dict, label: str) -> dict:
+            rows = []
+            for i, item in enumerate(bench, 1):
+                q.put(("status", {"label": f"{label}: question {i} of {len(bench)}"}))
+                a = build_agent(owner=False, stream=True, tune=cfg)   # streaming, so time to first words is measured
+                route_simple(a, item["q"])
+                try:
+                    r = a.ask(item["q"])
+                    t = check_answer(a, item["q"], r, lambda k, d: None)
+                    payload = finish(a, r, False, item["q"], event="tune_case", trust_out=t)
+                    rows.append({"id": item["id"], "seconds": round(r.seconds + (t["seconds"] if t else 0), 2),
+                                 "first_text_s": (r.timing or {}).get("first_text_s"), "model": a.model,
+                                 "cost_usd": round(payload["cost_usd"] + (t["cost_usd"] if t else 0), 5),
+                                 "correct": tuning.score(item, r.text, [c["id"] for c in payload["citations"]],
+                                                         payload["grounded"], t["status"] if t else None)})
+                except Exception as e:
+                    upstream_failed(e)
+                    rows.append({"id": item["id"], "seconds": None, "first_text_s": None, "cost_usd": 0, "correct": False, "error": type(e).__name__})
+            return {"config": cfg, "rows": rows, "summary": tuning.summarize(rows)}
+
+        def work():
+            started = time.monotonic()
+            try:
+                perf = tele.performance(telemetry.recent("answer", 14))
+                journal = telemetry.recent("tune_try", 120, 100)
+                q.put(("stage", {"stage": "read", "label": "Reading the performance history", "performance": perf}))
+                cands, pi, po = tuning.propose(get_client(), settings.assist_model, tuned, perf, journal)
+                budget.add(pi, po)
+                q.put(("stage", {"stage": "propose", "label": f"Proposed {len(cands)} candidate settings", "candidates": cands}))
+                base = measure(tuned, "Current settings")
+                q.put(("measured", {"which": "current", "config": tuned, "summary": base["summary"]}))
+                measured = []
+                for n, c in enumerate(cands, 1):
+                    if budget.exhausted():
+                        break
+                    m = measure(c["config"], f"Candidate {n}")
+                    m["why_proposed"] = c["why"]
+                    measured.append(m)
+                    q.put(("measured", {"which": f"candidate {n}", "config": c["config"], "why": c["why"], "summary": m["summary"]}))
+                best, first_verdicts = tuning.decide(base, measured)
+                winner, verdicts, base_final = None, first_verdicts, base
+                if best and not budget.exhausted():   # measure the current settings and the leader again, so one lucky run can't win
+                    q.put(("stage", {"stage": "confirm", "label": "Confirming: measuring the current settings and the leader again"}))
+                    lead = next(m for m in measured if m["config"] == best["config"])
+                    base_final = tuning.merge_runs(base, measure(tuned, "Current settings (again)"))
+                    lead_final = tuning.merge_runs(lead, measure(lead["config"], "Leader (again)"))
+                    w, confirm = tuning.decide(base_final, [lead_final])
+                    verdicts = [v if v["config"] != best["config"] else confirm[0] for v in first_verdicts]
+                    winner = {"config": lead_final["config"], "summary": lead_final["summary"]} if w else None
+                for m, v in zip(measured, first_verdicts):
+                    telemetry.add("tune_try", {"config": m["config"], "why": next((x["why"] for x in verdicts if x["config"] == m["config"]), v["why"]),
+                                               "ok": bool(winner and winner["config"] == m["config"]), "p50": m["summary"]["p50_seconds"]})
+                run = {"id": "T" + secrets.token_urlsafe(6), "ran_at": stamp_now(), "seconds": round(time.monotonic() - started, 1),
+                       "current": tuned, "performance": perf, "baseline": {"config": tuned, "summary": base_final["summary"]},
+                       "candidates": verdicts, "winner": winner, "env_locked": tuning.env_locked(),
+                       "decision": ("Found faster settings with the same quality and cost. Review and merge the pull request to apply them."
+                                    if winner else "Keep the current settings: no candidate was faster without costing more or answering worse."),
+                       "cost_usd": round(sum(r["cost_usd"] for m in [base] + measured for r in m["rows"]), 4)}
+                if signer is not None:
+                    rec = {"v": 1, "type": "tune", "id": run["id"], "issued": proof.now_iso(), "key": signer.fingerprint, "model": settings.model,
+                           "current": tuned, "winner": winner["config"] if winner else None,
+                           "baseline": run["baseline"]["summary"], "winner_summary": winner["summary"] if winner else None,
+                           "scope": "Measured with real API calls on Ask Harsha's benchmark questions. It reflects these questions, not every possible one."}
+                    run["receipt"], run["signature"] = rec, signer.sign(rec)
+                    run["fingerprint"] = hashlib.sha256(json.dumps(rec, sort_keys=True).encode()).hexdigest()[:16]
+                telemetry.put("tune:last", run)
+                telemetry.add("tune", {"winner": bool(winner), "seconds": run["seconds"], "cost_usd": run["cost_usd"],
+                                       "baseline_p50": base_final["summary"]["p50_seconds"], "winner_p50": winner["summary"]["p50_seconds"] if winner else None})
+                log.info(json.dumps({"event": "tune", "winner": bool(winner), "cost_usd": run["cost_usd"], "seconds": run["seconds"]}))
+                q.put(("final", run))
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": "Tune stopped unexpectedly. Please try again later."}))
+            finally:
+                tune_lock.release()
+
+        start_worker(work, q)
+        return StreamingResponse(stream_events(q), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    @app.post("/api/owner/tune/pr")
+    def tune_pr(request: Request):
+        """Open the pull request for the last Tune run's winner. Nothing changes until it's merged."""
+        denied = require_owner(request)
+        if denied:
+            return denied
+        run = telemetry.get("tune:last")
+        if not run or not run.get("winner"):
+            return error(400, "no_winner", "The last Tune run didn't find better settings, so there's nothing to propose.")
+        if run.get("pr"):
+            return run["pr"]
+        try:
+            pr = tuning.open_pull_request(os.environ.get("TUNE_REPO") or os.environ.get("NOTES_REPO", ""), os.environ.get("GITHUB_TOKEN", ""),
+                                          run["winner"]["config"], {"baseline": run["baseline"]["summary"], "winner": run["winner"]["summary"],
+                                                                     "measured_at": run["ran_at"], "fingerprint": run.get("fingerprint", "")},
+                                          tuning.pr_body(run), stamp=run["ran_at"][:16].replace(":", "").replace("-", "").replace("T", "-"))
+        except tuning.TuneError as e:
+            return error(400, "github", str(e))
+        run["pr"] = pr
+        telemetry.put("tune:last", run)
+        log.info(json.dumps({"event": "tune_pr", "pull_request": pr["pull_request"]}))
+        return pr
 
     @app.get("/api/owner/history")
     def owner_history(request: Request, days: float = 30):

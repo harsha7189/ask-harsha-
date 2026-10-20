@@ -19,7 +19,9 @@ import os
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
-def params(model: str, kind: str = "chat") -> dict:
+def params(model: str, kind: str = "chat", override: dict | None = None) -> dict:
+    """`override` comes from Tune's settings (agent/tuned.json): {"effort": ..., "thinking": ...}. Env vars still win."""
+    override = override or {}
     m = (model or "").lower()
     if m.startswith("claude-haiku-5-5"):
         if kind == "helper":
@@ -29,9 +31,9 @@ def params(model: str, kind: str = "chat") -> dict:
         return {"output_config": {"effort": "medium"}}
     if m.startswith("claude-sonnet-5-5"):
         if kind == "chat":
-            effort = os.environ.get("CHAT_EFFORT", "medium").lower()
+            effort = (os.environ.get("CHAT_EFFORT") or override.get("effort") or "medium").lower()
             effort = effort if effort in EFFORTS else "medium"
-            thinking = os.environ.get("CHAT_THINKING", "between_tools").lower()
+            thinking = (os.environ.get("CHAT_THINKING") or override.get("thinking") or "between_tools").lower()
             if effort in ("xhigh", "max") or thinking not in ("between_tools", "adaptive"):
                 thinking = "adaptive"   # between_tools isn't allowed at xhigh/max
             return {"output_config": {"effort": effort}, "thinking": {"type": thinking}}
