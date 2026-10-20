@@ -15,7 +15,7 @@
 <link rel="manifest" href="/static/manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=Share+Tech+Mono&display=swap">
 <style>
 /* Layout: one column, phone first. Fixed header, scrolling conversation, input bar pinned to the bottom above the home indicator. */
 :root{
@@ -358,13 +358,149 @@ textarea.listening{border-color:var(--fg)}
 .ep-item .btn{padding:6px 12px;font-size:12.5px;white-space:nowrap}
 .ep-item.warn>span b{color:var(--warn)}
 .ep-item.ok>span b{color:var(--good)}
+/* ===== Sidebar: "midnight broadcast" — its own look, apart from the red app ===== */
+.ep-drawer{--bg:#070912;--panel:#0e1222;--raise:#171c33;--line:#232945;--muted:#8f98b8;--fg:#eef0fa;--red:#7c6cff;--red-hot:#998cff;--mint:#4ef0c0;
+  background:radial-gradient(120% 50% at 100% 0%,rgba(124,108,255,.16),transparent 60%),radial-gradient(90% 40% at 0% 100%,rgba(78,240,192,.07),transparent 60%),#070912;color:var(--fg)}
+.ep-drawer .ep-title,.ep-drawer .ep-phead b,.ep-drawer .ep-tile b,.ep-drawer .ep-signin b{font-family:"Space Grotesk",var(--f-body,system-ui),sans-serif}
+.ep-drawer.tvmode{padding-bottom:0}
+.tv-top{gap:8px;padding:0 10px 12px 14px}
+.tv-brand{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.tv-logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font:700 16px/1 "Space Grotesk",sans-serif;color:#070912;background:conic-gradient(from 210deg,#4ef0c0,#7c6cff,#ff7eb3,#ffb84d,#4ef0c0);box-shadow:0 0 18px rgba(124,108,255,.35)}
+.tv-brand b{font:700 16px/1 "Space Grotesk",sans-serif;white-space:nowrap}
+.tv-tag{font:12px/1 "Share Tech Mono",ui-monospace,monospace;letter-spacing:.14em;padding:3px 6px;border-radius:5px;border:1px solid rgba(78,240,192,.35);color:var(--mint);text-shadow:0 0 8px rgba(78,240,192,.6)}
+.tv-who{color:var(--muted);font-size:12px;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-switch{font-size:12.5px;font-weight:600;padding:7px 11px;border-radius:999px;border:1px solid var(--line);color:var(--fg);background:var(--panel);white-space:nowrap}
+.tv-switch:hover{border-color:var(--muted)}
+/* command bar */
+.cmd{margin:0 12px;display:flex;align-items:center;gap:4px;padding:4px 4px 4px 12px;border-radius:16px;border:1.5px solid transparent;
+  background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(115deg,#4ef0c0,#7c6cff 50%,#ff7eb3) border-box;box-shadow:0 10px 30px rgba(124,108,255,.14);transition:box-shadow .2s}
+.cmd:focus-within{box-shadow:0 0 0 4px rgba(124,108,255,.2),0 10px 34px rgba(124,108,255,.28)}
+.cmd-g{font:16px/1 "Share Tech Mono",monospace;color:var(--mint);text-shadow:0 0 8px rgba(78,240,192,.6)}
+.cmd-in{flex:1;min-width:0;background:none;border:0;color:var(--fg);font:inherit;font-size:16px;padding:9px 4px;outline:none}
+.cmd-in::placeholder{color:#7d86a8}
+.cmd-mic,.cmd-go{width:38px;height:38px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;color:var(--fg)}
+.cmd-mic svg{width:18px;height:18px}
+.cmd-mic:hover{background:var(--raise)}
+.cmd-mic.on{background:#ff4d6d;color:#fff;animation:pulse 1.1s ease infinite}
+.cmd-go{background:linear-gradient(135deg,#7c6cff,#5a4be0);font-size:14px;box-shadow:0 4px 14px rgba(124,108,255,.4)}
+.cmd-out{margin:8px 12px 12px}
+.cmd-out:empty{margin-bottom:8px}
+.cmd-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;align-items:center;padding-bottom:2px}
+.cmd-chips::-webkit-scrollbar{display:none}
+.cmd-chips small{flex:0 0 auto;color:var(--muted);font:11px "Share Tech Mono",monospace;letter-spacing:.12em;text-transform:uppercase}
+.cmd-chip{flex:0 0 auto;font-size:13px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--raise);color:var(--fg);white-space:nowrap}
+.cmd-chip:hover{border-color:#7c6cff}
+.cmd-say{display:flex;align-items:center;gap:9px;font-size:14px;padding:9px 10px;border-radius:12px;background:rgba(78,240,192,.08);border:1px solid rgba(78,240,192,.28);animation:tvIn .25s ease}
+.cmd-say>span:nth-child(2){flex:1;min-width:0}
+.cmd-say.err{background:rgba(255,184,77,.08);border-color:rgba(255,184,77,.32)}
+.cmd-say.busy{background:var(--panel);border-color:var(--line);color:var(--muted)}
+.cmd-dot{width:20px;height:20px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;background:var(--mint);color:#070912}
+.cmd-say.err .cmd-dot{background:#ffb84d}
+.cmd-say.busy .cmd-dot{background:none;border:2px solid var(--line);border-top-color:var(--mint);animation:spin .8s linear infinite}
+.cmd-link{font-weight:700;color:var(--mint);font-size:13.5px;padding:2px 6px;white-space:nowrap}
+.cmd-res{display:grid;gap:6px;margin-top:6px}
+.cmd-hit{display:grid;gap:1px;text-align:left;padding:9px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);min-width:0}
+.cmd-hit:hover{border-color:#7c6cff}
+.cmd-hit b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmd-hit span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the screen */
+.tv-screen{--hue:#4ef0c0;position:relative;margin:0 12px;border-radius:22px;padding:12px 14px;min-height:214px;display:grid;grid-template-rows:auto 1fr auto;gap:8px;overflow:hidden;
+  background:radial-gradient(120% 90% at 90% -10%,color-mix(in srgb,var(--hue) 30%,transparent),transparent 60%),radial-gradient(80% 80% at -10% 110%,rgba(124,108,255,.24),transparent 65%),linear-gradient(180deg,#0e1328,#080a16);
+  border:1px solid color-mix(in srgb,var(--hue) 38%,#232945);transition:border-color .3s,box-shadow .3s;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),inset 0 0 70px rgba(0,0,0,.55),0 18px 40px rgba(0,0,0,.45),0 0 44px color-mix(in srgb,var(--hue) 15%,transparent)}
+.tv-bar{display:flex;align-items:center;gap:8px;font:12px/1 "Share Tech Mono",monospace;letter-spacing:.08em;color:var(--muted);position:relative;z-index:1}
+.tv-lcd{color:var(--hue);text-shadow:0 0 10px var(--hue);font-size:14px;padding:4px 7px;border-radius:6px;background:rgba(0,0,0,.4);border:1px solid color-mix(in srgb,var(--hue) 40%,transparent)}
+.tv-chname{flex:1;min-width:0;color:var(--fg);font:600 13.5px/1.2 "Instrument Sans",sans-serif;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-live{color:#ff6b81;text-shadow:0 0 8px rgba(255,107,129,.6)}
+.tv-stage{display:grid;gap:6px;align-content:center;justify-items:start;position:relative;z-index:1;animation:tvIn .35s ease}
+.tv-kicker{font:11.5px/1.3 "Share Tech Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--hue) 70%,#fff)}
+.tv-title{font:700 22px/1.12 "Space Grotesk",sans-serif;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tv-quote{margin:0;font-size:14px;line-height:1.42;color:#c9cee3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;quotes:"\201C" "\201D"}
+.tv-row{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+.tv-play{padding:9px 16px;border-radius:999px;background:var(--hue);color:#070912;font-weight:800;font-size:14px;box-shadow:0 0 24px color-mix(in srgb,var(--hue) 45%,transparent);transition:transform .15s}
+.tv-play:hover{transform:translateY(-1px)}
+.tv-ghost{padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);font-weight:600;font-size:13.5px;color:var(--fg);background:rgba(0,0,0,.2)}
+.tv-epnav{display:flex;align-items:center;gap:8px;color:var(--muted);font:11.5px/1 "Share Tech Mono",monospace;position:relative;z-index:1}
+.tv-epnav:empty{display:none}
+.tv-ep{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);color:var(--fg);font-size:17px;line-height:1;background:rgba(0,0,0,.25)}
+.tv-dots{display:flex;gap:4px;flex:1;align-items:center}
+.tv-dots i{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.2);transition:width .2s}
+.tv-dots i.on{width:16px;background:var(--hue);box-shadow:0 0 8px var(--hue)}
+.tv-scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.03) 0 1px,transparent 1px 3px)}
+.tv-noise{position:absolute;inset:0;pointer-events:none;opacity:0;background:repeating-radial-gradient(circle at 30% 40%,rgba(255,255,255,.4) 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,rgba(255,255,255,.14) 0 2px,transparent 2px 5px)}
+.tv-screen.tuning .tv-noise{animation:tvStatic .34s steps(4)}
+.tv-screen.tuning .tv-stage{animation:tvTune .4s ease}
+@keyframes tvStatic{0%{opacity:.95;transform:translateX(-5px)}50%{opacity:.6;transform:translateX(4px) scaleY(1.03)}100%{opacity:0;transform:none}}
+@keyframes tvTune{0%{opacity:0;filter:blur(6px) brightness(2.2);transform:scaleY(.04)}45%{opacity:1;transform:scaleY(1.03)}100%{filter:none;transform:none}}
+@keyframes tvIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+/* the guide */
+.tv-guide{margin:16px 0 0;padding:0 0 14px}
+.tv-gh{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 16px 8px}
+.tv-gh b{font:700 13px/1 "Space Grotesk",sans-serif;letter-spacing:.16em;text-transform:uppercase}
+.tv-gh small{color:var(--muted);font-size:12px;text-align:right}
+.tv-grid{overflow-x:auto;padding:0 12px 6px;display:grid;gap:4px;scrollbar-width:thin;scrollbar-color:#2a3150 transparent}
+.tv-grid>.ep-note{margin:0 4px}
+.tv-row-g{display:grid;grid-template-columns:112px 70px repeat(7,84px);gap:4px}
+.tv-chcell{position:sticky;left:0;z-index:2;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font-size:12.5px;font-weight:600;text-align:left;min-width:0;color:var(--fg);box-shadow:-13px 0 0 #070912,6px 0 10px -4px #070912}
+.tv-chcell em{font:11px/1 "Share Tech Mono",monospace;color:var(--hue);font-style:normal}
+.tv-chcell span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-row-g.on .tv-chcell{border-color:var(--hue);box-shadow:inset 3px 0 0 var(--hue),-13px 0 0 #070912,6px 0 10px -4px #070912}
+.tv-head .tv-chcell{background:#070912;border-color:transparent;box-shadow:-13px 0 0 #070912}
+.tv-day{font:11px/1 "Share Tech Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:4px 4px 2px}
+.tv-day.today{color:var(--mint);text-shadow:0 0 8px rgba(78,240,192,.5)}
+.tv-cell{display:grid;gap:3px;align-content:start;min-height:34px;border-radius:8px;background:rgba(255,255,255,.025);padding:2px}
+.tv-show{display:block;width:100%;text-align:left;font-size:11.5px;line-height:1.2;padding:6px;border-radius:7px;background:color-mix(in srgb,var(--hue) 15%,#10142a);border-left:3px solid var(--hue);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-show:hover{background:color-mix(in srgb,var(--hue) 26%,#10142a)}
+.tv-show.on{background:color-mix(in srgb,var(--hue) 34%,#10142a);box-shadow:0 0 0 1px var(--hue),0 0 12px color-mix(in srgb,var(--hue) 35%,transparent)}
+.tv-show.more{background:transparent;border-left-color:transparent;color:var(--muted);text-align:center}
+/* the remote */
+.tv-remote{--hue:#4ef0c0;position:sticky;bottom:0;margin-top:auto;z-index:3;padding:18px 16px calc(12px + env(safe-area-inset-bottom,0px));border-radius:30px 30px 0 0;
+  background:linear-gradient(180deg,#1c2138 0%,#12162b 55%,#0b0e1c 100%);border-top:1px solid #2c3355;box-shadow:0 -18px 40px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.09)}
+.tv-grip{position:absolute;top:0;left:50%;transform:translateX(-50%);width:84px;height:22px;display:grid;place-items:center}
+.tv-grip::before{content:"";width:40px;height:4px;border-radius:2px;background:var(--hue);box-shadow:0 0 12px var(--hue);opacity:.85;transition:background-color .3s,width .2s}
+.tv-grip:hover::before{width:52px}
+.tv-remote.mini{padding-top:20px}
+.tv-remote.mini .tv-body{display:none}
+.tv-remote.mini .tv-keys{margin-top:0}
+@media (max-height:760px){.tv-ring{width:144px;height:144px}.tv-k.ok{width:60px;height:60px}.tv-side .tv-k.mic{width:50px;height:50px}.tv-side .tv-k{width:42px;height:42px}}
+.tv-body{display:flex;align-items:center;justify-content:center;gap:26px}
+.tv-ring{position:relative;width:164px;height:164px;flex:0 0 auto;border-radius:50%;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;
+  background:radial-gradient(circle at 35% 28%,#2c3458,#161b31 72%);box-shadow:inset 0 2px 0 rgba(255,255,255,.1),inset 0 -8px 16px rgba(0,0,0,.55),0 12px 26px rgba(0,0,0,.55),0 0 0 1px #2c3355}
+.tv-ring::after{content:"";position:absolute;inset:-4px;border-radius:50%;pointer-events:none;background:conic-gradient(from 0deg,transparent 0 70%,color-mix(in srgb,var(--hue) 75%,transparent),transparent);opacity:0;transition:opacity .2s;
+  -webkit-mask:radial-gradient(circle,transparent 66%,#000 67%);mask:radial-gradient(circle,transparent 66%,#000 67%)}
+.tv-ring.spinning{cursor:grabbing}
+.tv-ring.spinning::after{opacity:1}
+.tv-ticks{position:absolute;inset:7px;border-radius:50%;pointer-events:none;background:repeating-conic-gradient(from 0deg,rgba(255,255,255,.28) 0 1.4deg,transparent 1.4deg 15deg);
+  -webkit-mask:radial-gradient(circle,transparent 86%,#000 87%,#000 96%,transparent 97%);mask:radial-gradient(circle,transparent 86%,#000 87%,#000 96%,transparent 97%)}
+.tv-k{position:absolute;display:grid;place-items:center;color:#c9cee3;border-radius:12px}
+.tv-k:hover{color:#fff}
+.tv-k svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.tv-k.up{top:9px;left:50%;transform:translateX(-50%);width:44px;height:38px}
+.tv-k.down{bottom:9px;left:50%;transform:translateX(-50%);width:44px;height:38px}
+.tv-k.left{left:9px;top:50%;transform:translateY(-50%);width:38px;height:44px}
+.tv-k.right{right:9px;top:50%;transform:translateY(-50%);width:38px;height:44px}
+.tv-k.ok{left:50%;top:50%;transform:translate(-50%,-50%);width:68px;height:68px;border-radius:50%;font:700 15px/1 "Space Grotesk",sans-serif;letter-spacing:.08em;color:#070912;
+  background:radial-gradient(circle at 38% 32%,color-mix(in srgb,var(--hue) 55%,#fff),var(--hue) 72%);box-shadow:0 0 0 5px #0e1226,0 0 26px color-mix(in srgb,var(--hue) 60%,transparent);transition:background-color .3s}
+.tv-k.pressed{animation:tvPress .2s ease}
+@keyframes tvPress{50%{scale:.88;filter:brightness(1.6)}}
+.tv-side{display:grid;justify-items:center;gap:3px}
+.tv-side .tv-k{position:static;transform:none;width:46px;height:46px;border-radius:15px;background:linear-gradient(180deg,#252c4b,#171c33);box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 4px 10px rgba(0,0,0,.45)}
+.tv-side .tv-k svg{width:20px;height:20px}
+.tv-side .tv-k.mic{width:56px;height:56px;border-radius:50%;color:#d9d3ff;background:radial-gradient(circle at 40% 30%,#4a3f9a,#221c4d);box-shadow:0 0 0 1px #5a4fc0,0 0 22px rgba(124,108,255,.4)}
+.tv-side small{font:10px/1 "Share Tech Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.tv-keys{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.tv-ck{display:grid;justify-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#c9cee3;padding:2px 0}
+.tv-ck i{width:100%;height:16px;border-radius:9px;background:var(--k);box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 0 14px color-mix(in srgb,var(--k) 45%,transparent),0 3px 0 color-mix(in srgb,var(--k) 45%,#000)}
+.tv-ck:hover i{filter:brightness(1.15)}
+.tv-ck.pressed i{animation:tvPress .2s ease}
+.ck-projects{--k:#ff5a6e}.ck-tools{--k:#39d98a}.ck-saved{--k:#ffc93c}.ck-customize{--k:#4da3ff}
 /* sidebar: home tiles and section panels */
 .ep-view{display:flex;flex-direction:column;min-height:100%}
 .ep-view>*{flex-shrink:0}
 .ep-back{font-weight:700;font-size:14.5px;padding:8px 10px;border-radius:10px;color:var(--fg)}
 .ep-back:hover{background:var(--raise)}
 .ep-title{flex:1;font-size:17px;padding-left:4px}
-.t-projects{--c:var(--blue)}.t-saved{--c:var(--warn)}.t-tools{--c:var(--good)}.t-customize{--c:var(--red-hot)}
+.t-projects{--c:#ff5a6e}.t-saved{--c:#ffc93c}.t-tools{--c:#39d98a}.t-customize{--c:#4da3ff}
 .ep-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 12px 12px}
 .ep-tile{position:relative;display:grid;gap:3px;justify-items:start;text-align:left;padding:12px 12px 11px;border-radius:14px;border:1px solid var(--line);
   background:radial-gradient(90% 120% at 0% 0%,color-mix(in srgb,var(--c) 22%,transparent),transparent 65%),var(--panel);overflow:hidden;transition:border-color .15s,transform .15s}
@@ -1100,11 +1236,18 @@ function openSidebar(start,arg){
   const bg=el('div','ep-bg'),dr=el('aside','ep-drawer');dr.setAttribute('role','dialog');dr.setAttribute('aria-label','Menu');
   let timer=null;
   const close=()=>{clearInterval(timer);dr.classList.add('out');bg.classList.add('out');setTimeout(()=>{bg.remove();document.removeEventListener('keydown',esc)},220);$('#recents').focus()};
-  function esc(e){if(e.key==='Escape')close()}
+  function esc(e){
+    if(e.key==='Escape'){if(cmdRec){try{cmdRec.stop()}catch(x){}}close();return}
+    const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');
+    if(!tvEls||typing||e.metaKey||e.ctrlKey||e.altKey)return;
+    const k={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'}[e.key];
+    if(k){e.preventDefault();tvEls[k]()}else if(e.key==='Enter'&&document.activeElement===document.body){e.preventDefault();tvEls.ok()}
+    else if(e.key==='/'){e.preventDefault();cmdUI&&cmdUI.inp.focus()}
+  }
   document.addEventListener('keydown',esc);bg.onclick=e=>{if(e.target===bg)close()};
   const view=el('div','ep-view');dr.append(view);
-  const go=(section,a)=>{clearInterval(timer);view.textContent='';dr.scrollTop=0;
-    if(!section)home();else panel(section,a);
+  const go=(section,a)=>{clearInterval(timer);view.textContent='';dr.scrollTop=0;tvEls=null;cmdUI=null;dr.classList.remove('tvmode');
+    if(!section)(sbView()==='tv'?tvHome():home());else panel(section,a);
     const f=view.querySelector('.ep-back,.ep-x');if(f)f.focus()};
   const topBar=(title,back)=>{
     const top=el('div','ep-top');
@@ -1113,9 +1256,9 @@ function openSidebar(start,arg){
     const x=el('button','ep-x','×');x.type='button';x.setAttribute('aria-label','Close');x.onclick=close;top.append(x);view.append(top);
   };
 
-  // ----- home: tiles, then chats -----
+  // ----- home (list view): tiles, then chats -----
   function home(){
-    topBar();
+    homeTop();cmdBar();
     const tiles=el('nav','ep-tiles');tiles.setAttribute('aria-label','Sections');
     SECTIONS.forEach(s=>{const t=el('button','ep-tile t-'+s.id);t.type='button';const ic=el('span','ic');ic.innerHTML=SB_ICONS[s.id];
       t.append(ic,el('b',null,s.name),el('small',null,s.sub()));t.onclick=()=>go(s.id);tiles.append(t)});
@@ -1223,6 +1366,275 @@ function openSidebar(start,arg){
     const b=el('button','btn red','Sign in with a passkey');b.type='button';b.onclick=()=>{close();openSignIn()};card.append(b);
     if(!me.enabled){card.textContent='';card.append(el('p',null,`${what[0].toUpperCase()+what.slice(1)} need accounts, which aren’t switched on for this site yet.`))}
     view.append(card);
+  }
+
+  // ----- "Ask Harsha TV": a channel screen, tonight's guide and a remote you can spin -----
+  // Channels: All chats, one per project, and My List (saved answers). Episodes are chats (or saved answers).
+  // ▲▼ or spinning the dial changes channel, ◀▶ moves between episodes, OK plays (opens) the one on screen.
+  // The four color keys open Projects, Tools, Saved and Customize, like the colored buttons on a real remote.
+  const HUES=['#4ef0c0','#9d8cff','#ff7eb3','#ffb84d','#5cb8ff','#b8f35e','#ff9a5c','#62e6ff'];
+  let tvState=(()=>{try{return JSON.parse(sessionStorage.getItem('askh_tv')||'{}')}catch(e){return {}}})();
+  let tvEls=null;
+  function channels(){
+    if(!signedIn())return [{id:'welcome',name:me.enabled?'Welcome':'Ask Harsha',icon:'👋',eps:[],kind:'welcome',hue:HUES[0]}];
+    const byTime=(a,b)=>(a.created||a.updated)-(b.created||b.updated);
+    const list=[{id:'all',name:'All chats',icon:'📺',eps:[...summaries].sort(byTime),kind:'chats'}];
+    projects.forEach(p=>list.push({id:p.id,name:p.name,icon:p.icon,eps:summaries.filter(c=>c.project===p.id).sort(byTime),kind:'chats',project:p}));
+    list.push({id:'saved',name:'My List',icon:'★',eps:[...savedItems].sort((a,b)=>a.created-b.created),kind:'saved'});
+    return list.map((c,i)=>({...c,no:i+1,hue:HUES[i%HUES.length]}));
+  }
+  function tvHome(){
+    dr.classList.add('tvmode');
+    homeTop();cmdBar();
+    const chs=channels();
+    // Open on the chat that's on screen; otherwise on the last channel you watched, at its newest episode.
+    let ch=Math.max(0,chs.findIndex(c=>c.id===tvState.ch)),ep=Math.max(0,chs[ch].eps.length-1);
+    if(cur){
+      const has=c=>c.kind==='chats'&&c.eps.some(e=>e.id===cur.id);
+      if(!has(chs[ch]))ch=Math.max(0,chs.findIndex(has));
+      const i=chs[ch].eps.findIndex(e=>e.id===cur.id);if(i>=0)ep=i;
+    }
+
+    // the screen
+    const screen=el('section','tv-screen');screen.setAttribute('aria-live','polite');
+    const bar=el('div','tv-bar'),lcd=el('span','tv-lcd'),cname=el('span','tv-chname'),live=el('span','tv-live'),clock=el('span','tv-clock');
+    bar.append(lcd,cname,live,clock);
+    const stage=el('div','tv-stage'),epnav=el('div','tv-epnav');
+    screen.append(bar,stage,epnav,el('div','tv-scan'),el('div','tv-noise'));
+    view.append(screen);
+
+    // tonight's guide
+    const gwrap=el('section','tv-guide');const gh=el('div','tv-gh');gh.append(el('b',null,'Guide'),el('small',null,signedIn()?'Last 7 days · tap a show to tune in':'Sign in to start recording your chats'));
+    const grid=el('div','tv-grid');gwrap.append(gh,grid);view.append(gwrap);
+
+    // the remote
+    const rm=el('section','tv-remote');rm.setAttribute('aria-label','Remote');
+    const ring=el('div','tv-ring');const ticks=el('div','tv-ticks');ring.append(ticks);
+    const key=(cls,label,txt,fn)=>{const b=el('button','tv-k '+cls);b.type='button';b.setAttribute('aria-label',label);b.innerHTML=txt;b.onclick=e=>{e.stopPropagation();press(b);fn()};return b};
+    const up=key('up','Channel up','<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',()=>tune(ch+1,null)),
+          down=key('down','Channel down','<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',()=>tune(ch-1,null)),
+          left=key('left','Previous episode','<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',()=>step(-1)),
+          right=key('right','Next episode','<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',()=>step(1)),
+          ok=key('ok','Play the episode on screen','OK',()=>play());
+    ring.append(up,down,left,right,ok);
+    const side=el('div','tv-side');
+    const mic=key('mic','Speak a command','<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',()=>listenCmd());
+    const nw=key('plus','New chat on this channel','<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',()=>newOnChannel());
+    const ls=key('list','Switch to the list view','<svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',()=>{setView('list');go()});
+    side.append(mic,el('small',null,'Voice'),nw,el('small',null,'New'),ls,el('small',null,'List'));
+    const body=el('div','tv-body');body.append(ring,side);
+    const keys=el('div','tv-keys');
+    [['projects','Projects'],['tools','Tools'],['saved','Saved'],['customize','Customize']].forEach(([id,name])=>{
+      const b=el('button','tv-ck ck-'+id);b.type='button';b.append(el('i'),el('span',null,name));b.onclick=()=>{press(b);go(id)};keys.append(b)});
+    const grip=el('button','tv-grip');grip.type='button';
+    const mini=()=>{try{return localStorage.getItem('askh_remote_mini')==='1'}catch(e){return false}};
+    const setMini=v=>{rm.classList.toggle('mini',v);grip.setAttribute('aria-label',v?'Show the full remote':'Tuck the remote away');grip.setAttribute('aria-expanded',!v);try{localStorage.setItem('askh_remote_mini',v?'1':'0')}catch(e){}};
+    grip.onclick=()=>setMini(!rm.classList.contains('mini'));setMini(mini());
+    rm.append(grip,body,keys);view.append(rm);
+
+    function press(b){b.classList.remove('pressed');void b.offsetWidth;b.classList.add('pressed');try{navigator.vibrate&&navigator.vibrate(6)}catch(e){}}
+    function step(d){const n=chs[ch].eps.length;if(!n)return;tune(ch,(ep+d+n)%n)}
+    function tune(c,e){
+      const n=chs.length;c=((c%n)+n)%n;const changed=c!==ch;ch=c;
+      ep=e==null?Math.max(0,chs[ch].eps.length-1):e;
+      tvState={ch:chs[ch].id,ep};try{sessionStorage.setItem('askh_tv',JSON.stringify(tvState))}catch(x){}
+      if(changed){screen.classList.remove('tuning');void screen.offsetWidth;screen.classList.add('tuning')}
+      paint();drawGuide();
+    }
+    tvEls={tune:(id)=>{const i=chs.findIndex(c=>c.id===id);if(i>=0)tune(i,null)},up:()=>tune(ch+1,null),down:()=>tune(ch-1,null),left:()=>step(-1),right:()=>step(1),ok:()=>play()};
+    function cur_(){return chs[ch].eps[ep]}
+    function play(){
+      const c=chs[ch],e=cur_();
+      if(c.kind==='welcome'){close();openSignIn();return}
+      if(!e){newOnChannel();return}
+      if(c.kind==='saved'){if(e.chat_id&&summaries.some(s=>s.id===e.chat_id)){close();openChat(e.chat_id)}else go('saved');return}
+      close();openChat(e.id);
+    }
+    function newOnChannel(){
+      const c=chs[ch];close();
+      if(c.project)startInProject(c.project.id);else{newChat();q.focus()}
+    }
+    function paint(){
+      const c=chs[ch],e=cur_();
+      screen.style.setProperty('--hue',c.hue);rm.style.setProperty('--hue',c.hue);
+      lcd.textContent='CH '+String(c.no||1).padStart(2,'0');cname.textContent=c.icon+'  '+c.name;
+      const isLive=c.kind==='chats'&&e&&e.id===chatId;live.textContent=isLive?'● ON NOW':'';
+      clock.textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+      stage.textContent='';epnav.textContent='';
+      if(c.kind==='welcome'){
+        stage.append(el('span','tv-kicker','Nothing recording yet'),el('b','tv-title',me.enabled?'Sign in to start recording':'Your chats aren’t saved here'),
+          el('p','tv-quote',me.enabled?'Every chat becomes an episode, every project a channel, and your favorite answers go on My List. Face ID or fingerprint, no password.':'This site isn’t set up to save chats. You can still chat, and use Tools and Customize from the color keys.'));
+        if(me.enabled){const b=el('button','tv-play','Sign in with a passkey');b.type='button';b.onclick=()=>{close();openSignIn()};stage.append(b)}
+        return;
+      }
+      if(!e){
+        stage.append(el('span','tv-kicker',c.kind==='saved'?'Your list is empty':'Nothing on yet'),
+          el('b','tv-title',c.kind==='saved'?'Tap ☆ Save under any answer':c.project?'Start the first episode':'Ask your first question'),
+          el('p','tv-quote',c.kind==='saved'?'Answers you save show up here as your list.':c.project&&c.project.instructions?'This channel follows: “'+c.project.instructions.slice(0,140)+(c.project.instructions.length>140?'…':'')+'”':'Your chats will play here.'));
+        if(c.kind!=='saved'){const b=el('button','tv-play','● Start the first episode');b.type='button';b.onclick=newOnChannel;stage.append(b)}
+        return;
+      }
+      if(c.kind==='saved'){
+        stage.append(el('span','tv-kicker',`${e.kind==='card'?'✓ Verified':'★ Saved'} · ${new Date(e.created).toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}`),
+          el('b','tv-title',e.question||'Saved answer'),el('q','tv-quote',cleanLine(e.data.answer).slice(0,170)));
+      }else{
+        const p=e.project&&projectById(e.project);
+        stage.append(el('span','tv-kicker',`E${ep+1} · ${e.wx?e.wx.icon+' ':''}${new Date(e.updated).toLocaleDateString([],{weekday:'long'})} · ${e.questions} question${e.questions===1?'':'s'}${c.id==='all'&&p?' · '+p.icon+' '+p.name:''}`),
+          el('b','tv-title',e.title));
+        const h=highlight(e);if(h)stage.append(el('q','tv-quote',h));
+      }
+      const r=el('div','tv-row');const pl=el('button','tv-play','▶ Watch');pl.type='button';pl.onclick=play;r.append(pl);
+      if(c.kind!=='saved'){const nb=el('button','tv-ghost','+ New episode');nb.type='button';nb.onclick=newOnChannel;r.append(nb)}
+      stage.append(r);
+      const n=c.eps.length;
+      if(n>1){const pv=el('button','tv-ep','‹');pv.type='button';pv.setAttribute('aria-label','Previous episode');pv.onclick=()=>step(-1);
+        const dots=el('span','tv-dots');const show=Math.min(n,9),startAt=Math.max(0,Math.min(ep-4,n-show));
+        for(let i=startAt;i<startAt+show;i++){const d=el('i',i===ep?'on':'');dots.append(d)}
+        const nx=el('button','tv-ep','›');nx.type='button';nx.setAttribute('aria-label','Next episode');nx.onclick=()=>step(1);
+        epnav.append(pv,dots,el('small',null,`${ep+1} of ${n}`),nx)}
+    }
+    function drawGuide(){
+      grid.textContent='';
+      if(!signedIn()){grid.append(el('p','ep-note','Your chats will show up here like a TV guide, one row per project.'));return}
+      const today=new Date();today.setHours(0,0,0,0);const days=[];for(let i=6;i>=0;i--)days.push(today.getTime()-i*DAY);
+      const cols=el('div','tv-row-g tv-head');cols.append(el('span','tv-chcell',''),el('span','tv-day','Earlier'));
+      days.forEach((d,i)=>cols.append(el('span','tv-day'+(i===6?' today':''),i===6?'Today':new Date(d).toLocaleDateString([],{weekday:'short'}))));
+      grid.append(cols);
+      chs.forEach((c,ci)=>{
+        const row=el('div','tv-row-g'+(ci===ch?' on':''));row.style.setProperty('--hue',c.hue);
+        const lab=el('button','tv-chcell');lab.type='button';lab.append(el('em',null,String(c.no).padStart(2,'0')),el('span',null,c.icon+' '+c.name));lab.onclick=()=>tune(ci,null);row.append(lab);
+        const dayOf=e=>{const d=new Date(c.kind==='saved'?e.created:(e.updated||e.created));d.setHours(0,0,0,0);return d.getTime()};
+        const older=c.eps.map((e,i)=>[e,i]).filter(([e])=>dayOf(e)<days[0]);
+        const ec=el('div','tv-cell');if(older.length){const b=el('button','tv-show more',`${older.length} earlier`);b.type='button';b.onclick=()=>tune(ci,older[older.length-1][1]);ec.append(b)}row.append(ec);
+        days.forEach(d=>{const cell=el('div','tv-cell');const hits=c.eps.map((e,i)=>[e,i]).filter(([e])=>dayOf(e)===d);
+          hits.slice(-2).forEach(([e,i])=>{const b=el('button','tv-show'+(ci===ch&&i===ep?' on':''),c.kind==='saved'?(e.question||'Saved'):e.title);b.type='button';b.title=c.kind==='saved'?e.question:e.title;b.onclick=()=>tune(ci,i);cell.append(b)});
+          if(hits.length>2){const m=el('button','tv-show more',`+${hits.length-2}`);m.type='button';m.onclick=()=>tune(ci,hits[0][1]);cell.append(m)}
+          row.append(cell)});
+        grid.append(row);
+      });
+      requestAnimationFrame(()=>{grid.scrollLeft=grid.scrollWidth});
+    }
+
+    // spin the dial: every ~35° of drag is one channel
+    let drag=null;
+    ring.addEventListener('pointerdown',e=>{if(e.target.closest('.tv-k'))return;const r=ring.getBoundingClientRect();drag={cx:r.left+r.width/2,cy:r.top+r.height/2,last:null,acc:0,rot:+(ticks.dataset.rot||0)};ring.setPointerCapture(e.pointerId);ring.classList.add('spinning')});
+    ring.addEventListener('pointermove',e=>{if(!drag)return;const a=Math.atan2(e.clientY-drag.cy,e.clientX-drag.cx)*180/Math.PI;
+      if(drag.last!=null){let d=a-drag.last;if(d>180)d-=360;if(d<-180)d+=360;drag.acc+=d;drag.rot+=d;ticks.style.transform=`rotate(${drag.rot}deg)`;ticks.dataset.rot=drag.rot;
+        while(drag.acc>=35){drag.acc-=35;tune(ch+1,null);try{navigator.vibrate&&navigator.vibrate(4)}catch(x){}}
+        while(drag.acc<=-35){drag.acc+=35;tune(ch-1,null);try{navigator.vibrate&&navigator.vibrate(4)}catch(x){}}}
+      drag.last=a});
+    const endDrag=()=>{drag=null;ring.classList.remove('spinning')};ring.addEventListener('pointerup',endDrag);ring.addEventListener('pointercancel',endDrag);
+    ring.addEventListener('wheel',e=>{e.preventDefault();tune(ch+(e.deltaY<0?1:-1),null)},{passive:false});
+
+    tune(ch,ep);screen.classList.remove('tuning');
+    const clockTimer=setInterval(()=>{if(!document.body.contains(clock)){clearInterval(clockTimer);return}clock.textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})},20000);
+  }
+  function homeTop(){
+    const top=el('div','ep-top tv-top');
+    const brand=el('div','tv-brand');brand.append(el('span','tv-logo','H'),el('b',null,'Ask Harsha'),el('span','tv-tag',sbView()==='tv'?'TV':'MENU'));
+    const tg=el('button','tv-switch',sbView()==='tv'?'☰ List':'📺 TV');tg.type='button';tg.setAttribute('aria-label',sbView()==='tv'?'Switch to the list view':'Switch to the TV view');
+    tg.onclick=()=>{setView(sbView()==='tv'?'list':'tv');go()};
+    const x=el('button','ep-x','×');x.type='button';x.setAttribute('aria-label','Close');x.onclick=close;
+    top.append(brand,tg,x);view.append(top);
+  }
+
+  // ----- talk to the sidebar -----
+  function cmdBar(){
+    const f=el('form','cmd');f.setAttribute('role','search');
+    const glyph=el('span','cmd-g','⌘');
+    const inp=el('input','cmd-in');inp.type='text';inp.placeholder='Tell the remote what you need…';inp.setAttribute('aria-label','Tell the remote what you need');inp.maxLength=300;inp.autocomplete='off';inp.enterKeyHint='go';
+    const m=el('button','cmd-mic');m.type='button';m.setAttribute('aria-label','Speak a command');m.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    const go_=el('button','cmd-go','➤');go_.type='submit';go_.setAttribute('aria-label','Go');
+    f.append(glyph,inp,m,go_);
+    const out=el('div','cmd-out');
+    view.append(f,out);
+    cmdUI={inp,out,mic:m,form:f};
+    f.onsubmit=e=>{e.preventDefault();runCmd(inp.value)};
+    m.onclick=()=>listenCmd();
+    inp.addEventListener('focus',()=>{if(!inp.value&&!out.dataset.result)suggest()});
+    inp.addEventListener('input',()=>{if(!inp.value){delete out.dataset.result;suggest()}});
+  }
+  let cmdUI=null,cmdRec=null;
+  function suggest(){
+    const {out,inp}=cmdUI;out.textContent='';
+    const ideas=[];
+    if(projects[0])ideas.push(`open my ${projects[0].name.toLowerCase()}`);else ideas.push('start a trip project');
+    ideas.push(prefs.length==='short'?'give me more detailed answers':'make my answers shorter');
+    if(savedItems.length)ideas.push('what did I save about…');
+    ideas.push(prefs.read_aloud?'stop reading answers aloud':'read answers aloud','morning brief');
+    if(!signedIn()&&me.enabled)ideas.unshift('sign in');
+    const row=el('div','cmd-chips');row.append(el('small',null,'Try'));
+    ideas.slice(0,5).forEach(t=>{const b=el('button','cmd-chip',t);b.type='button';b.onclick=()=>{if(t.endsWith('…')){inp.value=t.slice(0,-1)+' ';inp.focus()}else{inp.value=t;runCmd(t)}};row.append(b)});
+    out.append(row);
+  }
+  function cmdSay(text,kind,extra){
+    const {out}=cmdUI;out.textContent='';out.dataset.result='1';
+    const line=el('div','cmd-say '+(kind||''));line.append(el('span','cmd-dot',kind==='err'?'!':kind==='busy'?'':'✓'),el('span',null,text));
+    if(extra)line.append(extra);out.append(line);return out;
+  }
+  async function runCmd(text){
+    text=(text||'').trim();if(!text||!cmdUI)return;
+    const {inp}=cmdUI;inp.blur();
+    cmdSay('Working on it…','busy');
+    const context={signed_in:signedIn(),projects:projects.map(p=>({id:p.id,name:p.name})),
+      chats:[...summaries].sort((a,b)=>b.updated-a.updated).slice(0,80).map(c=>({id:c.id,title:c.title,project:c.project})),
+      saved:savedItems.slice(0,60).map(s=>({question:s.question})),prefs:{length:prefs.length,tone:prefs.tone,read_aloud:prefs.read_aloud,jury:prefs.jury,name:prefs.name,city:prefs.city}};
+    let d;try{d=await api('POST','/api/remote',{text,context})}catch(e){cmdSay(e.message,'err');return}
+    await doCmd(d,text);
+  }
+  const needAccount=()=>{if(signedIn())return false;const b=el('button','cmd-link','Sign in');b.type='button';b.onclick=()=>{close();openSignIn()};cmdSay('That needs an account first.','err',b);return true};
+  async function doCmd(d,text){
+    const a=d.args||{},say=d.say;
+    switch(d.action){
+      case 'open_section':
+        if(a.section==='chats'){if(sbView()==='tv'&&tvEls){tvEls.tune('all');cmdSay(say||'Tuned to All chats.')}else{setView('list');go()}return}
+        go(a.section);return;
+      case 'open_project':
+        if(needAccount())return;
+        if(sbView()==='tv'&&tvEls){tvEls.tune(a.project_id);cmdSay(say||'Tuned in.')}else go('project',a.project_id);return;
+      case 'open_chat':close();openChat(a.chat_id);return;
+      case 'channel_up':tvEls?tvEls.up():null;cmdSay(say||'Next channel.');return;
+      case 'channel_down':tvEls?tvEls.down():null;cmdSay(say||'Previous channel.');return;
+      case 'new_chat':close();if(a.project_id&&signedIn())startInProject(a.project_id);else{newChat();q.focus()}return;
+      case 'ask':close();newChat();ask(a.query);return;
+      case 'sign_in':close();if(signedIn())toast('You’re already signed in.');else openSignIn();return;
+      case 'open_tool':location.href=a.tool==='assist'?'/assist':'/tools#'+a.tool;return;
+      case 'set_pref':{
+        const old=prefs[a.pref];setPref(a.pref,a.value);if(a.pref==='jury')juryOn=juryAvail&&a.value;if(a.pref==='city')loadWeather();
+        const u=el('button','cmd-link','Undo');u.type='button';u.onclick=()=>{setPref(a.pref,old);if(a.pref==='jury')juryOn=juryAvail&&old;if(a.pref==='city')loadWeather();cmdSay('Undone.');if(cmdUI)cmdUI.inp.value=''};
+        cmdSay(say||'Done.','',u);cmdUI.inp.value='';return}
+      case 'create_project':{
+        if(needAccount())return;
+        try{const p=await api('POST','/api/projects',{name:a.name,icon:a.icon,instructions:a.instructions||''});await loadProjects();
+          cmdUI.inp.value='';go('project',p.id);toast(say||`Project “${p.name}” is ready.`)}catch(e){cmdSay(e.message,'err')}return}
+      case 'search_chats':{
+        if(needAccount())return;
+        let hits=[];try{hits=(await api('GET','/api/chats?q='+encodeURIComponent(a.query))).chats||[]}catch(e){}
+        results(hits.map(c=>({t:c.title,s:highlight(c),on:()=>{close();openChat(c.id)}})),say||`Chats about “${a.query}”`,`No chats about “${a.query}” yet.`);return}
+      case 'search_saved':{
+        if(needAccount())return;
+        const words=a.query.toLowerCase().split(/\s+/).filter(w=>w.length>2);
+        const hits=savedItems.filter(s=>{const t=(s.question+' '+(s.data.answer||'')).toLowerCase();return words.some(w=>t.includes(w))});
+        results(hits.map(s=>({t:s.question||'Saved answer',s:cleanLine(s.data.answer).slice(0,110),on:()=>{if(s.chat_id&&summaries.some(c=>c.id===s.chat_id)){close();openChat(s.chat_id)}else go('saved')}})),say||`Saved answers about “${a.query}”`,`Nothing saved about “${a.query}” yet.`);return}
+      default:cmdSay(say||'I’m not sure how to do that yet.',d.action==='reply'?'':'err');
+    }
+  }
+  function results(items,title,empty){
+    const out=cmdSay(items.length?title:empty,items.length?'':'err');
+    const list=el('div','cmd-res');items.slice(0,6).forEach(it=>{const b=el('button','cmd-hit');b.type='button';b.append(el('b',null,it.t),el('span',null,it.s||''));b.onclick=it.on;list.append(b)});
+    out.append(list);
+  }
+  function listenCmd(){
+    if(!cmdUI)return;
+    const R=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!R){cmdSay("Voice commands aren't available in this browser. Type instead.",'err');cmdUI.inp.focus();return}
+    if(cmdRec){try{cmdRec.stop()}catch(e){}return}
+    const rec=new R();cmdRec=rec;rec.lang=navigator.language||'en-US';rec.interimResults=true;rec.continuous=false;
+    const {inp,mic}=cmdUI;let said='';mic.classList.add('on');inp.placeholder='Listening… say what you need';cmdSay('Listening…','busy');
+    rec.onresult=e=>{said=[...e.results].map(r=>r[0].transcript).join(' ');inp.value=said};
+    rec.onerror=e=>{if(e.error==='not-allowed')cmdSay('Allow the microphone for this site to use voice commands.','err')};
+    rec.onend=()=>{cmdRec=null;mic.classList.remove('on');inp.placeholder='Tell the remote what you need…';if(said.trim())runCmd(said);else if(cmdUI.out.querySelector('.busy'))suggest()};
+    try{rec.start()}catch(e){cmdRec=null;mic.classList.remove('on')}
   }
 
   // ----- the panels -----
@@ -1372,7 +1784,9 @@ function openSidebar(start,arg){
   bg.append(dr);document.body.append(bg);
   go(start||null,arg);
 }
-function openRecents(){openSidebar()}   // "All chats" links on the home screen
+function openRecents(){openSidebar()}
+const sbView=()=>{try{return localStorage.getItem('askh_sidebar_view')==='list'?'list':'tv'}catch(e){return 'tv'}};
+function setView(v){try{localStorage.setItem('askh_sidebar_view',v)}catch(e){}}   // "All chats" links on the home screen
 function seg(options,value,onChange,label){
   const g=el('div','ep-seg');g.setAttribute('role','radiogroup');g.setAttribute('aria-label',label);
   options.forEach(([k,t])=>{const b=el('button',k===value?'on':'',t);b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',k===value);

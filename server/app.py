@@ -42,7 +42,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, personal  # noqa: E402
+from agent import accounts as acct, personal, remote  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -213,6 +213,11 @@ class ProjectBody(BaseModel):
 
 class ChatProject(BaseModel):
     project: str = Field(default="", max_length=40)
+
+
+class RemoteCommand(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    context: dict = Field(default_factory=dict)
 
 
 class SavedItem(BaseModel):
@@ -685,6 +690,29 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         if len(json.dumps(prefs)) > 8000:
             return error(400, "prefs", "Those settings are too long.")
         return {"prefs": accounts.save_prefs(user.id, prefs)}
+
+    # ---------- Talk to the sidebar ----------
+    remote_limiter = RateLimiter(40, 600)
+
+    @app.post("/api/remote")
+    def remote_command(req: RemoteCommand, request: Request):
+        """Turn a typed or spoken command into one app action. Nothing is stored or logged except the action name."""
+        ctx = req.context if len(json.dumps(req.context)) < 40_000 else {}
+        cmd = remote.quick(req.text, ctx)
+        if cmd is None:
+            ip = client_ip(request)
+            if owner_status(request) != "owner" and not remote_limiter.allow(ip):
+                return error(429, "rate_limited", "That's a lot of commands. Try again in a few minutes, or tap the buttons.")
+            if budget.exhausted():
+                return error(503, "resting", "The remote is resting for today, but every button still works.")
+            try:
+                cmd = remote.interpret(get_client(), settings.assist_model, req.text, ctx)
+            except Exception as e:
+                upstream_failed(e)
+                return error(502, "upstream", "I couldn't reach the model just now. The buttons still work.")
+            budget.add(cmd.input_tokens, cmd.output_tokens)
+        log.info(json.dumps({"event": "remote", "action": cmd.action, "source": cmd.source}))
+        return cmd.to_dict()
 
     # ---------- Second opinions (model jury) ----------
     @app.get("/api/jury")
