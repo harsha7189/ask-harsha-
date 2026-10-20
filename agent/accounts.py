@@ -71,6 +71,26 @@ CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"   # no 0/O, 1/I/L or U, so code
 CODE_LENGTH = 20
 
 
+def _selection(this_device: bool):
+    """Passkey requirements. On this device: the built-in Face ID, fingerprint or PIN (Windows Hello, Touch ID,
+    Android screen lock), which also syncs through iCloud Keychain or Google Password Manager. Otherwise any
+    authenticator, including a phone over QR code or a security key, for computers that have no built-in one."""
+    from webauthn.helpers.structs import (AuthenticatorAttachment, AuthenticatorSelectionCriteria, ResidentKeyRequirement,
+                                          UserVerificationRequirement)
+    return AuthenticatorSelectionCriteria(
+        authenticator_attachment=AuthenticatorAttachment.PLATFORM if this_device else None,
+        resident_key=ResidentKeyRequirement.REQUIRED,
+        user_verification=UserVerificationRequirement.REQUIRED if this_device else UserVerificationRequirement.PREFERRED)
+
+
+def _with_hints(options_json: str, this_device: bool) -> str:
+    """Add WebAuthn hints: browsers that support them go straight to this device's own passkey prompt."""
+    d = json.loads(options_json)
+    if this_device:
+        d["hints"] = ["client-device"]
+    return json.dumps(d)
+
+
 def b64u(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).decode().rstrip("=")
 
@@ -192,18 +212,17 @@ class Accounts:
         return item[1], item[2]
 
     # ---- passkey registration (create an account) ----
-    def registration_options(self, rp_id: str, nickname: str) -> tuple[str, str]:
+    def registration_options(self, rp_id: str, nickname: str, this_device: bool = True) -> tuple[str, str]:
+        """this_device: use this phone or computer's own Face ID, fingerprint or PIN (no "scan a QR code with your phone")."""
         from webauthn import generate_registration_options, options_to_json
-        from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, ResidentKeyRequirement,
-                                              UserVerificationRequirement)
+        from webauthn.helpers.structs import ResidentKeyRequirement
         name = " ".join(nickname.split())[:40] or "Ask Harsha user"
         user_id = secrets.token_bytes(16)
         opts = generate_registration_options(
             rp_id=rp_id, rp_name=self.rp_name, user_id=user_id, user_name=name, user_display_name=name,
-            authenticator_selection=AuthenticatorSelectionCriteria(
-                resident_key=ResidentKeyRequirement.REQUIRED, user_verification=UserVerificationRequirement.PREFERRED))
+            authenticator_selection=_selection(this_device))
         cid = self._remember(opts.challenge, {"user_id": b64u(user_id), "name": name, "rp_id": rp_id})
-        return cid, options_to_json(opts)
+        return cid, _with_hints(options_to_json(opts), this_device)
 
     def register(self, cid: str, credential: dict, origin: str, label: str = "") -> User:
         from webauthn import verify_registration_response
@@ -222,19 +241,16 @@ class Accounts:
                     (b64u(v.credential_id), user_id, b64u(v.credential_public_key), v.sign_count, now_ms(), label[:40] or None))
 
     # ---- more passkeys on the same account (a second device, so losing one isn't the end) ----
-    def add_passkey_options(self, user: User, rp_id: str) -> tuple[str, str]:
+    def add_passkey_options(self, user: User, rp_id: str, this_device: bool = True) -> tuple[str, str]:
         from webauthn import generate_registration_options, options_to_json
-        from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, PublicKeyCredentialDescriptor,
-                                              ResidentKeyRequirement, UserVerificationRequirement)
+        from webauthn.helpers.structs import PublicKeyCredentialDescriptor
         existing = [PublicKeyCredentialDescriptor(id=unb64u(r[0]))
                     for r in self.db.all("SELECT id FROM credentials WHERE user_id = %s", (user.id,))]
         opts = generate_registration_options(
             rp_id=rp_id, rp_name=self.rp_name, user_id=unb64u(user.id), user_name=user.name, user_display_name=user.name,
-            exclude_credentials=existing,
-            authenticator_selection=AuthenticatorSelectionCriteria(
-                resident_key=ResidentKeyRequirement.REQUIRED, user_verification=UserVerificationRequirement.PREFERRED))
+            exclude_credentials=existing, authenticator_selection=_selection(this_device))
         cid = self._remember(opts.challenge, {"user_id": user.id, "rp_id": rp_id, "add": True})
-        return cid, options_to_json(opts)
+        return cid, _with_hints(options_to_json(opts), this_device)
 
     def add_passkey(self, user: User, cid: str, credential: dict, origin: str, label: str = "") -> None:
         from webauthn import verify_registration_response
@@ -287,7 +303,7 @@ class Accounts:
         from webauthn import generate_authentication_options, options_to_json
         from webauthn.helpers.structs import UserVerificationRequirement
         opts = generate_authentication_options(rp_id=rp_id, user_verification=UserVerificationRequirement.PREFERRED)
-        return self._remember(opts.challenge, {"rp_id": rp_id}), options_to_json(opts)
+        return self._remember(opts.challenge, {"rp_id": rp_id}), _with_hints(options_to_json(opts), True)
 
     def authenticate(self, cid: str, credential: dict, origin: str) -> User:
         from webauthn import verify_authentication_response

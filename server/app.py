@@ -125,6 +125,7 @@ class ToolRequest(BaseModel):
 
 class PasskeyStart(BaseModel):
     name: str = Field(default="", max_length=60)
+    this_device: bool = True     # False only when the device has no Face ID, fingerprint or PIN for passkeys
 
 
 class PasskeyFinish(BaseModel):
@@ -452,7 +453,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         if (g := auth_guard(request)):
             return g
         rp_id, _ = rp(request)
-        cid, options = accounts.registration_options(rp_id, req.name)
+        cid, options = accounts.registration_options(rp_id, req.name, req.this_device)
         return {"cid": cid, "options": json.loads(options)}
 
     @app.post("/api/auth/register/verify")
@@ -505,13 +506,13 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         return {"passkeys": accounts.passkeys(user.id), "recovery": accounts.recovery_status(user.id)}
 
     @app.post("/api/account/passkeys/options")
-    def add_passkey_options(request: Request):
+    def add_passkey_options(request: Request, anywhere: bool = False):
         user = signed_in(request)
         if isinstance(user, JSONResponse):
             return user
         if (g := auth_guard(request)):
             return g
-        cid, options = accounts.add_passkey_options(user, rp(request)[0])
+        cid, options = accounts.add_passkey_options(user, rp(request)[0], this_device=not anywhere)
         return {"cid": cid, "options": json.loads(options)}
 
     @app.post("/api/account/passkeys/verify")

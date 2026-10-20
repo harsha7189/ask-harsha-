@@ -126,7 +126,14 @@ def test_passkey_options_use_this_site():
     c = make(store())
     d = c.post("/api/auth/register/options", json={"name": "Sam"}).json()
     assert d["options"]["rp"]["id"] == "testserver" and d["options"]["user"]["name"] == "Sam"
-    assert d["options"]["authenticatorSelection"]["residentKey"] == "required"
+    sel = d["options"]["authenticatorSelection"]
+    assert sel["residentKey"] == "required"
+    # this device's own Face ID / fingerprint / PIN, so browsers don't offer "scan a QR code with your phone"
+    assert sel["authenticatorAttachment"] == "platform" and sel["userVerification"] == "required"
+    assert d["options"]["hints"] == ["client-device"]
+    anywhere = c.post("/api/auth/register/options", json={"name": "Sam", "this_device": False}).json()["options"]
+    assert "authenticatorAttachment" not in anywhere["authenticatorSelection"] and "hints" not in anywhere   # no built-in option: phone or key
+    assert c.post("/api/auth/login/options").json()["options"]["hints"] == ["client-device"]
     bad = c.post("/api/auth/register/verify", json={"cid": "x" * 20, "credential": {}})
     assert bad.status_code == 400 and "try again" in bad.json()["message"].lower()
 
@@ -197,6 +204,8 @@ def test_recovery_api_round_trip():
     assert c.get("/api/account/passkeys").json() == {"passkeys": [], "recovery": None}
     opts = c.post("/api/account/passkeys/options").json()["options"]
     assert opts["user"]["id"] == u.id and opts["rp"]["id"] == "testserver"
+    assert opts["authenticatorSelection"]["authenticatorAttachment"] == "platform"
+    assert "authenticatorAttachment" not in c.post("/api/account/passkeys/options?anywhere=1").json()["options"]["authenticatorSelection"]
     fresh = c.post("/api/account/recovery").json()
     assert len(acct.normalize_code(fresh["recovery_code"])) == 20 and c.get("/api/me").json()["user"]["recovery"]
     signed_out = make(a)

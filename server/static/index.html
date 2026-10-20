@@ -400,6 +400,7 @@ textarea.listening{border-color:var(--fg)}
 .si-big:disabled{opacity:.5}
 .si-or{text-align:center;font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
 .si-name{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.si-note{margin:0;font-size:12.5px;color:var(--muted);line-height:1.45}
 .si-link{background:none;border:0;color:var(--muted);text-decoration:underline;text-underline-offset:3px;font-size:13.5px;padding:6px 0;justify-self:center}
 .si-link:hover{color:var(--fg)}
 .rc-code{font:700 clamp(17px,5vw,21px)/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;text-align:center;padding:16px 12px;border:1.5px dashed var(--muted);border-radius:14px;background:var(--bg);-webkit-user-select:all;user-select:all;overflow-wrap:anywhere}
@@ -1264,6 +1265,9 @@ async function loadSummaries(){if(!signedIn()){summaries=[];return}try{summaries
 const b64uToBuf=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');const bin=atob(s+'='.repeat((4-s.length%4)%4));const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a.buffer};
 const bufToB64u=b=>{const a=new Uint8Array(b);let s='';for(let i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
 const passkeysOK=()=>!!(window.PublicKeyCredential&&navigator.credentials&&navigator.credentials.create);
+// Does this phone or computer have its own Face ID, fingerprint or PIN for passkeys? Then no QR code or second device is needed.
+let _platform=null;
+const hasBuiltIn=()=>_platform||(_platform=(async()=>{try{return !!(window.PublicKeyCredential&&PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())}catch(e){return false}})());
 function credJSON(c){
   const r=c.response,out={id:c.id,rawId:bufToB64u(c.rawId),type:c.type,clientExtensionResults:c.getClientExtensionResults?c.getClientExtensionResults():{},response:{clientDataJSON:bufToB64u(r.clientDataJSON)}};
   if(c.authenticatorAttachment)out.authenticatorAttachment=c.authenticatorAttachment;
@@ -1271,10 +1275,13 @@ function credJSON(c){
   if(r.authenticatorData){out.response.authenticatorData=bufToB64u(r.authenticatorData);out.response.signature=bufToB64u(r.signature);if(r.userHandle)out.response.userHandle=bufToB64u(r.userHandle)}
   return out;
 }
-async function createPasskey(name){
-  const {cid,options:o}=await api('POST','/api/auth/register/options',{name});
+async function createPasskey(name,here){
+  if(here===undefined)here=await hasBuiltIn();
+  const {cid,options:o}=await api('POST','/api/auth/register/options',{name,this_device:here});
   o.challenge=b64uToBuf(o.challenge);o.user.id=b64uToBuf(o.user.id);(o.excludeCredentials||[]).forEach(x=>x.id=b64uToBuf(x.id));
-  const cred=await navigator.credentials.create({publicKey:o});
+  let cred;
+  try{cred=await navigator.credentials.create({publicKey:o})}
+  catch(e){if(here&&e&&e.name==='NotSupportedError')return createPasskey(name,false);throw e}   // no built-in option after all: allow a phone or key
   return api('POST','/api/auth/register/verify',{cid,credential:credJSON(cred)});
 }
 async function usePasskey(){
@@ -1284,7 +1291,7 @@ async function usePasskey(){
   return api('POST','/api/auth/login/verify',{cid,credential:credJSON(cred)});
 }
 function passkeyError(e){
-  if(e&&e.name==='NotAllowedError')return'Cancelled, or it timed out. Try again when you are ready.';
+  if(e&&e.name==='NotAllowedError')return'Cancelled, or it timed out. If this device doesn’t have your Ask Harsha passkey yet, use your recovery code below, then add Face ID or a PIN here.';
   if(e&&e.name==='InvalidStateError')return'This device already has a passkey for Ask Harsha. Use "Sign in with a passkey" instead.';
   if(e&&e.name==='SecurityError')return"Passkeys don't work on this address. Open ask-harsha.onrender.com directly.";
   return (e&&e.message)||'Something went wrong. Please try again.';
@@ -1308,17 +1315,18 @@ function openSignIn(){
     const p=el('p','si-lead');p.append('Sign in with a ',el('b',null,'passkey'),': Face ID, your fingerprint or your device PIN. No password, no email.');s.append(p);
     if(!passkeysOK()){s.append(el('p','msgline',"This browser doesn't support passkeys. Try Safari on iPhone or a recent Chrome."));const r=el('div','row'),c=el('button','btn','Close');c.type='button';c.onclick=close;r.append(c);s.append(r);return}
     const line=el('p','msgline');
-    const has=el('button','si-big red primary');has.type='button';has.append(el('b',null,'Sign in with a passkey'),el('span',null,'I made one here before'));
+    const has=el('button','si-big red primary');has.type='button';has.append(el('b',null,'Sign in with Face ID or PIN'),el('span',null,'Or your fingerprint. Uses the passkey on this device'));
     const lbl=el('label','si-name');const inp=el('input','field');inp.id='si-name';inp.placeholder='Your first name (optional)';inp.maxLength=40;inp.autocomplete='given-name';inp.dataset.nofocus='1';
     lbl.append(el('span',null,'New here? Name your passkey'),inp);
-    const mk=el('button','si-big');mk.type='button';mk.append(el('b',null,'Create a passkey'),el('span',null,'Takes a few seconds'));
+    const mk=el('button','si-big');mk.type='button';mk.append(el('b',null,'Create a passkey'),el('span',null,'Uses this device’s Face ID, fingerprint or PIN. No second device needed'));
+    hasBuiltIn().then(ok=>{if(!ok){mk.lastChild.textContent='This device has no Face ID or PIN for passkeys, so you’ll use your phone or a security key';s.insertBefore(el('p','si-note','Tip: on Windows, set up Windows Hello (a PIN works). On a Mac, Touch ID or your Mac password works in Safari or Chrome.'),line)}});
     const busyOn=on=>{has.disabled=mk.disabled=on};
     has.onclick=async()=>{busyOn(true);line.textContent='';try{const d=await usePasskey();close();afterSignIn(d,false)}catch(e){line.textContent=passkeyError(e)}finally{busyOn(false)}};
     mk.onclick=async()=>{busyOn(true);line.textContent='';try{const d=await createPasskey(inp.value.trim());close();afterSignIn(d,true)}catch(e){line.textContent=passkeyError(e)}finally{busyOn(false)}};
-    const lost=el('button','si-link','Lost your device? Use your recovery code');lost.type='button';lost.onclick=()=>{close();openRecover()};
+    const lost=el('button','si-link','Passkey on another device, or lost it? Use your recovery code');lost.type='button';lost.onclick=()=>{close();openRecover()};
     s.append(has,el('div','si-or','or'),lbl,mk,line,lost);
     const how=el('details','how');how.append(el('summary',null,'How passkeys keep this private'));
-    how.append(el('p','direct',"Your device makes a key that only works on this site and keeps the secret half. Ask Harsha stores only the public half, so there's no password to leak. Passkeys sync through iCloud Keychain or Google Password Manager, so they work on your other devices too. When you create one you also get a one-time recovery code, your way back in if you ever lose your device. Without signing in you can still chat; nothing is saved."));
+    how.append(el('p','direct',"Your device makes a key that only works on this site and keeps the secret half, unlocked by your Face ID, fingerprint or device PIN. Ask Harsha stores only the public half, so there's no password to leak. Passkeys sync through iCloud Keychain or Google Password Manager, so they also work on your other devices signed in to the same account. When you create one you also get a one-time recovery code: use it on a device that doesn't have your passkey, then add Face ID or a PIN there. Without signing in you can still chat; nothing is saved."));
     s.append(how);
     const r=el('div','row'),c=el('button','btn','Not now');c.type='button';c.onclick=close;r.append(c);s.append(r);
   });
@@ -1388,8 +1396,8 @@ function afterRecover(){
   sheet((s,close)=>{
     s.append(el('h3',null,"You're back in"));
     s.append(el('p','si-lead','Your chats are here. Your old recovery code is used up and every other device was signed out.'));
-    s.append(el('p',null,'Next, add a passkey on this device. You’ll get a new recovery code right after.'));
-    const line=el('p','msgline'),r=el('div','row'),no=el('button','btn','Later'),yes=el('button','btn red primary','Add a passkey here');[no,yes].forEach(b=>b.type='button');
+    s.append(el('p',null,'Next, add Face ID or a PIN on this device, so next time you just tap Sign in. You’ll get a new recovery code right after.'));
+    const line=el('p','msgline'),r=el('div','row'),no=el('button','btn','Later'),yes=el('button','btn red primary','Add Face ID or PIN here');[no,yes].forEach(b=>b.type='button');
     no.onclick=()=>{close();toast('Signed in. Add a passkey from “Chats” → Security before you sign out.')};
     yes.onclick=async()=>{yes.disabled=true;line.textContent='';try{await addPasskey();close()}catch(e){line.textContent=passkeyError(e)}finally{yes.disabled=false}};
     r.append(no,yes);s.append(line,r);
@@ -1397,7 +1405,8 @@ function afterRecover(){
 }
 async function addPasskey(){
   if(!passkeysOK())throw new Error("This browser doesn't support passkeys. Try Safari on iPhone or a recent Chrome.");
-  const {cid,options:o}=await api('POST','/api/account/passkeys/options');
+  const here=await hasBuiltIn();
+  const {cid,options:o}=await api('POST','/api/account/passkeys/options'+(here?'':'?anywhere=1'));
   o.challenge=b64uToBuf(o.challenge);o.user.id=b64uToBuf(o.user.id);(o.excludeCredentials||[]).forEach(x=>x.id=b64uToBuf(x.id));
   let cred;try{cred=await navigator.credentials.create({publicKey:o})}
   catch(e){if(e&&e.name==='InvalidStateError')throw new Error('This device already has a passkey on your account. Try another device or a security key.');throw e}
