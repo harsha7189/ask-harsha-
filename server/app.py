@@ -215,6 +215,7 @@ class TrustRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=12000)
     passages: list[dict] = Field(default_factory=list, max_length=12)
     citations: list[str] = Field(default_factory=list, max_length=20)
+    source: str = Field(default="", max_length=40)   # which AI wrote it, on the Check page (for stats only)
 
 
 class PastPick(BaseModel):
@@ -809,6 +810,10 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     @app.get("/interview")
     def interview_page():
         return FileResponse(STATIC / "interview.html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/check")
+    def check_page():
+        return FileResponse(STATIC / "check.html", headers={"Cache-Control": "no-cache"})
 
     @app.get("/i/{public_id}")
     def candidate_page(public_id: str):
@@ -2301,7 +2306,11 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                              "contradicted_found": sum(1 for x in rep.claims if x["label"] == "contradicted" or x.get("fixed")),
                              "corrected": rep.corrected, "fix_verified": rep.fix_verified, "uncertain": len(rep.uncertain),
                              "seconds": round(rep.seconds, 2), "cost_usd": round(cost, 5), "searches": u.web_searches})
-            log.info(json.dumps({"event": "trust_on_demand", "owner": owner, "status": rep.status, "seconds": round(rep.seconds, 2), "cost_usd": round(cost, 5)}))
+            src = re.sub(r"[^a-z0-9 ]", "", req.source.lower())[:30]
+            if src:
+                telemetry.add("check", {"source": src, "status": rep.status, "claims": sum(c.values()), "corrected": rep.corrected,
+                                        "contradicted": c["contradicted"] + c["corrected"], "seconds": round(rep.seconds, 2), "cost_usd": round(cost, 5)})
+            log.info(json.dumps({"event": "trust_on_demand", "owner": owner, "status": rep.status, "source": src, "seconds": round(rep.seconds, 2), "cost_usd": round(cost, 5)}))
             q.put(("final", out))
 
         return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
@@ -2528,6 +2537,16 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         log.info(json.dumps({"event": "tune_pr", "pull_request": pr["pull_request"]}))
         return pr
 
+    def check_stats(rows: list[dict]) -> dict:
+        """Answers from other AIs checked on the Check page: how many, and how often they had something wrong, by source."""
+        by: dict[str, dict] = {}
+        for r in rows:
+            b = by.setdefault(r["source"], {"checked": 0, "with_errors": 0, "claims": 0})
+            b["checked"] += 1
+            b["claims"] += r.get("claims", 0)
+            b["with_errors"] += 1 if r.get("contradicted") else 0
+        return by
+
     @app.get("/api/owner/history")
     def owner_history(request: Request, days: float = 30):
         """Evaluation runs and health checks over time, plus answer speed, so changes can be compared with the past."""
@@ -2539,6 +2558,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         return {"days": days, "durable": telemetry.durable,
                 "trust_evals": telemetry.recent("trust_eval", days, 50), "evals": telemetry.recent("eval", days, 50),
                 "health": telemetry.recent("health", days, 60), "tunes": telemetry.recent("tune", days, 20),
+                "checks": check_stats(telemetry.recent("check", days)),
                 "performance": tele.performance(answers), "performance_7d": tele.performance([a for a in answers if a["ts"] >= tele.now_ms() - 7 * 86_400_000])}
 
     @app.post("/api/owner/evals")

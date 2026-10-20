@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Check Any AI</title>
+<meta name="description" content="Paste an answer from ChatGPT, Gemini or any AI. Ask Harsha checks every claim against real sources and code, and shows what's wrong.">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Paste any AI's answer; get every claim checked, what's wrong, and a corrected version. */
+:root{
+  --bg:#0b0b0b; --panel:#171717; --raise:#232323; --line:#2e2e2e;
+  --fg:#f5f5f1; --muted:#a3a3a3; --red:#e50914; --red-hot:#ff2a36; --good:#46d369; --warn:#f2b445; --blue:#7cb7ff; --bad:#ff6b6b;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px)); --gr:max(16px,env(safe-area-inset-right,0px));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+a{color:var(--blue)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(10px + env(safe-area-inset-top,0px)) var(--gr) 10px var(--gl);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.back{display:grid;place-items:center;width:44px;height:44px;margin-left:-10px;color:var(--muted);text-decoration:none;border-radius:12px}
+.back svg{width:22px;height:22px}
+.who{flex:1;min-width:0}
+.who h1{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:28px;line-height:.95}
+.who h1 span{color:var(--red)}
+.who p{margin:0;font-size:13px;color:var(--muted)}
+main{max-width:760px;margin:0 auto;padding:16px var(--gr) calc(40px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;gap:10px;min-width:0}
+.card>*{min-width:0;max-width:100%}
+.card h2{margin:0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.lead{margin:0;color:var(--muted);font-size:15px}
+.fine{font-size:12.5px;color:var(--muted);margin:0}
+label.f{display:grid;gap:5px;font-size:13px;color:var(--muted)}
+input.field,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:16px;color:var(--fg)}
+textarea{min-height:170px;resize:vertical;line-height:1.45}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:13px;padding:6px 12px;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
+.chip.on{border-color:var(--fg);background:var(--raise)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{background:var(--raise);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
+.btn.red{background:var(--red)}
+.btn.red:hover{background:var(--red-hot)}
+.st{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--fg);animation:spin .8s linear infinite;flex:0 0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.verdict{margin:0;font-size:19px;line-height:1.35;font-weight:700}
+.verdict.bad{color:var(--bad)}.verdict.ok{color:var(--good)}.verdict.mixed{color:var(--warn)}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;background:var(--raise);color:var(--muted)}
+.pill.verified,.pill.corrected{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.pill.partial{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+.pill.contradicted{background:color-mix(in srgb,var(--bad) 20%,transparent);color:var(--bad)}
+.pill.unverified{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.claims{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.claim{display:grid;gap:5px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.claim.contradicted{border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.claim .top{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+.claim .tx{font-size:14.5px;line-height:1.45;min-width:0}
+.claim .why{font-size:13px;color:var(--muted)}
+.claim .how{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.ev{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.ev a{word-break:break-all}
+.ev code{font-family:var(--f-mono);font-size:12px;background:var(--raise);padding:2px 6px;border-radius:6px;color:var(--fg)}
+.ev blockquote{margin:0;padding:4px 0 4px 9px;border-left:2px solid var(--line);color:var(--fg)}
+.fixed{white-space:pre-wrap;background:var(--bg);border:1px solid color-mix(in srgb,var(--good) 35%,var(--line));border-radius:12px;padding:10px 12px;font-size:14.5px}
+.chg{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:13.5px}
+.chg del{color:var(--muted);text-decoration-color:var(--red-hot)}
+.chg ins{text-decoration:none;font-weight:600}
+.chg small{flex-basis:100%;color:var(--muted);font-size:12px}
+ul.plain{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13.5px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;max-width:min(520px,calc(100vw - 32px));z-index:30}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  <div class="who"><h1>Check <span>Any AI</span></h1><p>Paste an answer. Every claim gets checked.</p></div>
+</header>
+<main>
+  <section class="card">
+    <p class="lead">Paste an answer from ChatGPT, Gemini, Claude or any other AI. Ask Harsha lists its claims, recomputes the math in code, has a skeptic search for evidence against each one, and gives you a corrected version if something’s wrong.</p>
+    <label class="f">The answer<textarea id="answer" maxlength="12000" placeholder="Paste the AI’s answer here"></textarea></label>
+    <label class="f">What you asked it (optional, makes the check sharper)<input class="field" id="question" maxlength="4000" placeholder="e.g. How much will I have if I invest $5,000 at 6% for 10 years?"></label>
+    <div><div class="fine" style="margin-bottom:6px">Which AI wrote it?</div><div class="chips" id="src"></div></div>
+    <div class="row"><button class="btn red" id="go" type="button">Check it</button><span class="fine">10 to 30 seconds</span></div>
+    <div class="st" id="live" hidden><span class="spin"></span><span id="livetext">Starting…</span></div>
+    <p class="fine">The text goes to Anthropic’s API for the check and is never sent back to the AI that wrote it. Don’t paste anything private.</p>
+  </section>
+  <section class="card" id="out" hidden></section>
+</main>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+let toastT=null;function toast(t){let b=$('.toast');if(!b){b=el('div','toast');document.body.append(b)}b.textContent=t;b.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{b.hidden=true},4200)}
+const passcode=(()=>{try{return localStorage.getItem('askh_owner')||''}catch(e){return''}})();
+function headers(){const h={'Content-Type':'application/json'};if(passcode)h['X-Owner-Passcode']=passcode;return h}
+async function readSSE(res,onEvent){
+  const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
+  for(;;){const {value,done}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);let kind=null,data='';
+      block.split('\n').forEach(l=>{if(l.startsWith('event: '))kind=l.slice(7);else if(l.startsWith('data: '))data+=l.slice(6)});
+      if(kind){let d={};try{d=JSON.parse(data||'{}')}catch(e){}onEvent(kind,d)}}}
+}
+let source='';
+['ChatGPT','Gemini','Claude','Copilot','Perplexity','Other'].forEach(n=>{const b=el('button','chip',n);b.type='button';b.onclick=()=>{source=source===n?'':n;[...$('#src').children].forEach(x=>x.classList.toggle('on',x.textContent===source))};$('#src').append(b)});
+// arriving from a phone's share sheet or a link: /check?text=...
+const P=new URLSearchParams(location.search);const shared=[P.get('text'),P.get('url')].filter(Boolean).join('\n');if(shared)$('#answer').value=shared;if(P.get('q'))$('#question').value=P.get('q');
+
+const LABEL={verified:'Verified',partial:'Partially supported',contradicted:'Contradicted',unverified:'Unverified',corrected:'Corrected'};
+const HOW={calculation:'Recomputed in code',record:"Checked against Harsha's record",source:'Checked against the cited source',web:'Survived a search for counterexamples'};
+function howWord(cl){if(cl.how==='web')return cl.label==='verified'?'Survived a search for counterexamples':cl.label==='partial'?'Partly supported by a source':'Contradicted by a source it found';return HOW[cl.how]||''}
+function host(u){try{return new URL(u).hostname.replace(/^www\./,'')}catch(e){return u}}
+$('#go').onclick=async()=>{
+  const answer=$('#answer').value.trim();if(answer.length<20){toast('Paste the answer you want checked.');return}
+  const go=$('#go');go.disabled=true;$('#out').hidden=true;const live=$('#live');live.hidden=false;$('#livetext').textContent='Starting…';
+  let done=false;
+  try{const res=await fetch('/api/trust/check',{method:'POST',headers:headers(),body:JSON.stringify({answer,question:$('#question').value.trim(),source})});
+    const type=res.headers.get('content-type')||'';
+    if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||'The check couldn’t start.')}
+    await readSSE(res,(k,d)=>{if(k==='status')$('#livetext').textContent=d.label+'…';else if(k==='final'){done=true;draw(d,answer)}else if(k==='error')throw new Error(d.message)});
+    if(!done)throw new Error('The connection dropped before the check finished.');
+  }catch(e){toast(e.message)}finally{go.disabled=false;live.hidden=true}
+};
+function draw(t,original){
+  const o=$('#out');o.hidden=false;o.textContent='';const c=t.counts||{};const n=Object.values(c).reduce((a,b)=>a+b,0);
+  const bad=(c.contradicted||0)+(c.corrected||0);
+  const head=bad?`Found ${bad} claim${bad===1?'':'s'} the evidence contradicts.`:t.status==='verified'?'Every claim it could check holds up.':t.status==='nothing'?'No factual claims to check in this answer.':'Nothing was contradicted, but some claims couldn’t be verified.';
+  o.append(el('h2',null,'Result'),el('p','verdict '+(bad?'bad':t.status==='verified'?'ok':'mixed'),head));
+  const pills=el('div','pills');['verified','partial','contradicted','corrected','unverified'].forEach(k=>{if(c[k])pills.append(el('span','pill '+k,`${c[k]} ${LABEL[k].toLowerCase()}`))});if(n)o.append(pills);
+  if(t.corrected&&t.answer){o.append(el('h2',null,'Corrected version'));(t.changes||[]).forEach(ch=>{const r=el('div','chg');if(ch.before)r.append(el('del',null,ch.before));r.append('→',el('ins',null,ch.after||'(removed)'));if(ch.why)r.append(el('small',null,ch.why));o.append(r)});
+    o.append(el('div','fixed',t.answer));const cp=el('button','btn','Copy corrected version');cp.type='button';cp.style.justifySelf='start';cp.onclick=async()=>{try{await navigator.clipboard.writeText(t.answer);cp.textContent='Copied ✓'}catch(e){toast('Copy didn’t work here.')}};o.append(cp)}
+  if((t.claims||[]).length){o.append(el('h2',null,'Each claim'));const ol=el('ol','claims');
+    t.claims.forEach(cl=>{const lab=cl.fixed?'corrected':cl.label;const li=el('li','claim '+cl.label);const top=el('div','top');top.append(el('span','tx',cl.text),el('span','pill '+lab,LABEL[lab]));li.append(top);
+      const hw=howWord(cl);if(hw)li.append(el('span','how',hw));if(cl.why&&cl.how!=='calculation')li.append(el('span','why',cl.why));
+      const ev=el('div','ev');(cl.evidence||[]).forEach(e=>{if(e.kind==='calc'){const x=el('span');x.append(el('code',null,`${e.expression} = ${e.computed}`),e.ok?` · matches ${e.claimed}`:` · the answer said ${e.claimed}`);ev.append(x)}
+        else if(e.url){const x=el('span');const a=el('a',null,host(e.url));a.href=e.url;a.target='_blank';a.rel='noopener';x.append('Checked: ',a);ev.append(x)}});
+      if(cl.challenge&&cl.challenge.note&&!(cl.why||'').includes(cl.challenge.note)){const x=el('span');x.append(el('b',null,'Skeptic: '),cl.challenge.note);ev.append(x)}
+      if(ev.childNodes.length)li.append(ev);ol.append(li)});o.append(ol)}
+  if((t.uncertain||[]).length){o.append(el('h2',null,'Couldn’t verify'));const ul=el('ul','plain');t.uncertain.forEach(u=>ul.append(el('li',null,u)));o.append(ul)}
+  if((t.notes||[]).length){o.append(el('h2',null,'Also worth knowing'));const ul=el('ul','plain');t.notes.forEach(u=>ul.append(el('li',null,u)));o.append(ul)}
+  o.append(el('p','fine',`${t.seconds?t.seconds.toFixed(0)+'s':''} · Verified means code recomputed it or a real source’s words support it; it isn’t a guarantee, and one AI agreeing with another never counts as proof.`));
+  const r=el('div','row');const md=el('button','btn','Download report');md.type='button';md.onclick=()=>download(t,original);const again=el('button','btn','Check another');again.type='button';again.onclick=()=>{$('#answer').value='';$('#question').value='';o.hidden=true;window.scrollTo({top:0,behavior:'smooth'});$('#answer').focus()};
+  r.append(md,again);o.append(r);o.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function download(t,original){
+  const lines=['# Answer check','',`Checked by Ask Harsha on ${new Date().toLocaleString()}${source?` · written by ${source}`:''}`,'','## The answer','',original,''];
+  if(t.corrected&&t.answer)lines.push('## Corrected version','',t.answer,'');
+  lines.push('## Claims','');(t.claims||[]).forEach(cl=>{lines.push(`- **${LABEL[cl.fixed?'corrected':cl.label]}:** ${cl.text}. ${cl.why||''}`);(cl.evidence||[]).forEach(e=>{if(e.url)lines.push(`  - ${e.url}`);if(e.kind==='calc')lines.push(`  - code: ${e.expression} = ${e.computed}`)})});
+  if((t.uncertain||[]).length)lines.push('','## Couldn’t verify','',...t.uncertain.map(u=>'- '+u));
+  const b=new Blob([lines.join('\n')+'\n'],{type:'text/markdown'}),u=URL.createObjectURL(b),a=el('a');a.href=u;a.download='answer-check.md';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);
+}
+})();
+</script>
+</body>
+</html>
