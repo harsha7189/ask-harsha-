@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Interview Questions</title>
+<link rel="icon" href="/static/icon-192.png">
+<style>
+/* The candidate's page: the questions, nothing else. Plain and readable, like an interview doc. */
+:root{--bg:#ffffff;--fg:#141414;--muted:#5f5f5f;--line:#e6e6e6;--accent:#b00610;color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+main{max-width:760px;margin:0 auto;padding:28px max(16px,env(safe-area-inset-right,0px)) 48px max(16px,env(safe-area-inset-left,0px))}
+h1{margin:0 0 4px;font-size:26px;line-height:1.25}
+.sub{margin:0 0 18px;color:var(--muted);font-size:14.5px}
+.note{margin:0 0 22px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--muted)}
+ol{margin:0;padding-left:24px;display:grid;gap:22px}
+li{padding-left:4px}
+li p{margin:0}
+canvas.h{display:block;width:100%;height:22px;margin-top:6px}
+.err{color:var(--accent)}
+footer{margin-top:36px;font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Interview questions</h1>
+  <p class="sub" id="sub">Loading…</p>
+  <p class="note" id="note" hidden>This interview uses integrity checks. Please answer on your own, without AI assistants or outside help.</p>
+  <ol id="list"></ol>
+  <footer>Shared with Ask Harsha</footer>
+</main>
+<script>
+// Each question has one extra line drawn very faintly on a canvas (skipped by screen readers). People don't notice it;
+// a tool that reads the screen does. The interviewer's report shows if its invented word came back.
+let data=null;
+function draw(c,text,delta){
+  const dpr=window.devicePixelRatio||1,w=c.clientWidth||600,h=22;c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);const v=255-delta;ctx.fillStyle=`rgb(${v},${v},${v})`;
+  let size=13;ctx.textBaseline='middle';
+  do{ctx.font=`400 ${size}px system-ui, sans-serif`}while(ctx.measureText(text).width>w&&--size>8);   // narrow phones: smaller, never cut off
+  ctx.fillText(text,0,h/2);
+}
+function render(){
+  const list=document.getElementById('list');list.textContent='';
+  data.questions.forEach(q=>{const li=document.createElement('li');const p=document.createElement('p');p.textContent=q.text;li.append(p);
+    const c=document.createElement('canvas');c.className='h';c.setAttribute('aria-hidden','true');c.setAttribute('role','presentation');li.append(c);list.append(li);
+    requestAnimationFrame(()=>draw(c,q.hidden,data.delta))});
+}
+(async()=>{
+  const id=location.pathname.split('/').pop();
+  try{const res=await fetch('/api/i/'+encodeURIComponent(id));const d=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(d.message||'This interview link doesn’t work.');
+    data=d;document.getElementById('title').textContent=d.role?`Interview: ${d.role}`:'Interview questions';
+    document.getElementById('sub').textContent=`${d.questions.length} question${d.questions.length===1?'':'s'}. Take your time; your interviewer will guide you.`;
+    document.getElementById('note').hidden=false;render();
+    let t=null;addEventListener('resize',()=>{clearTimeout(t);t=setTimeout(render,150)});
+  }catch(e){const s=document.getElementById('sub');s.textContent=e.message;s.className='sub err'}
+})();
+</script>
+</body>
+</html>

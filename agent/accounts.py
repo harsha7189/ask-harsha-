@@ -56,6 +56,8 @@ SCHEMA = [
        body TEXT NOT NULL, updated BIGINT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS lab_runs (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
+    """CREATE TABLE IF NOT EXISTS interviews (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
+       public_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS memories (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        text TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY (user_id, id))""",
 ]
@@ -345,7 +347,7 @@ class Accounts:
         return User(*row)
 
     def delete_user(self, user_id: str) -> None:
-        for table in ("chats", "projects", "saved", "prefs", "memories", "lab_runs", "sessions", "credentials", "recovery"):
+        for table in ("chats", "projects", "saved", "prefs", "memories", "lab_runs", "interviews", "sessions", "credentials", "recovery"):
             self.db.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
         self.db.run("DELETE FROM users WHERE id = %s", (user_id,))
 
@@ -513,6 +515,44 @@ class Accounts:
         self.db.run("DELETE FROM memories WHERE user_id = %s", (user_id,))
 
     # ---- Discovery Lab research history ----
+    # ---- Canary Interview rooms (each interviewer's own; the candidate page reads one by its public id) ----
+    def save_interview(self, user_id: str, room: dict) -> None:
+        body = json.dumps(room, ensure_ascii=False)
+        if len(body.encode()) > 1_500_000:
+            raise ValueError("This interview is too large to save. Try a shorter transcript.")
+        title = " ".join(str(room.get("role") or "Interview").split())[:120]
+        if self.db.one("SELECT 1 FROM interviews WHERE user_id = %s AND id = %s", (user_id, room["id"])):
+            self.db.run("UPDATE interviews SET title = %s, body = %s WHERE user_id = %s AND id = %s", (title, body, user_id, room["id"]))
+        else:
+            self.db.run("INSERT INTO interviews (user_id, id, public_id, title, created, body) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (user_id, room["id"], room["public_id"], title, int(room.get("created") or now_ms()), body))
+
+    def list_interviews(self, user_id: str) -> list[dict]:
+        rows = self.db.all("SELECT id, title, created, body FROM interviews WHERE user_id = %s ORDER BY created DESC LIMIT 200", (user_id,))
+        out = []
+        for rid, title, created, body in rows:
+            try:
+                d = json.loads(body)
+            except json.JSONDecodeError:
+                continue
+            out.append({"id": rid, "title": title, "created": created, "candidate": d.get("candidate", ""),
+                        "status": ((d.get("report") or {}).get("summary") or {}).get("status")})
+        return out
+
+    def get_interview(self, user_id: str, room_id: str) -> dict | None:
+        row = self.db.one("SELECT body FROM interviews WHERE user_id = %s AND id = %s", (user_id, room_id))
+        return json.loads(row[0]) if row else None
+
+    def interview_by_public(self, public_id: str) -> dict | None:
+        row = self.db.one("SELECT body FROM interviews WHERE public_id = %s", (public_id,))
+        return json.loads(row[0]) if row else None
+
+    def delete_interview(self, user_id: str, room_id: str) -> None:
+        self.db.run("DELETE FROM interviews WHERE user_id = %s AND id = %s", (user_id, room_id))
+
+    def interviews_since(self, user_id: str, since_ms: int) -> int:
+        return self.db.one("SELECT COUNT(*) FROM interviews WHERE user_id = %s AND created >= %s", (user_id, since_ms))[0]
+
     def save_lab(self, user_id: str, run: dict) -> str:
         run_id = str(run.get("id") or ("L" + secrets.token_urlsafe(8)))[:40]
         body = json.dumps(run, ensure_ascii=False)

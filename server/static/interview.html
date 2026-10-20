@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Interview Check</title>
+<meta name="description" content="Ask Harsha's interview integrity check: hidden canaries and trap questions that only AI tools fall for, with evidence for you to review.">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* The interviewer's side: make a room, share the candidate page, ask the trap questions, paste the transcript, read the evidence. */
+:root{
+  --bg:#0b0b0b; --panel:#171717; --raise:#232323; --line:#2e2e2e;
+  --fg:#f5f5f1; --muted:#a3a3a3; --red:#e50914; --red-hot:#ff2a36; --good:#46d369; --warn:#f2b445; --blue:#7cb7ff; --bad:#ff6b6b;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px)); --gr:max(16px,env(safe-area-inset-right,0px));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+a{color:var(--blue)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(10px + env(safe-area-inset-top,0px)) var(--gr) 10px var(--gl);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.back{display:grid;place-items:center;width:44px;height:44px;margin-left:-10px;color:var(--muted);text-decoration:none;border-radius:12px}
+.back svg{width:22px;height:22px}
+.who{flex:1;min-width:0}
+.who h1{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:28px;line-height:.95}
+.who h1 span{color:var(--red)}
+.who p{margin:0;font-size:13px;color:var(--muted)}
+.hbtn{font-size:13px;font-weight:600;padding:8px 12px;border-radius:999px;border:1px solid var(--line)}
+main{max-width:760px;margin:0 auto;padding:16px var(--gr) calc(40px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;gap:10px;min-width:0}
+.card h2{margin:0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.lead{margin:0;color:var(--muted);font-size:15px}
+.fine{font-size:12.5px;color:var(--muted);margin:0}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.p-strong{background:color-mix(in srgb,var(--bad) 20%,transparent);color:var(--bad)}
+.p-supporting{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.p-weak{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+.p-clean{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.legend{display:grid;gap:6px;font-size:13.5px;color:var(--muted)}
+.legend div{display:flex;gap:8px;align-items:baseline}
+label.f{display:grid;gap:5px;font-size:13px;color:var(--muted)}
+input.field,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:16px;color:var(--fg)}
+textarea{min-height:110px;resize:vertical;line-height:1.45}
+textarea.mono{font-family:var(--f-mono);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{background:var(--raise);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;text-decoration:none;color:var(--fg)}
+.btn.red{background:var(--red)}
+.btn.red:hover{background:var(--red-hot)}
+.link{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:8px 8px 8px 12px;min-width:0}
+.link code{flex:1;min-width:0;font-family:var(--f-mono);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trap{display:grid;gap:6px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.trap b{font-size:15px;line-height:1.45}
+.trap small{color:var(--muted);font-size:12.5px}
+.qs{margin:0;padding-left:20px;display:grid;gap:8px;font-size:14.5px}
+.qs .hid{display:block;font-size:12.5px;color:var(--muted);font-family:var(--f-mono);margin-top:2px}
+.st{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--fg);animation:spin .8s linear infinite;flex:0 0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tests{display:grid;gap:6px}
+.tst{display:flex;align-items:center;gap:10px;font-size:13.5px}
+.tst i{font-style:normal;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;flex:0 0 auto;background:var(--raise);color:var(--muted)}
+.tst.read i{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
+.tst.pick{font-weight:700}
+.swatch{border-radius:10px;padding:10px 12px;background:#fff;color:#222;font-size:14px}
+.headline{margin:0;font-size:17px;line-height:1.45;font-weight:600}
+.ev{display:grid;gap:6px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.ev .top{display:flex;gap:8px;align-items:center}
+.ev blockquote{margin:0;padding:4px 0 4px 10px;border-left:2px solid var(--line);font-size:13.5px}
+.ev mark{background:color-mix(in srgb,var(--bad) 35%,transparent);color:var(--fg);border-radius:3px;padding:0 2px}
+.pair{display:grid;gap:4px;font-size:13px}
+.pair span{color:var(--muted)}
+ul.lim{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.hist{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line);text-align:left;width:100%}
+.hist .t{flex:1;min-width:0}
+.hist .t b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist .t small{color:var(--muted);font-size:12px}
+.sig{font-size:12.5px;color:var(--muted)}
+.sig.ok{color:var(--good)}
+.warnline{font-size:13px;color:var(--warn);margin:0}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;max-width:min(520px,calc(100vw - 32px));z-index:30}
+details summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  <div class="who"><h1>Interview <span>Check</span></h1><p>Traps only an AI tool falls into, with evidence you can check</p></div>
+  <button class="hbtn" id="histbtn" type="button" hidden>History</button>
+</header>
+<main>
+  <section class="card" id="intro">
+    <p class="lead">Software can’t see a second phone or laptop. So instead of guessing from eye movements, this sets traps that only an AI tool falls into, then shows you exactly what happened.</p>
+    <div class="legend">
+      <div><span class="pill p-strong">Strong</span><span>A word that was only in a hidden line on the candidate page came back in their code or answers. Something read the screen.</span></div>
+      <div><span class="pill p-supporting">Supporting</span><span>They explained an invented term as if it were real. AI tools that listen do this; honest people say they haven’t heard of it.</span></div>
+      <div><span class="pill p-weak">Weak</span><span>Answers share several unusual specifics with typical AI answers. Never a finding on its own.</span></div>
+    </div>
+    <p class="fine">Nothing here is a verdict or a cheating score. Tell candidates the interview uses integrity checks.</p>
+  </section>
+
+  <p class="warnline" id="gate" hidden></p>
+
+  <section class="card" id="newcard">
+    <h2>New interview</h2>
+    <label class="f">Role<input class="field" id="role" maxlength="120" placeholder="e.g. Backend engineer"></label>
+    <label class="f">Candidate’s name (optional)<input class="field" id="cand" maxlength="80" placeholder="As it will appear in the transcript"></label>
+    <label class="f">Questions, one per line (up to 8)<textarea id="qs" placeholder="Write a function that merges overlapping intervals.&#10;Tell me about a time you disagreed with your manager.&#10;How would you design a URL shortener?"></textarea></label>
+    <div class="row"><button class="btn red" id="create" type="button">Create interview</button><span class="fine" id="quota"></span></div>
+  </section>
+
+  <section class="card" id="room" hidden></section>
+  <section class="card" id="hist" hidden></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+const passcode=(()=>{try{return localStorage.getItem('askh_owner')||''}catch(e){return''}})();
+function headers(){const h={'Content-Type':'application/json'};if(passcode)h['X-Owner-Passcode']=passcode;return h}
+async function api(method,url,body){const res=await fetch(url,{method,headers:headers(),body:body?JSON.stringify(body):undefined,credentials:'same-origin'});const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.message||'Something went wrong.');return d}
+let toastT=null;function toast(t){let b=$('.toast');if(!b){b=el('div','toast');document.body.append(b)}b.textContent=t;b.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{b.hidden=true},4200)}
+async function readSSE(res,onEvent){
+  const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
+  for(;;){const {value,done}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);let kind=null,data='';
+      block.split('\n').forEach(l=>{if(l.startsWith('event: '))kind=l.slice(7);else if(l.startsWith('data: '))data+=l.slice(6)});
+      if(kind){let d={};try{d=JSON.parse(data||'{}')}catch(e){}onEvent(kind,d)}}}
+}
+async function copy(t,btn){try{await navigator.clipboard.writeText(t);if(btn){const o=btn.textContent;btn.textContent='Copied ✓';setTimeout(()=>btn.textContent=o,1500)}}catch(e){toast('Copy didn’t work here.')}}
+async function buildFile(spec){
+  try{const res=await fetch('/api/files/build',{method:'POST',headers:headers(),body:JSON.stringify({spec})});if(!res.ok){const x=await res.json().catch(()=>({}));throw new Error(x.message||"That file couldn't be made.")}
+    const b=await res.blob(),u=URL.createObjectURL(b),a=el('a');a.href=u;a.download=spec.filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000)}catch(e){toast(e.message)}
+}
+
+// ---------- drawing the candidate page as a screenshot, for the self-test (same layout as /i/…) ----------
+function wrap(ctx,text,maxW){const words=text.split(/\s+/),lines=[];let cur='';for(const w of words){const t=cur?cur+' '+w:w;if(ctx.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t}if(cur)lines.push(cur);return lines}
+function screenshot(room,delta){
+  const W=1200,pad=48,c=document.createElement('canvas'),ctx=c.getContext('2d');
+  const qs=room.questions;const lines=[];ctx.font='600 30px system-ui, sans-serif';
+  const body=[];qs.forEach(q=>{ctx.font='500 22px system-ui, sans-serif';body.push({q,lines:wrap(ctx,`${q.n}. ${q.text}`,W-pad*2)})});
+  const H=pad*2+70+body.reduce((s,b)=>s+b.lines.length*32+52,0);
+  c.width=W;c.height=H;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#111';ctx.font='700 30px system-ui, sans-serif';ctx.fillText(room.role?`Interview: ${room.role}`:'Interview questions',pad,pad+30);
+  let y=pad+90;
+  body.forEach(b=>{ctx.fillStyle='#111';ctx.font='500 22px system-ui, sans-serif';b.lines.forEach(l=>{ctx.fillText(l,pad,y);y+=32});
+    const v=255-delta;ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.font='400 15px system-ui, sans-serif';ctx.fillText(b.q.canary.line,pad,y+4);y+=52});
+  return c.toDataURL('image/png');
+}
+
+// ---------- page state ----------
+let status=null,room=null;
+async function loadStatus(){
+  try{status=await api('GET','/api/interviews/status')}catch(e){status={signed_in:false}}
+  const gate=$('#gate');
+  if(!status.signed_in){gate.hidden=false;gate.textContent=status.accounts===false?"Interviews need accounts, which aren't set up on this server.":'Sign in on the chat page first (Menu → Sign in). Interview rooms and reports are saved to your account.';$('#create').disabled=true}
+  $('#quota').textContent=status.owner?'Owner: no daily limit':status.signed_in?`${Math.max(0,status.daily-status.used_today)} of ${status.daily} left today`:'';
+  $('#histbtn').hidden=!status.signed_in;
+}
+$('#create').onclick=async()=>{
+  const questions=$('#qs').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!questions.length){toast('Add at least one question.');return}
+  const b=$('#create');b.disabled=true;b.textContent='Creating…';
+  try{room=await api('POST','/api/interviews',{role:$('#role').value.trim(),candidate:$('#cand').value.trim(),questions:questions.slice(0,8)});drawRoom();loadStatus();location.hash=room.id}
+  catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Create interview'}
+};
+
+function drawRoom(){
+  const r=$('#room');r.hidden=false;r.textContent='';$('#hist').hidden=true;
+  const link=`${location.origin}/i/${room.public_id}`;
+  r.append(el('h2',null,'Interview room'));
+  const t=el('p','headline',room.role||'Interview');if(room.candidate)t.append(el('span','fine',` · ${room.candidate}`));r.append(t);
+
+  // 1. share
+  r.append(el('h2',null,'1. Share the candidate page'));
+  const lk=el('div','link');const code=el('code',null,link);const cp=el('button','btn','Copy');cp.type='button';cp.onclick=()=>copy(link,cp);
+  const op=el('a','btn','Open');op.href=link;op.target='_blank';op.rel='noopener';lk.append(code,cp,op);r.append(lk);
+  r.append(el('p','fine','Share this page on your screen, or send the link. The hidden lines only exist on this page, so show the questions from here. Tell the candidate integrity checks are used; don’t say what they are.'));
+
+  // 2. tune
+  r.append(el('h2',null,'2. Tune the hidden line'));
+  const ct=room.contrast||{};
+  const tp=el('p','fine',ct.calibrated?`Tuned: level ${ct.delta}, the faintest line ${ct.model||'the AI'} still read.`:`Not tuned yet: using level ${ct.delta||14}. Run the test so the line is as faint as possible while AI tools still read it.`);
+  const sw=el('div','swatch');sw.append(el('div',null,'1. '+(room.questions[0]?room.questions[0].text:'')));const hl=el('div',null,room.questions[0]?room.questions[0].canary.line:'');
+  const v=255-(ct.delta||14);hl.style.color=`rgb(${v},${v},${v})`;hl.style.fontSize='12.5px';hl.style.marginTop='6px';sw.append(hl);
+  const tests=el('div','tests');(ct.results||[]).forEach(x=>tests.append(testRow(x,ct.delta)));
+  const tb=el('button','btn','Run the self-test');tb.type='button';tb.onclick=()=>selfTest(tb,tests,tp,hl);
+  r.append(tp,el('p','fine','Preview: can you spot the hidden line under the question?'),sw,tests,tb,el('p','fine','The test draws the candidate page at five faintness levels and shows each to a real AI model, exactly as a cheating tool would see a screenshot. About 5¢.'));
+
+  // 3. traps
+  r.append(el('h2',null,'3. Ask one trap question'));
+  if(!room.traps.length)r.append(el('p','fine','No trap questions in this room.'));
+  room.traps.forEach(tr=>{const d=el('div','trap');d.append(el('b',null,tr.question),el('small',null,`“${tr.term}” doesn’t exist. If they say they haven’t heard of it, that’s the honest answer: move on. If they explain it confidently, ask a follow-up.`));
+    const c2=el('button','btn','Copy');c2.type='button';c2.style.justifySelf='start';c2.onclick=()=>copy(tr.question,c2);d.append(c2);r.append(d)});
+
+  // what's hidden
+  const dd=el('details');dd.append(el('summary',null,'What’s hidden under each question'));const ol=el('ol','qs');
+  room.questions.forEach(q=>{const li=el('li',null,q.text);li.append(el('span','hid',q.canary.line));ol.append(li)});dd.append(ol);r.append(dd);
+
+  // 4. analyze
+  r.append(el('h2',null,'4. After the interview'));
+  r.append(el('p','fine','Paste the transcript (Zoom, Teams and Meet can all save one) and any code the candidate wrote.'));
+  const sp=el('input','field');sp.placeholder='Candidate’s name in the transcript';sp.value=room.candidate?room.candidate.split(' ')[0]:'';
+  const tx=el('textarea','mono');tx.placeholder='[00:01:02] You: …\n[00:01:09] Sam: …';tx.style.minHeight='160px';
+  const cd=el('textarea','mono');cd.placeholder='The candidate’s code (optional)';
+  const cmpl=el('label','fine');const cmp=el('input');cmp.type='checkbox';cmp.checked=true;cmpl.append(cmp,' Also compare answers with typical AI answers (weak evidence, a few cents)');
+  const go=el('button','btn red','Check the interview');go.type='button';const live=el('div','st');live.hidden=true;
+  const out=el('div');out.style.display='grid';out.style.gap='10px';
+  go.onclick=()=>analyze(go,live,out,{transcript:tx.value,code:cd.value,candidate_speaker:sp.value.trim(),compare:cmp.checked});
+  const lf=(lab,inp)=>{const l=el('label','f',lab);l.append(inp);return l};
+  r.append(lf('Candidate’s name in the transcript',sp),lf('Transcript',tx),lf('Code',cd),cmpl,go,live,out);
+  if(room.report)drawReport(out,room.report);
+  const del=el('button','btn','Delete this interview');del.type='button';del.style.justifySelf='start';
+  del.onclick=async()=>{if(!del.dataset.sure){del.dataset.sure='1';del.textContent='Tap again to delete it and its report';return}
+    try{await api('DELETE','/api/interviews/'+room.id);room=null;$('#room').hidden=true;location.hash='';toast('Deleted.')}catch(e){toast(e.message)}};
+  r.append(del);
+  r.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function testRow(x,chosen){const d=el('div','tst'+(x.read?' read':'')+(x.delta===chosen?' pick':''));d.append(el('i',null,x.read?'✓':'·'),el('span',null,`Level ${x.delta}: ${x.read?'the AI read it':'not read'}${x.delta===chosen?' · chosen':''}`));return d}
+async function selfTest(btn,tests,tp,hl){
+  btn.disabled=true;btn.textContent='Testing…';tests.textContent='';
+  try{const levels=[5,9,14,22,34];const images=levels.map(delta=>({delta,data:screenshot(room,delta)}));
+    const ct=await api('POST',`/api/interviews/${room.id}/selftest`,{images});room.contrast=ct;
+    ct.results.forEach(x=>tests.append(testRow(x,ct.delta)));
+    tp.textContent=ct.calibrated?`Tuned: level ${ct.delta}, the faintest line the AI still read.`:`The AI didn’t read the line at any level tried, so the strongest (level ${ct.delta}) is used. Canaries may not work against this model; the trap questions still do.`;
+    const v=255-ct.delta;hl.style.color=`rgb(${v},${v},${v})`}
+  catch(e){toast(e.message)}finally{btn.disabled=false;btn.textContent='Run the self-test again'}
+}
+async function analyze(go,live,out,body){
+  if(!body.transcript.trim()&&!body.code.trim()){toast('Paste the transcript, the code, or both.');return}
+  go.disabled=true;live.hidden=false;live.textContent='';live.append(el('span','spin'),el('span',null,'Starting…'));out.textContent='';
+  let done=false;
+  try{const res=await fetch(`/api/interviews/${room.id}/analyze`,{method:'POST',headers:headers(),body:JSON.stringify(body)});const type=res.headers.get('content-type')||'';
+    if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||'The check couldn’t start.')}
+    await readSSE(res,(k,d)=>{if(k==='status')live.lastChild.textContent=d.label+'…';else if(k==='final'){done=true;room.report=d;drawReport(out,d)}else if(k==='error')throw new Error(d.message)});
+    if(!done)throw new Error('The connection dropped before the check finished.')}
+  catch(e){toast(e.message)}finally{go.disabled=false;live.hidden=true}
+}
+function highlight(text,word){const box=el('span');const i=text.toLowerCase().indexOf((word||'').toLowerCase());if(!word||i<0){box.textContent=text;return box}
+  box.append(text.slice(0,i),el('mark',null,text.slice(i,i+word.length)),text.slice(i+word.length));return box}
+function drawReport(out,d){
+  out.textContent='';const s=d.summary;
+  const top=el('div','row');top.append(el('span','pill p-'+s.status,{strong:'Strong evidence',supporting:'Some evidence',weak:'Weak signal only',clean:'No evidence found'}[s.status]),el('span','fine',`${d.lines} transcript lines · ${d.seconds}s${d.cost_usd?` · ${(d.cost_usd*100).toFixed(1)}¢`:''}`));
+  out.append(el('h2',null,'Report'),top,el('p','headline',s.headline));
+  d.evidence.forEach(e=>{const c=el('div','ev');const t=el('div','top');t.append(el('span','pill p-'+e.level,e.level==='strong'?'Strong':e.level==='supporting'?'Supporting':'Weak'));c.append(t,el('span',null,e.detail));
+    const hit=e.kind==='canary'?(d.canaries.find(h=>h.question===e.question&&h.excerpt===e.quote)||{}):{};
+    if(e.quote){const bq=el('blockquote');bq.append(highlight(e.quote,hit.matched||''));c.append(bq)}out.append(c)});
+  if(d.traps&&d.traps.length){out.append(el('h2',null,'Trap questions'));
+    d.traps.forEach(t=>{const c=el('div','ev');const word={explained_as_real:'Explained it as if real',unfamiliar:'Said they hadn’t heard of it',asked_what_it_is:'Asked what it is',deflected:'Didn’t engage with it',no_reply:'No reply',unclear:'Unclear'}[t.reaction]||(t.asked?'Not classified':'Not asked in this transcript');
+      const pill=t.reaction==='explained_as_real'?'p-supporting':(t.reaction==='unfamiliar'||t.reaction==='asked_what_it_is')?'p-clean':'';
+      const tt=el('div','top');tt.append(el('span','pill '+pill,word));c.append(tt,el('span','fine',`“${t.term}”`));if(t.quote)c.append(el('blockquote',null,t.quote));out.append(c)})}
+  if(d.overlap&&d.overlap.length){const dd=el('details');dd.append(el('summary',null,`Shared with typical AI answers (${d.overlap.length})`));
+    d.overlap.forEach(o=>{const p=el('div','pair');p.append(el('b',null,`Q${o.question}: ${o.detail}`));const a=el('div');a.append(el('span',null,'Candidate: '),`“${o.candidate_quote}”`);const b=el('div');b.append(el('span',null,'AI: '),`“${o.ai_quote}”`);p.append(a,b);dd.append(p)});out.append(dd)}
+  if(d.notes&&d.notes.length){const ul=el('ul','lim');d.notes.forEach(n=>ul.append(el('li',null,n)));out.append(el('h2',null,'Notes'),ul)}
+  const ul=el('ul','lim');(d.limits||[]).forEach(n=>ul.append(el('li',null,n)));out.append(el('h2',null,'What this can’t show'),ul);
+  const r=el('div','row');const pdf=el('button','btn','Report (PDF)'),md=el('button','btn','Report (.md)'),vb=el('button','btn','Check signature');[pdf,md,vb].forEach(b=>b.type='button');
+  const slug=(room.role||'interview').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'interview';
+  pdf.onclick=()=>buildFile({filename:`${slug}-integrity-report.pdf`,title:'Interview integrity report',content:d.markdown});
+  md.onclick=()=>buildFile({filename:`${slug}-integrity-report.md`,content:d.markdown});
+  const sig=el('p','sig','🔏 Signed by Ask Harsha: proves this report wasn’t changed. It’s evidence for you to review, not a finding that anyone cheated.');
+  vb.onclick=async()=>{if(!d.receipt){toast('This report isn’t signed.');return}try{const x=await api('POST','/api/proof/verify',{receipt:d.receipt,signature:d.signature});sig.textContent=(x.valid?'✓ Signature valid. ':'✕ ')+x.meaning;sig.classList.toggle('ok',x.valid)}catch(e){toast(e.message)}};
+  r.append(pdf,md,vb);out.append(r,sig);
+}
+// ---------- history ----------
+$('#histbtn').onclick=async()=>{
+  const h=$('#hist');h.hidden=false;h.textContent='';h.append(el('h2',null,'Your interviews'),el('p','fine','Loading…'));
+  try{const d=await api('GET','/api/interviews');h.lastChild.remove();
+    if(!d.interviews.length)h.append(el('p','fine','None yet.'));
+    d.interviews.forEach(x=>{const b=el('button','hist');b.type='button';const t=el('span','t');t.append(el('b',null,x.title+(x.candidate?` · ${x.candidate}`:'')),el('small',null,new Date(x.created).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})));
+      b.append(t,el('span','pill '+(x.status?'p-'+x.status:''),x.status?{strong:'Strong',supporting:'Some',weak:'Weak',clean:'Clean'}[x.status]:'Not checked'));
+      b.onclick=()=>openRoom(x.id);h.append(b)})}catch(e){h.lastChild.textContent=e.message}
+  h.scrollIntoView({behavior:'smooth'});
+};
+async function openRoom(id){try{room=await api('GET','/api/interviews/'+id);location.hash=id;drawRoom()}catch(e){toast(e.message)}}
+loadStatus().then(()=>{const id=location.hash.slice(1);if(id&&status.signed_in)openRoom(id)});
+</script>
+</body>
+</html>

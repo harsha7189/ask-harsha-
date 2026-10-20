@@ -1683,7 +1683,7 @@ function mountSidebar(){
       case 'new_chat':close();if(a.project_id&&signedIn())startInProject(a.project_id);else{newChat();q.focus()}return;
       case 'ask':close();newChat();ask(a.query);return;
       case 'sign_in':close();if(signedIn())toast('You’re already signed in.');else openSignIn();return;
-      case 'open_tool':location.href=a.tool==='assist'?'/assist':a.tool==='lab'?'/lab':'/tools#'+a.tool;return;
+      case 'open_tool':location.href=a.tool==='assist'?'/assist':a.tool==='lab'?'/lab':a.tool==='integrity'?'/interview':'/tools#'+a.tool;return;
       case 'set_pref':{
         const old=prefs[a.pref];setPref(a.pref,a.value);if(a.pref==='jury')juryOn=juryAvail&&a.value;if(a.pref==='city')loadWeather();
         const u=el('button','cmd-link','Undo');u.type='button';u.onclick=()=>{setPref(a.pref,old);if(a.pref==='jury')juryOn=juryAvail&&old;if(a.pref==='city')loadWeather();cmdSay('Undone.');if(cmdUI)cmdUI.inp.value=''};
@@ -1844,6 +1844,8 @@ function mountSidebar(){
     if(juryAvail){row('⚖️','Second opinions',`Ask ${juryNames.join(' and ')} the same question and compare`,toggle(prefs.jury,v=>{setPref('jury',v);juryOn=juryAvail&&v},'Second opinions'))}
     const labA=el('a','btn','Open');labA.href='/lab';
     row('🔬','Discovery Lab','Investigate a question: hypotheses, real experiments, then a try at breaking them',labA);
+    const ivA=el('a','btn','Open');ivA.href='/interview';
+    row('🪤','Interview Check','For interviewers: hidden canaries and trap questions only AI tools fall for, with evidence to review',ivA);
     row('🛡️','Proof Mode','Checks that a task really worked, fixes what didn’t, and signs the evidence',toggle(!!prefs.proof,x=>setPref('proof',x),'Proof Mode'));
     row('✓','Trust check','Every answer is checked before it’s final: math recomputed, sources compared, mistakes fixed. Tap “Why trust this?” under any answer');
     row('🔏','Share verified','A signed link and QR code that prove an answer is real');

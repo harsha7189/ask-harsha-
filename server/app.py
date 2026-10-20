@@ -43,7 +43,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, lab, memory, personal, proof, remote  # noqa: E402
+from agent import accounts as acct, interview as iv, lab, memory, personal, proof, remote  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -181,6 +181,28 @@ class InboxAnswer(BaseModel):
 
 class FactCheckRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=6000)
+
+
+class InterviewCreate(BaseModel):
+    role: str = Field(default="", max_length=200)
+    candidate: str = Field(default="", max_length=100)
+    questions: list[str] = Field(min_length=1, max_length=8)
+    traps: int = Field(default=2, ge=0, le=3)
+
+
+class InterviewAnalyze(BaseModel):
+    transcript: str = Field(default="", max_length=300_000)
+    code: str = Field(default="", max_length=100_000)
+    candidate_speaker: str = Field(default="", max_length=80)
+    compare: bool = True
+
+
+class InterviewSelftest(BaseModel):
+    images: list[dict] = Field(min_length=1, max_length=6)
+
+
+class InterviewContrast(BaseModel):
+    delta: int = Field(ge=3, le=80)
 
 
 class TrustRequest(BaseModel):
@@ -765,6 +787,166 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return error(400, "prefs", "Those settings are too long.")
         return {"prefs": accounts.save_prefs(user.id, prefs)}
 
+    # ---------- Canary Interview ----------
+    INTERVIEW_DAILY = int(os.environ.get("INTERVIEW_DAILY", "5"))   # new interview rooms per signed-in person per day
+    interview_limiter = RateLimiter(20, 3600)                        # analyses and self-tests per person per hour
+
+    @app.get("/interview")
+    def interview_page():
+        return FileResponse(STATIC / "interview.html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/i/{public_id}")
+    def candidate_page(public_id: str):
+        return FileResponse(STATIC / "candidate.html", headers={"Cache-Control": "no-cache", "X-Robots-Tag": "noindex"})
+
+    def interviewer(request: Request):
+        """(user, owner) or an error. Rooms are saved to an account, so the interviewer has to be signed in."""
+        if accounts is None:
+            return error(503, "accounts", "Saving interviews needs accounts, which aren't set up on this server yet.")
+        user = current_user(request)
+        if not user:
+            return error(401, "signed_out", "Sign in to run interviews. Rooms and reports are saved to your account.")
+        return user, owner_status(request) == "owner"
+
+    def my_room(request: Request, room_id: str):
+        who_ = interviewer(request)
+        if isinstance(who_, JSONResponse):
+            return who_
+        room = accounts.get_interview(who_[0].id, room_id)
+        return (who_[0], who_[1], room) if room else error(404, "not_found", "That interview isn't in your account.")
+
+    @app.get("/api/interviews/status")
+    def interview_status(request: Request):
+        user = current_user(request) if accounts is not None else None
+        owner = owner_status(request) == "owner"
+        used = accounts.interviews_since(user.id, day_start_ms()) if user else 0
+        return {"signed_in": bool(user), "owner": owner, "daily": None if owner else INTERVIEW_DAILY, "used_today": used,
+                "accounts": accounts is not None}
+
+    @app.post("/api/interviews")
+    def interview_create(req: InterviewCreate, request: Request):
+        who_ = interviewer(request)
+        if isinstance(who_, JSONResponse):
+            return who_
+        user, owner = who_
+        if not owner and accounts.interviews_since(user.id, day_start_ms()) >= INTERVIEW_DAILY:
+            return error(429, "interview_quota", f"You've made today's {INTERVIEW_DAILY} interview rooms. More tomorrow.")
+        if budget.exhausted():
+            return error(503, "resting", "Ask Harsha is resting for today. It'll be back tomorrow.")
+        try:
+            room = iv.new_room(get_client(), settings.assist_model, req.role, req.candidate, req.questions, req.traps)
+        except ValueError as e:
+            return error(400, "interview", str(e))
+        budget.add(room["usage"]["input_tokens"], room["usage"]["output_tokens"])
+        room["created"] = int(time.time() * 1000)
+        accounts.save_interview(user.id, room)
+        log.info(json.dumps({"event": "interview_created", "questions": len(room["questions"]), "traps": len(room["traps"])}))
+        return room
+
+    @app.get("/api/interviews")
+    def interview_list(request: Request):
+        who_ = interviewer(request)
+        if isinstance(who_, JSONResponse):
+            return who_
+        return {"interviews": accounts.list_interviews(who_[0].id)}
+
+    @app.get("/api/interviews/{room_id}")
+    def interview_get(room_id: str, request: Request):
+        got = my_room(request, room_id)
+        return got if isinstance(got, JSONResponse) else got[2]
+
+    @app.delete("/api/interviews/{room_id}")
+    def interview_delete(room_id: str, request: Request):
+        who_ = interviewer(request)
+        if isinstance(who_, JSONResponse):
+            return who_
+        accounts.delete_interview(who_[0].id, room_id)
+        return {"ok": True}
+
+    @app.get("/api/i/{public_id}")
+    def candidate_view(public_id: str, request: Request):
+        """The candidate page's questions. Anyone with the link can see them, like a meeting link."""
+        if accounts is None or not re.fullmatch(r"[A-Za-z0-9_-]{8,40}", public_id):
+            return error(404, "not_found", "This interview link doesn't work.")
+        if not ticket_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "Too many requests. Try again in a few minutes.")
+        room = accounts.interview_by_public(public_id)
+        return iv.public_view(room) if room else error(404, "not_found", "This interview link doesn't work. Ask your interviewer for a new one.")
+
+    @app.post("/api/interviews/{room_id}/selftest")
+    def interview_selftest(room_id: str, req: InterviewSelftest, request: Request):
+        """Show screenshots of the candidate page to a real AI model, as a cheating tool would, and keep the faintest line it reads."""
+        got = my_room(request, room_id)
+        if isinstance(got, JSONResponse):
+            return got
+        user, owner, room = got
+        if not owner and not interview_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "That's a lot of tests this hour. Try again later.")
+        if budget.exhausted():
+            return error(503, "resting", "Ask Harsha is resting for today. It'll be back tomorrow.")
+        try:
+            results = iv.selftest(get_client(), settings.model, room, req.images)
+        except Exception as e:
+            upstream_failed(e)
+            return error(502, "upstream", UPSTREAM_MSG)
+        budget.add_flat(0.01 * len(results))
+        delta = iv.pick_delta(results, int(room["contrast"]["delta"]))
+        room["contrast"] = {"delta": delta, "calibrated": any(r["read"] for r in results), "results": results, "model": settings.model}
+        accounts.save_interview(user.id, room)
+        log.info(json.dumps({"event": "interview_selftest", "read": [r["delta"] for r in results if r["read"]], "chosen": delta}))
+        return room["contrast"]
+
+    @app.put("/api/interviews/{room_id}/contrast")
+    def interview_contrast(room_id: str, req: InterviewContrast, request: Request):
+        got = my_room(request, room_id)
+        if isinstance(got, JSONResponse):
+            return got
+        user, _, room = got
+        room["contrast"] = {**room.get("contrast", {}), "delta": req.delta, "manual": True}
+        accounts.save_interview(user.id, room)
+        return room["contrast"]
+
+    @app.post("/api/interviews/{room_id}/analyze")
+    def interview_analyze(room_id: str, req: InterviewAnalyze, request: Request):
+        got = my_room(request, room_id)
+        if isinstance(got, JSONResponse):
+            return got
+        user, owner, room = got
+        if not req.transcript.strip() and not req.code.strip():
+            return error(400, "empty", "Paste the transcript, the candidate's code, or both.")
+        if not owner and not interview_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "That's a lot of analyses this hour. Try again later.")
+        if budget.exhausted():
+            return error(503, "resting", "Ask Harsha is resting for today. It'll be back tomorrow.")
+        q: queue.Queue = queue.Queue()
+
+        def work():
+            started = time.monotonic()
+            try:
+                rep = iv.analyze(get_client(), settings.model, settings.assist_model, room, req.transcript, req.code,
+                                 req.candidate_speaker, emit=lambda k, d: q.put((k, d)), compare=req.compare)
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": "The analysis stopped unexpectedly. Please try again in a minute."}))
+                return
+            cost = budget.add(rep.usage.input_tokens, rep.usage.output_tokens)
+            out = rep.to_dict()
+            out.update({"seconds": round(time.monotonic() - started, 1), "cost_usd": round(cost, 4), "analyzed": int(time.time() * 1000)})
+            out["markdown"] = iv.report_markdown(room, out)
+            if signer is not None:
+                r = iv.receipt(room, out, signer.fingerprint, settings.model, proof.now_iso())
+                out["receipt"], out["signature"] = r, signer.sign(r)
+            room["report"] = out
+            try:
+                accounts.save_interview(user.id, room)
+            except Exception as e:
+                log.error(json.dumps({"event": "interview_save_error", "detail": str(e)[:200]}))
+            log.info(json.dumps({"event": "interview_analyzed", "status": out["summary"]["status"], "evidence": len(out["evidence"]),
+                                 "lines": out["lines"], "seconds": out["seconds"], "cost_usd": out["cost_usd"]}))
+            q.put(("final", out))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
+
     # ---------- Discovery Lab ----------
     LAB_DAILY = int(os.environ.get("LAB_DAILY", "3"))      # investigations per signed-in person per day (owner: unlimited)
     lab_limiter = RateLimiter(10, 3600)                     # reproduce runs per person per hour
@@ -901,7 +1083,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     @app.post("/api/proof/verify")
     def proof_verify(req: ProofCheck):
         """Check a proof report's signature. Valid means Ask Harsha issued it and it wasn't changed afterwards."""
-        valid = signer is not None and req.receipt.get("type") in ("proof", "lab") and signer.verify(req.receipt, req.signature)
+        valid = signer is not None and req.receipt.get("type") in ("proof", "lab", "interview") and signer.verify(req.receipt, req.signature)
         return {"valid": valid, "fingerprint": signer.fingerprint if signer else "",
                 "meaning": "Ask Harsha issued this report and it hasn't been altered. It records what was checked; it isn't proof of events outside Ask Harsha."
                 if valid else "The signature doesn't match. The report was changed, or it wasn't issued by this Ask Harsha."}

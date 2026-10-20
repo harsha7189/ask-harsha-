@@ -15,7 +15,7 @@ from typing import Any
 from . import speed
 
 SECTIONS = ("projects", "saved", "tools", "customize", "chats")
-TOOLS = ("morning", "meeting", "feedback", "interview", "release", "spec", "assist", "lab")
+TOOLS = ("morning", "meeting", "feedback", "interview", "release", "spec", "assist", "lab", "integrity")
 PREF_VALUES = {
     "length": ("short", "balanced", "detailed"),
     "tone": ("", "friendly", "professional", "direct"),
@@ -127,7 +127,8 @@ def quick(text: str, context: dict) -> Command | None:
         return Command("set_pref", {"pref": "name", "value": name}, f"Nice to meet you, {name}.")
 
     # tools
-    for tool, phrases in (("morning", ("morning brief", "daily brief", "brief me", "news brief")),
+    for tool, phrases in (("integrity", ("interview check", "interview integrity", "cheating check", "check for cheating", "canary interview")),
+                          ("morning", ("morning brief", "daily brief", "brief me", "news brief")),
                           ("meeting", ("meeting notes", "meeting summary", "record a meeting", "record meeting", "transcript")),
                           ("feedback", ("customer feedback", "survey", "app reviews", "nps")),
                           ("interview", ("customer interview", "interview guide", "user interview")),
