@@ -454,6 +454,17 @@ html.embed .side,html.embed .side-bg{display:none!important}
 .sb-who small{font-size:12px}
 .side .ep-av{width:32px;height:32px;font-size:14px}
 .side .ep-top{padding:2px 8px 10px 8px}
+/* memory */
+.memline{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+.memline .mi{font-size:13px}
+.memline>span:nth-child(2){flex:1;min-width:0}
+.memlink{font-size:12.5px;font-weight:600;color:var(--fg);text-decoration:underline;text-underline-offset:3px}
+.ep-boxhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ep-boxhead .btn{padding:5px 12px;font-size:12.5px}
+.ep-card.mem{align-items:center}
+.ep-card.mem .memtext{white-space:normal;font-weight:500;font-size:14px}
+.ep-card.mem .ep-ctx{gap:3px}
+.ep-card.mem .ep-ctx .field{padding:8px 10px;font-size:14px}
 /* sidebar: home tiles and section panels */
 .ep-view{display:flex;flex-direction:column;min-height:100%}
 .ep-view>*{flex-shrink:0}
@@ -659,7 +670,7 @@ const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturda
 function partOfDay(h){return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night'}
 const PARAMS=new URLSearchParams(location.search),EMBED=PARAMS.has('embed');
 // Customize settings (see "Customize" below): kept on this device, and in the account when signed in.
-const PREF_DEFAULTS={name:'',length:'balanced',tone:'',about:'',city:'',voice:'',rate:1,read_aloud:false,jury:true};
+const PREF_DEFAULTS={name:'',length:'balanced',tone:'',about:'',city:'',voice:'',rate:1,read_aloud:false,jury:true,memory:true};
 let prefs=(()=>{try{return {...PREF_DEFAULTS,...JSON.parse(localStorage.getItem('askh_prefs')||'{}')}}catch(e){return {...PREF_DEFAULTS}}})();
 if(EMBED)document.documentElement.classList.add('embed');
 const EMBED_CHIPS=["What does Harsha do at IBM?","Has Harsha shipped anything with AI?","What are his strongest results?","How can I contact Harsha?"];
@@ -901,8 +912,11 @@ async function readSSE(res,onEvent){
 function showFinal(bot,data,text){
   if(passcode&&!data.owner){passcode='';store.set('');setOwner(false)}  // passcode was changed on the server
   renderBot(bot,data,text,true);speakAnswer(data.answer);
-  history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer});history=history.slice(-12);
+  history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer});
   recordTurn(text,pendingNames,data);
+  if(data.summarized&&cur){   // older turns were folded into the chat's summary; keep only the recent ones word for word
+    history=history.slice(data.summarized);cur.summary=data.summary;cur.summary_upto=(cur.summary_upto||0)+data.summarized;persist()}
+  history=history.slice(-40);
   pendingNames=[];if(files.length){files.forEach(f=>{f.sent=true});renderTray()}
 }
 function renderBot(bot,data,text,live){
@@ -975,7 +989,7 @@ async function openChat(id){
       history.push({role:'user',content:m.content+(m.files&&m.files.length?`\n[Attached: ${m.files.join(', ')}]`:'')})}
     else{const bot=bubble('bot');renderBot(bot,m.data||{},lastQ,false);history.push({role:'assistant',content:(m.data||{}).answer||''})}
   }
-  history=history.slice(-12);
+  history=history.slice(c.summary_upto||0).slice(-40);   // the chat's summary stands in for anything older
   if(hadFiles)toast("Files from this chat aren't kept. Attach them again to ask more about them.");
   requestAnimationFrame(()=>{main.scrollTop=main.scrollHeight});
 }
@@ -1439,11 +1453,11 @@ function mountSidebar(){
 
   // ----- the panels -----
   function panel(section,a){
-    const back=()=>go(section==='project'||section==='project-form'?'projects':null);
-    const titles={projects:'Projects',project:'Project','project-form':a&&a.id?'Edit project':'New project',saved:'Saved',tools:'Tools',customize:'Customize'};
+    const back=()=>go(section==='project'||section==='project-form'?'projects':section==='memory'?'customize':null);
+    const titles={projects:'Projects',project:'Project','project-form':a&&a.id?'Edit project':'New project',saved:'Saved',tools:'Tools',customize:'Customize',memory:'Memory'};
     topBar(titles[section],back);
     const body=el('div','ep-panel t-'+(section.startsWith('project')?'projects':section));view.append(body);
-    ({projects:projectsPanel,project:projectPanel,'project-form':projectForm,saved:savedPanel,tools:toolsPanel,customize:customizePanel})[section](body,a);
+    ({projects:projectsPanel,project:projectPanel,'project-form':projectForm,saved:savedPanel,tools:toolsPanel,customize:customizePanel,memory:memoryPanel})[section](body,a);
   }
   async function projectsPanel(body){
     body.append(el('p','ep-lead','Group chats by goal. Each project has its own instructions, and the agent follows them in every chat inside it.'));
@@ -1470,6 +1484,16 @@ function mountSidebar(){
     const start=el('button','btn red ep-wide','+ New chat in this project');start.type='button';start.onclick=()=>{close();startInProject(p.id)};body.append(start);
     const box=el('div','ep-box');box.append(el('h5',null,'Instructions the agent follows here'));
     box.append(p.instructions?el('p','ep-instr',p.instructions):el('p','ep-note','None yet. Tap Edit to add goals, background or how you want answers.'));body.append(box);
+    // the project's memory: what earlier chats here established; every chat in the project reads and updates it
+    const nb=el('div','ep-box');const nh=el('div','ep-boxhead');nh.append(el('h5',null,'🧠 What this project knows'));
+    const ne=el('button','btn','Edit');ne.type='button';nh.append(ne);nb.append(nh);
+    const show=()=>{[...nb.childNodes].slice(1).forEach(x=>x.remove());
+      nb.append(p.notes?el('p','ep-instr',p.notes):el('p','ep-note','Nothing yet. As you chat here, the key decisions and findings collect in this note, and every chat in the project uses them.'))};
+    ne.onclick=()=>{[...nb.childNodes].slice(1).forEach(x=>x.remove());const ta=el('textarea','field');ta.rows=6;ta.maxLength=1500;ta.value=p.notes||'';
+      const r=el('div','row'),cl=el('button','btn','Clear'),sv=el('button','btn red','Save');cl.type=sv.type='button';
+      cl.onclick=()=>{ta.value=''};sv.onclick=async()=>{sv.disabled=true;try{await api('PUT','/api/projects/'+encodeURIComponent(p.id),{name:p.name,icon:p.icon,instructions:p.instructions,notes:ta.value});p.notes=ta.value.trim();await loadProjects();show()}catch(e){toast(e.message)}finally{sv.disabled=false}};
+      r.append(cl,sv);nb.append(ta,r);ta.focus()};
+    show();body.append(nb);
     body.append(el('h5','ep-h5','Chats in this project'));
     const list=el('div','ep-list');body.append(list);
     const mine=summaries.filter(c=>c.project===p.id).sort((a,b)=>b.updated-a.updated);
@@ -1494,6 +1518,26 @@ function mountSidebar(){
         try{await api('DELETE','/api/projects/'+encodeURIComponent(p.id));summaries.forEach(c=>{if(c.project===p.id)c.project=null});if(cur&&cur.project===p.id)cur.project=null;if(nextProject===p.id)nextProject=null;
           await loadProjects();renderProjChip();go('projects')}catch(e){line.textContent=e.message}};r.append(del)}
     r.append(save);body.append(el('span','ep-label','Icon'),icons,nl,il,line,r);setTimeout(()=>name.focus(),50);
+  }
+  async function memoryPanel(body){
+    if(!signedIn()){view.removeChild(body);needSignIn('memory');return}
+    body.append(el('p','ep-lead','Things you told Ask Harsha about yourself. It uses them in every chat so you don’t have to repeat yourself. Edit or delete anything.'));
+    const st=el('div','ep-item');const stt=el('span');stt.append(el('b',null,'Remember things I tell you'),el('small',null,'Off: nothing new is saved, and these aren’t used'));
+    st.append(stt,toggle(prefs.memory!==false,x=>setPref('memory',x),'Remember things I tell you'));body.append(st);
+    const list=el('div','ep-cards');list.append(el('p','ep-note','Loading…'));body.append(list);
+    let items=[];try{items=(await api('GET','/api/memory')).memories||[]}catch(e){list.textContent=e.message;return}
+    const draw=()=>{list.textContent='';
+      if(!items.length){list.append(el('p','ep-note','Nothing yet. Tell it about yourself in a chat, like “I’m a product manager in Austin”, and it will show up here.'));return}
+      items.forEach(m=>{const r=el('div','ep-card static mem');const t=el('span','ep-ctx');t.append(el('b','memtext',m.text),el('small',null,'Learned '+new Date(m.created).toLocaleDateString([],{month:'short',day:'numeric'})));
+        const ed=el('button','btn','Edit'),del=el('button','btn','Forget');ed.type=del.type='button';
+        ed.onclick=()=>{const inp=el('input','field');inp.value=m.text;inp.maxLength=200;t.textContent='';const ok=el('button','btn red','Save');ok.type='button';
+          ok.onclick=async()=>{try{items=(await api('PATCH','/api/memory/'+encodeURIComponent(m.id),{text:inp.value})).memories}catch(e){toast(e.message)}draw()};inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};t.append(inp,ok);inp.focus()};
+        del.onclick=async()=>{try{items=(await api('DELETE','/api/memory/'+encodeURIComponent(m.id))).memories}catch(e){toast(e.message)}draw()};
+        r.append(t,ed,del);list.append(r)});
+      const all=el('button','btn','Forget everything');all.type='button';
+      all.onclick=async()=>{if(!all.dataset.sure){all.dataset.sure='1';all.textContent='Tap again to forget everything';all.classList.add('red');return}try{items=(await api('DELETE','/api/memory')).memories}catch(e){toast(e.message)}draw()};
+      list.append(all)};
+    draw();
   }
   async function savedPanel(body){
     body.append(el('p','ep-lead','Answers you starred, and verified links you shared. Tap ☆ Save under any answer to keep it here.'));
@@ -1559,6 +1603,10 @@ function mountSidebar(){
     const applyCity=async()=>{setPref('city',city.value.trim());cs.textContent='Updating…';await loadWeather();cs.textContent=weatherData&&prefs.city&&weatherData.city?`✓ ${weatherData.city}`:'Update'};
     cs.onclick=applyCity;city.onkeydown=e=>{if(e.key==='Enter')applyCity()};
     const l=el('label','ep-field');l.append(el('span',null,'Weather greeting for'),cr,el('small',null,'Type a city, like “Chicago” or “Hyderabad, India”. Leave empty to use where you are.'));h.append(l);
+    const mem=sec('Memory');
+    const mi=el('div','ep-item');const mt=el('span');mt.append(el('b',null,'Remember things I tell you'),el('small',null,signedIn()?'Like your role, goals or city, so you don’t have to repeat them':'Sign in to turn this on'));
+    mi.append(mt,toggle(prefs.memory!==false,x=>{setPref('memory',x);toast(x?'Memory is on.':'Memory is off. Nothing new is saved, and saved memories aren’t used.')},'Remember things I tell you'));mem.append(mi);
+    if(signedIn()){const mb=el('button','btn','See what I remember ›');mb.type='button';mb.onclick=()=>go('memory');mem.append(mb)}
     const v=sec('Voice');
     const ra=el('div','ep-item');const rt=el('span');rt.append(el('b',null,'Read answers aloud'),el('small',null,'Speaks each new answer as it arrives'));ra.append(rt,toggle(prefs.read_aloud,x=>setPref('read_aloud',x),'Read answers aloud'));v.append(ra);
     const vs=el('select','field');vs.setAttribute('aria-label','Voice');
@@ -1651,7 +1699,7 @@ async function syncPrefs(){
   }catch(e){}
   juryOn=juryAvail&&prefs.jury!==false;
 }
-const chatPrefs=()=>({name:prefs.name,length:prefs.length,tone:prefs.tone,about:prefs.about});
+const chatPrefs=()=>({name:prefs.name,length:prefs.length,tone:prefs.tone,about:prefs.about,memory:prefs.memory!==false});
 // Read answers aloud with the device's own voices.
 const voices=()=>('speechSynthesis' in window)?speechSynthesis.getVoices():[];
 function speakText(t){
@@ -2025,8 +2073,20 @@ function openInbox(){
   });
 }
 
+// "🧠 Remembered: …" under an answer, so learning is never invisible.
+function showMemory(bot,d){
+  const parts=[];
+  if(d.remembered&&d.remembered.length)parts.push('Remembered: '+d.remembered.join('; '));
+  if(d.forgot)parts.push(`Forgot ${d.forgot} old thing${d.forgot===1?'':'s'}`);
+  if(d.project)parts.push(`Updated “${d.project}” notes`);
+  if(!parts.length)return;
+  const line=el('div','memline');line.append(el('span','mi','🧠'),el('span',null,parts.join(' · ')));
+  const m=el('button','memlink','Manage');m.type='button';m.onclick=()=>openSidebar(d.project&&!(d.remembered||[]).length?'project':'memory',d.project?((cur&&cur.project)||undefined):undefined);
+  line.append(m);bot.append(line);
+  if(d.project)loadProjects();
+}
 async function askOnce(bot,text){  // fallback when streaming isn't available
-  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||''})});
+  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||'',summary:(cur&&cur.summary)||''})});
   const data=await res.json().catch(()=>({}));
   if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
   showFinal(bot,data,text);
@@ -2043,7 +2103,7 @@ async function ask(text){
   const live=el('div','body');bot.append(status,live);
   let streamed='',finished=false;
   try{
-    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||''})});
+    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||'',summary:(cur&&cur.summary)||''})});
     const type=res.headers.get('content-type')||'';
     if(!res.ok||!type.includes('text/event-stream')){
       const data=await res.json().catch(()=>({}));
@@ -2056,6 +2116,7 @@ async function ask(text){
       else if(kind==='text'){streamed+=d.delta;status.hidden=true;renderAnswer(live,streamed);scrollDown()}
       else if(kind==='text_reset'){streamed='';live.textContent='';status.hidden=false}
       else if(kind==='final'){finished=true;showFinal(bot,d,text)}
+      else if(kind==='memory'){showMemory(bot,d)}
       else if(kind==='error'){finished=true;bot.classList.add('err');bot.textContent=d.message||'Something went wrong. Please try again.'}
     });
     if(!finished){bot.classList.add('err');status.remove();if(!streamed)bot.textContent="The connection dropped before the answer finished. Please try again.";else bot.append(el('div','verdict warn','Connection dropped; this answer may be incomplete.'))}

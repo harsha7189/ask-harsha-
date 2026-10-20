@@ -252,7 +252,7 @@ def test_project_instructions_reach_the_model():
     a = store()
     u = user(a)
     p = a.save_project(u.id, {"name": "Trip", "instructions": "We travel with a toddler."})
-    from fakes import response, text
+    from fakes import flatten, response, text
     calls = []
 
     class Spy:
@@ -260,7 +260,7 @@ def test_project_instructions_reach_the_model():
             self.messages = self
 
         def create(self, **kw):
-            calls.append(kw)
+            calls.append(flatten(dict(kw)))
             return response([text("Here you go.")], "end_turn")
 
     s = Settings(daily_budget_usd=5.0, rate_limit=50, allowed_origins=[], owner_passcode="open-sesame")
@@ -270,10 +270,12 @@ def test_project_instructions_reach_the_model():
     c.cookies.set("askh_session", a.start_session(u))
     assert c.post("/api/chat", json={"question": "Ideas for Saturday?", "project": p["id"],
                                      "prefs": {"name": "Sam", "tone": "friendly"}}).status_code == 200
-    assert "toddler" in calls[-1]["system"] and "Sam" in calls[-1]["system"]
+    chat_calls = [k for k in calls if k.get("tools")]
+    assert "toddler" in chat_calls[0]["system"] and "Sam" in chat_calls[0]["system"]
     out = TestClient(app)   # signed out: prefs still apply, project instructions don't
     out.post("/api/chat", json={"question": "Ideas?", "project": p["id"], "prefs": {"name": "Lee"}})
-    assert "Lee" in calls[-1]["system"] and "toddler" not in calls[-1]["system"]
+    chat_calls = [k for k in calls if k.get("tools")]
+    assert "Lee" in chat_calls[-1]["system"] and "toddler" not in chat_calls[-1]["system"]
     assert c.post("/api/projects", json={"name": "Work"}).json()["name"] == "Work"
     assert len(c.get("/api/projects").json()["projects"]) == 2
     assert c.post("/api/saved", json={"id": "x1", "question": "q", "data": {"answer": "a"}}).status_code == 200

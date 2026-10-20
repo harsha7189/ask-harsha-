@@ -79,11 +79,22 @@ class Agent:
         self.max_tokens = max_tokens
         self.on_event = on_event or (lambda kind, data: None)
         self.system = system or SYSTEM_PROMPT
+        self.context = ""             # per-person text (settings, memory, project, chat summary) after the cached prompt
+        self.cache_system = True      # cache tools + system prompt: later calls and steps reuse them at a tenth of the price
         self.server_tools = server_tools or []
         self.lookup = lookup          # object with .by_id covering facts (+ notes); defaults to the KB
         self.strict_grounding = strict_grounding
         self.stream = stream            # stream text deltas through on_event("text", ...)
         self.messages: list[dict] = []  # full conversation, kept across turns
+
+    def system_param(self):
+        """The system prompt as blocks: the stable part marked for caching, then the per-person context."""
+        if not self.cache_system:
+            return self.system + self.context
+        blocks = [{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}]
+        if self.context:
+            blocks.append({"type": "text", "text": self.context})
+        return blocks
 
     def reset(self) -> None:
         self.messages = []
@@ -124,7 +135,7 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             reply.steps = step
-            call = dict(model=self.model, max_tokens=self.max_tokens, system=self.system, messages=self.messages)
+            call = dict(model=self.model, max_tokens=self.max_tokens, system=self.system_param(), messages=self.messages)
             tools = self.tools.specs() + self.server_tools
             if tools:
                 call["tools"] = tools

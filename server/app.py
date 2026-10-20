@@ -42,7 +42,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, personal, remote  # noqa: E402
+from agent import accounts as acct, memory, personal, remote  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -140,6 +140,8 @@ class ChatBody(BaseModel):
     updated: int = 0
     wx: dict | None = None
     messages: list = Field(default_factory=list, max_length=400)
+    summary: str = Field(default="", max_length=4000)
+    summary_upto: int = 0
 
 
 class ChatImport(BaseModel):
@@ -203,12 +205,18 @@ class ChatRequest(BaseModel):
     attachments: list[Attachment] = Field(default_factory=list, max_length=files.MAX_FILES)
     prefs: dict | None = None        # Customize: name, answer length, tone, about them
     project: str = Field(default="", max_length=40)   # a project id; its instructions are read from the account
+    summary: str = Field(default="", max_length=4000)  # the rolling summary of this chat's older turns
 
 
 class ProjectBody(BaseModel):
     name: str = Field(default="", max_length=120)
     icon: str = Field(default="", max_length=16)
     instructions: str = Field(default="", max_length=8000)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class MemoryEdit(BaseModel):
+    text: str = Field(min_length=1, max_length=400)
 
 
 class ChatProject(BaseModel):
@@ -548,7 +556,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return user
         if chat_id == "export":
             return {"exported": datetime.now().isoformat(), "chats": accounts.export(user.id),
-                    "projects": accounts.list_projects(user.id), "saved": accounts.list_saved(user.id)}
+                    "projects": accounts.list_projects(user.id), "saved": accounts.list_saved(user.id),
+                    "memories": accounts.list_memories(user.id)}
         chat = accounts.get_chat(user.id, chat_id)
         return chat if chat else error(404, "not_found", "That chat isn't in your account.")
 
@@ -674,6 +683,40 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return user
         accounts.remove_saved(user.id, item_id)
         return {"ok": True}
+
+    @app.get("/api/memory")
+    def list_memory(request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"memories": accounts.list_memories(user.id)}
+
+    @app.patch("/api/memory/{memory_id}")
+    def edit_memory(memory_id: str, req: MemoryEdit, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            accounts.update_memory(user.id, memory_id, req.text)
+        except ValueError as e:
+            return error(400, "memory", str(e))
+        return {"memories": accounts.list_memories(user.id)}
+
+    @app.delete("/api/memory/{memory_id}")
+    def forget_memory(memory_id: str, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.forget_memories(user.id, [memory_id])
+        return {"memories": accounts.list_memories(user.id)}
+
+    @app.delete("/api/memory")
+    def forget_all_memory(request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.clear_memories(user.id)
+        return {"memories": []}
 
     @app.get("/api/account/prefs")
     def get_prefs(request: Request):
@@ -1207,12 +1250,27 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         except files.AttachmentError as e:
             return error(400, "attachment", str(e))
         agent = build_agent(owner, stream)
-        project = None
-        if req.project and accounts is not None:
-            user = current_user(request)
-            project = accounts.get_project(user.id, req.project) if user else None
-        agent.system += personal.prompt_block(req.prefs, project)
-        agent.messages = file_turns(prepared.blocks) + clean_history(req.history, settings.max_history_turns)
+        # The context layer: who they are (settings + memory), the project and its notes, and this chat's summary.
+        user = current_user(request) if accounts is not None else None
+        prefs = personal.clean_prefs(req.prefs)
+        project = accounts.get_project(user.id, req.project) if user and req.project else None
+        memories = accounts.list_memories(user.id) if user and prefs["memory"] else []
+        history = clean_history(req.history, 40)
+        older, recent = memory.condense(history)
+        summary, summarized = req.summary, 0
+        if older:   # a long chat: fold the older turns into the summary instead of dropping them
+            try:
+                use = memory.Usage()
+                summary = memory.summarize(get_client(), settings.assist_model, req.summary, older, use)
+                budget.add(use.input_tokens, use.output_tokens)
+                summarized = len(older)
+            except Exception as e:
+                upstream_failed(e)
+                recent = history[-settings.max_history_turns * 2:]
+        agent.context += personal.prompt_block(req.prefs, project, memories, summary)
+        agent.ctx = {"user": user, "prefs": prefs, "project": project, "memories": memories,
+                     "summary": summary if summarized else None, "summarized": summarized}
+        agent.messages = file_turns(prepared.blocks) + recent
         agent.attached = prepared.summary
         return agent, owner, question
 
@@ -1264,6 +1322,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "sources": {i: {"text": lookup[i].text, "kind": "note" if i.startswith("N") else "fact"} for i in agent.tools.retrieved if i in lookup},
             "steps": reply.steps,
             "cost_usd": round(cost, 5),
+            **({"summary": agent.ctx["summary"], "summarized": agent.ctx["summarized"]}
+               if getattr(agent, "ctx", None) and agent.ctx.get("summarized") else {}),
             **sign_answer(question, reply.text, label, report.ok, cited, reply.web_sources[:8],
                           [a["kind"] for a in getattr(agent, "attached", [])]),
         }
@@ -1290,7 +1350,34 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         except Exception as e:  # API outage, bad key, network: log the cause, show a friendly message
             upstream_failed(e)
             return error(502, "upstream", UPSTREAM_MSG)
-        return finish(agent, reply, owner, question)
+        out = finish(agent, reply, owner, question)
+        threading.Thread(target=learn_from, args=(agent, question, reply.text), daemon=True).start()
+        return out
+
+    def learn_from(agent: Agent, question: str, answer: str) -> dict | None:
+        """Update the person's memory and the project's notes from one exchange. Returns what changed, if anything."""
+        ctx = getattr(agent, "ctx", None)
+        if not ctx or not ctx.get("user") or accounts is None or not answer:
+            return None
+        if not memory.worth_learning(question, ctx["project"], ctx["prefs"]["memory"]) or budget.exhausted():
+            return None
+        uid = ctx["user"].id
+        try:
+            res = memory.learn(get_client(), settings.assist_model, question, answer, ctx["memories"], ctx["project"], ctx["prefs"]["memory"])
+            budget.add(res.usage.input_tokens, res.usage.output_tokens)
+            added = accounts.add_memories(uid, res.remember) if res.remember else []
+            if res.forget:
+                accounts.forget_memories(uid, res.forget)
+            if res.project_notes and ctx["project"]:
+                accounts.set_project_notes(uid, ctx["project"]["id"], res.project_notes)
+        except Exception as e:
+            log.error(json.dumps({"event": "memory_error", "type": type(e).__name__, "detail": str(e)[:200]}))
+            return None
+        log.info(json.dumps({"event": "memory", "added": len(added), "forgot": len(res.forget), "project_notes": bool(res.project_notes)}))
+        if not (added or res.forget or res.project_notes):
+            return None
+        return {"remembered": [m["text"] for m in added], "forgot": len(res.forget),
+                "project": ctx["project"]["name"] if res.project_notes and ctx["project"] else None}
 
     STATUS = {
         "search_facts": "Looking up Harsha's career facts",
@@ -1363,6 +1450,10 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             except Exception as e:
                 upstream_failed(e)
                 q.put(("error", {"message": UPSTREAM_MSG}))
+                return
+            learned = learn_from(agent, question, reply.text)   # after the answer, so it never slows it down
+            if learned:
+                q.put(("memory", learned))
 
         return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
 

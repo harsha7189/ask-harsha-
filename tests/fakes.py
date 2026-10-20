@@ -13,6 +13,15 @@ def tool_use(id_, name, input_):
     return {"type": "tool_use", "id": id_, "name": name, "input": input_}
 
 
+def flatten(kwargs):
+    """Tests read the system prompt as one string; keep the original blocks too."""
+    sysp = kwargs.get("system")
+    if isinstance(sysp, list):
+        kwargs["system_blocks"] = sysp
+        kwargs["system"] = "".join(b.get("text", "") for b in sysp)
+    return kwargs
+
+
 def response(content, stop_reason, inp=100, out=20):
     return SimpleNamespace(content=content, stop_reason=stop_reason, usage=SimpleNamespace(input_tokens=inp, output_tokens=out))
 
@@ -26,7 +35,7 @@ class FakeClient:
         self.messages = self  # so code can call client.messages.create(...)
 
     def create(self, **kwargs):
-        self.requests.append(copy.deepcopy(kwargs))
+        self.requests.append(flatten(copy.deepcopy(kwargs)))
         if not self.script:
             raise AssertionError("FakeClient ran out of scripted responses")
         item = self.script.pop(0)

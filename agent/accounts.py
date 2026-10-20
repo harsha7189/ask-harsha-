@@ -54,11 +54,14 @@ SCHEMA = [
        PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS prefs (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
        body TEXT NOT NULL, updated BIGINT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS memories (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
+       text TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY (user_id, id))""",
 ]
 # Columns added after the first release. Each runs once; "already exists" errors are ignored.
 MIGRATIONS = [
     "ALTER TABLE credentials ADD COLUMN label TEXT",
     "ALTER TABLE chats ADD COLUMN project TEXT",
+    "ALTER TABLE projects ADD COLUMN notes TEXT",
 ]
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"   # no 0/O, 1/I/L or U, so codes are easy to read and type
 CODE_LENGTH = 20
@@ -322,7 +325,7 @@ class Accounts:
         return User(*row)
 
     def delete_user(self, user_id: str) -> None:
-        for table in ("chats", "projects", "saved", "prefs", "sessions", "credentials", "recovery"):
+        for table in ("chats", "projects", "saved", "prefs", "memories", "sessions", "credentials", "recovery"):
             self.db.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
         self.db.run("DELETE FROM users WHERE id = %s", (user_id,))
 
@@ -353,14 +356,16 @@ class Accounts:
             return None
         body = json.loads(row[4])
         return {"id": row[0], "title": row[1], "created": row[2], "updated": row[3], "wx": body.get("wx"), "project": row[5],
-                "messages": body.get("messages", [])}
+                "messages": body.get("messages", []), "summary": body.get("summary", ""), "summary_upto": body.get("summary_upto", 0)}
 
     def save_chat(self, user_id: str, chat: dict) -> dict:
         chat_id = str(chat.get("id", ""))[:40]
         if not chat_id:
             raise ValueError("Missing chat id.")
         title = " ".join(str(chat.get("title", "")).split())[:120] or "Untitled chat"
-        body = json.dumps({"wx": chat.get("wx"), "messages": (chat.get("messages") or [])[-200:]}, ensure_ascii=False)
+        body = json.dumps({"wx": chat.get("wx"), "messages": (chat.get("messages") or [])[-200:],
+                           "summary": str(chat.get("summary") or "")[:2000], "summary_upto": int(chat.get("summary_upto") or 0)},
+                          ensure_ascii=False)
         if len(body.encode()) > MAX_CHAT_BYTES:
             raise ValueError("This chat is too long to save. Start a new chat to keep going.")
         created = int(chat.get("created") or now_ms())
@@ -403,10 +408,10 @@ class Accounts:
 
     def list_projects(self, user_id: str) -> list[dict]:
         rows = self.db.all("SELECT p.id, p.name, p.icon, p.instructions, p.created, p.updated, "
-                           "(SELECT COUNT(*) FROM chats c WHERE c.user_id = p.user_id AND c.project = p.id) "
+                           "(SELECT COUNT(*) FROM chats c WHERE c.user_id = p.user_id AND c.project = p.id), p.notes "
                            "FROM projects p WHERE p.user_id = %s ORDER BY p.updated DESC", (user_id,))
-        return [{"id": r[0], "name": r[1], "icon": r[2] or "📁", "instructions": r[3], "created": r[4], "updated": r[5], "chats": r[6]}
-                for r in rows]
+        return [{"id": r[0], "name": r[1], "icon": r[2] or "📁", "instructions": r[3], "created": r[4], "updated": r[5], "chats": r[6],
+                 "notes": r[7] or ""} for r in rows]
 
     def get_project(self, user_id: str, project_id: str) -> dict | None:
         return next((p for p in self.list_projects(user_id) if p["id"] == project_id), None)
@@ -424,6 +429,8 @@ class Accounts:
                 raise ValueError("That project doesn't exist.")
             self.db.run("UPDATE projects SET name = %s, icon = %s, instructions = %s, updated = %s WHERE user_id = %s AND id = %s",
                         (name, icon, instructions, now, user_id, project_id))
+            if data.get("notes") is not None:   # the project's memory, editable by the person
+                self.set_project_notes(user_id, project_id, str(data["notes"]))
         else:
             if self.db.one("SELECT COUNT(*) FROM projects WHERE user_id = %s", (user_id,))[0] >= MAX_PROJECTS:
                 raise ValueError(f"You can have up to {MAX_PROJECTS} projects. Delete one to make room.")
@@ -441,6 +448,45 @@ class Accounts:
         if project_id and not self._project_or_none(user_id, project_id):
             raise ValueError("That project doesn't exist.")
         self.db.run("UPDATE chats SET project = %s WHERE user_id = %s AND id = %s", (project_id or None, user_id, chat_id))
+
+    def set_project_notes(self, user_id: str, project_id: str, notes: str) -> None:
+        from .memory import MAX_PROJECT_NOTES
+        self.db.run("UPDATE projects SET notes = %s WHERE user_id = %s AND id = %s", (notes.strip()[:MAX_PROJECT_NOTES], user_id, project_id))
+
+    # ---- personal memory: durable things a person told the agent about themselves ----
+    def list_memories(self, user_id: str) -> list[dict]:
+        rows = self.db.all("SELECT id, text, created FROM memories WHERE user_id = %s ORDER BY created", (user_id,))
+        return [{"id": r[0], "text": r[1], "created": r[2]} for r in rows]
+
+    def add_memories(self, user_id: str, texts: list[str]) -> list[dict]:
+        from .memory import MAX_MEMORIES, MAX_MEMORY_CHARS
+        added = []
+        for t in texts:
+            t = " ".join(str(t).split())[:MAX_MEMORY_CHARS]
+            if not t:
+                continue
+            m = {"id": "M" + secrets.token_hex(3), "text": t, "created": now_ms() + len(added)}
+            self.db.run("INSERT INTO memories (user_id, id, text, created) VALUES (%s, %s, %s, %s)", (user_id, m["id"], m["text"], m["created"]))
+            added.append(m)
+        count = self.db.one("SELECT COUNT(*) FROM memories WHERE user_id = %s", (user_id,))[0]
+        if count > MAX_MEMORIES:   # keep the newest
+            self.db.run("DELETE FROM memories WHERE user_id = %s AND id IN (SELECT id FROM memories WHERE user_id = %s "
+                        "ORDER BY created ASC LIMIT %s)", (user_id, user_id, count - MAX_MEMORIES))
+        return added
+
+    def update_memory(self, user_id: str, memory_id: str, text: str) -> None:
+        from .memory import MAX_MEMORY_CHARS
+        text = " ".join(text.split())[:MAX_MEMORY_CHARS]
+        if not text:
+            raise ValueError("A memory can't be empty. Delete it instead.")
+        self.db.run("UPDATE memories SET text = %s WHERE user_id = %s AND id = %s", (text, user_id, memory_id))
+
+    def forget_memories(self, user_id: str, ids: list[str]) -> None:
+        for i in ids:
+            self.db.run("DELETE FROM memories WHERE user_id = %s AND id = %s", (user_id, i))
+
+    def clear_memories(self, user_id: str) -> None:
+        self.db.run("DELETE FROM memories WHERE user_id = %s", (user_id,))
 
     # ---- saved answers (starred answers and verified share cards) ----
     def list_saved(self, user_id: str) -> list[dict]:
