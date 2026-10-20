@@ -129,3 +129,12 @@ def test_passkey_options_use_this_site():
     assert d["options"]["authenticatorSelection"]["residentKey"] == "required"
     bad = c.post("/api/auth/register/verify", json={"cid": "x" * 20, "credential": {}})
     assert bad.status_code == 400 and "try again" in bad.json()["message"].lower()
+
+
+def test_database_url_passwords_with_symbols_are_encoded():
+    u = "postgresql://postgres.abc:p@ss#w/rd?%@aws-0-us-west-2.pooler.supabase.com:5432/postgres"
+    assert acct.fix_password(u) == "postgresql://postgres.abc:p%40ss%23w%2Frd%3F%25@aws-0-us-west-2.pooler.supabase.com:5432/postgres"
+    plain = "postgresql://postgres.abc:Simple123@h:5432/postgres"
+    assert acct.fix_password(plain) == plain
+    with pytest.raises(ValueError, match="YOUR-PASSWORD"):
+        acct.connect("postgresql://postgres.abc:[YOUR-PASSWORD]@h:5432/postgres")

@@ -273,11 +273,28 @@ class Accounts:
         return [c for c in (self.get_chat(user_id, r[0]) for r in rows) if c]
 
 
+def fix_password(url: str) -> str:
+    """Percent-encode the password in a postgres URL, so passwords with @ # / ? % : still work when pasted as is."""
+    from urllib.parse import quote, unquote
+    url = url.strip()
+    if "://" not in url or "@" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    userinfo, host = rest.rsplit("@", 1)
+    if ":" not in userinfo:
+        return url
+    user, password = userinfo.split(":", 1)
+    password = password.strip("[]") if password.startswith("[") and password.endswith("]") and password != "[YOUR-PASSWORD]" else password
+    return f"{scheme}://{user}:{quote(unquote(password), safe='')}@{host}"
+
+
 def connect(url: str) -> Accounts | None:
     """Accounts on the given database, or None when no database is configured."""
     if not url:
         return None
-    return Accounts(Database(url))
+    if "[YOUR-PASSWORD]" in url:
+        raise ValueError("DATABASE_URL still contains [YOUR-PASSWORD]. Replace it with your Supabase database password.")
+    return Accounts(Database(fix_password(url)))
 
 
 def _jsonable(x: Any) -> Any:
