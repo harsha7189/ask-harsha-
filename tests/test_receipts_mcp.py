@@ -101,3 +101,11 @@ def test_mcp_ask_returns_answer_sources_and_a_verify_link():
     v = rpc(c, "tools/call", {"name": "verify_answer", "arguments": {"link": link}})["result"]["content"][0]["text"]
     assert v.startswith("Verified")
     assert rpc(c, "tools/call", {"name": "verify_answer", "arguments": {"link": "https://x/v/missing12345"}})["result"]["content"][0]["text"].startswith("Not verified")
+
+
+def test_mcp_agent_has_no_popup_tool_and_knows_it_is_a_tool():
+    c, fake, _ = make(CITED)
+    rpc(c, "tools/call", {"name": "ask_harsha_agent", "arguments": {"question": "What has Harsha shipped with AI?"}})
+    req = fake.requests[0]
+    assert "suggest_asking_harsha" not in [t["name"] for t in req["tools"]]
+    assert "called as a tool by another AI assistant" in req["system"]

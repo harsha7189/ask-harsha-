@@ -502,7 +502,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             raise mcp.ToolFailure("Too many questions from this client right now. Try again in a few minutes, or use search_harsha_facts, which is free.")
         if budget.exhausted():
             raise mcp.ToolFailure("Ask Harsha is resting for today (daily budget reached). search_harsha_facts and get_harsha_topic still work.")
-        agent = build_agent(owner=False)
+        agent = build_agent(owner=False, channel="mcp")
         try:
             reply = agent.ask(question)
         except Exception as e:
@@ -777,16 +777,19 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         agent.attached = prepared.summary
         return agent, owner, question
 
-    def build_agent(owner: bool, stream: bool = False) -> Agent:
+    MCP_NOTE = ("\n\nYou're being called as a tool by another AI assistant, not chatting with a person in the app. There are no "
+                "buttons or pop-ups: never mention them. Answer the question as asked; if Harsha's record doesn't cover it, say so plainly.")
+
+    def build_agent(owner: bool, stream: bool = False, channel: str = "web") -> Agent:
         today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
         agent = Agent(
             get_client(), kb=kb, model=settings.model, max_steps=8, max_tokens=1600,
-            system=build_general_prompt(today, owner=owner, web=settings.web_search),
+            system=build_general_prompt(today, owner=owner, web=settings.web_search) + (MCP_NOTE if channel == "mcp" else ""),
             server_tools=[WEB_SEARCH_TOOL] if settings.web_search else [],
             lookup=_Lookup(kb, store), strict_grounding=False, stream=stream,
         )
         add_notes_tools(agent.tools, index, store, owner=owner)
-        if inbox.enabled:
+        if inbox.enabled and channel == "web":  # the "Ask the real Harsha" pop-up only exists in the app
             add_ask_harsha_tool(agent.tools)
         return agent
 
