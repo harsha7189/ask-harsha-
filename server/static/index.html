@@ -343,6 +343,21 @@ textarea.listening{border-color:var(--fg)}
 .si-big:disabled{opacity:.5}
 .si-or{text-align:center;font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
 .si-name{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.si-link{background:none;border:0;color:var(--muted);text-decoration:underline;text-underline-offset:3px;font-size:13.5px;padding:6px 0;justify-self:center}
+.si-link:hover{color:var(--fg)}
+.rc-code{font:700 clamp(17px,5vw,21px)/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;text-align:center;padding:16px 12px;border:1.5px dashed var(--muted);border-radius:14px;background:var(--bg);-webkit-user-select:all;user-select:all;overflow-wrap:anywhere}
+.rc-input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;text-transform:uppercase;text-align:center}
+.rc-check{display:flex;gap:10px;align-items:center;font-size:14.5px;cursor:pointer}
+.rc-check input{width:20px;height:20px;accent-color:var(--red)}
+.rc-tip{font-size:13px;color:var(--muted);margin:0}
+.ep-sec{display:grid;gap:8px;padding:2px 0 10px;border-bottom:1px solid var(--line)}
+.ep-sec h5{margin:0;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.ep-item{display:flex;align-items:center;gap:10px;font-size:13.5px}
+.ep-item>span{flex:1;min-width:0}
+.ep-item small{display:block;color:var(--muted);font-size:12px}
+.ep-item .btn{padding:6px 12px;font-size:12.5px;white-space:nowrap}
+.ep-item.warn>span b{color:var(--warn)}
+.ep-item.ok>span b{color:var(--good)}
 .ep-whorow{display:flex;align-items:center;gap:10px;justify-content:space-between}
 .ep-who{display:flex;align-items:center;gap:10px;min-width:0}
 .ep-who b{display:block;font-size:14.5px}
@@ -582,12 +597,13 @@ function renderExtras(box,data){
 }
 const STEP_LABEL={suggest_asking_harsha:'Offered to ask the real Harsha',web_search:'Searched the web',search_facts:"Searched Harsha's career facts",get_topic:"Opened a topic in Harsha's record",list_topics:"Listed the topics in Harsha's record",search_notes:"Searched Harsha's memory",remember_note:'Saved to memory',forget_note:'Removed from memory'};
 
-function sheet(build){
+function sheet(build,opts){
+  const sticky=!!(opts&&opts.sticky);  // sticky: only its own buttons close it (used for the recovery code)
   const bg=el('div','sheet-bg'),s=el('div','sheet');s.setAttribute('role','dialog');
   s.append(el('div','grip'));const close=()=>{bg.remove();document.removeEventListener('keydown',esc)};
-  function esc(e){if(e.key==='Escape')close()}
+  function esc(e){if(e.key==='Escape'&&!sticky)close()}
   build(s,close);bg.append(s);document.body.append(bg);
-  bg.onclick=e=>{if(e.target===bg)close()};document.addEventListener('keydown',esc);
+  bg.onclick=e=>{if(e.target===bg&&!sticky)close()};document.addEventListener('keydown',esc);
   const f=s.querySelector('input:not([data-nofocus]),button.primary,button');if(f)f.focus();
 }
 function openSource(id){
@@ -805,11 +821,13 @@ function passkeyError(e){
 }
 async function afterSignIn(d,fresh){
   me.user=d.user;$('#savebar').hidden=true;
+  if(d.recovery_code)await showRecoveryCode(d.recovery_code,true);
   if(cur&&cur.messages.length)persist();               // keep the chat that's on screen
   await loadSummaries();
   if(cur&&cur.messages.length&&!summaries.some(x=>x.id===cur.id))summaries.unshift(summarize(cur));
   renderAccount();renderContinue();
   if(LEGACY.length)offerImport();
+  else if(!fresh&&!me.user.recovery)offerRecovery();
   toast(fresh?`Welcome${d.user.name&&d.user.name!=='Ask Harsha user'?', '+d.user.name:''}! Your chats are saved from now on.`:'Signed in. Your chats are under “Chats”.');
 }
 function openSignIn(){
@@ -827,12 +845,97 @@ function openSignIn(){
     const busyOn=on=>{has.disabled=mk.disabled=on};
     has.onclick=async()=>{busyOn(true);line.textContent='';try{const d=await usePasskey();close();afterSignIn(d,false)}catch(e){line.textContent=passkeyError(e)}finally{busyOn(false)}};
     mk.onclick=async()=>{busyOn(true);line.textContent='';try{const d=await createPasskey(inp.value.trim());close();afterSignIn(d,true)}catch(e){line.textContent=passkeyError(e)}finally{busyOn(false)}};
-    s.append(has,el('div','si-or','or'),lbl,mk,line);
+    const lost=el('button','si-link','Lost your device? Use your recovery code');lost.type='button';lost.onclick=()=>{close();openRecover()};
+    s.append(has,el('div','si-or','or'),lbl,mk,line,lost);
     const how=el('details','how');how.append(el('summary',null,'How passkeys keep this private'));
-    how.append(el('p','direct',"Your device makes a key that only works on this site and keeps the secret half. Ask Harsha stores only the public half, so there's no password to leak. Passkeys sync through iCloud Keychain or Google Password Manager, so they work on your other devices too. Without signing in you can still chat; nothing is saved."));
+    how.append(el('p','direct',"Your device makes a key that only works on this site and keeps the secret half. Ask Harsha stores only the public half, so there's no password to leak. Passkeys sync through iCloud Keychain or Google Password Manager, so they work on your other devices too. When you create one you also get a one-time recovery code, your way back in if you ever lose your device. Without signing in you can still chat; nothing is saved."));
     s.append(how);
     const r=el('div','row'),c=el('button','btn','Not now');c.type='button';c.onclick=close;r.append(c);s.append(r);
   });
+}
+// ---------- recovery: no email needed ----------
+// A one-time recovery code is shown once when the passkey is made. It signs you in on a new device, signs out every
+// other device, and is then used up; adding a passkey afterwards gives you a fresh code. You can also add a second
+// passkey (another device) from "Chats" → Security.
+function showRecoveryCode(code,fresh){
+  return new Promise(done=>sheet((s,close)=>{
+    s.append(el('h3',null,fresh?'One last step: your recovery code':'Your new recovery code'));
+    s.append(el('p','si-lead',"If you ever lose this device, this code gets you back into your chats. It's the only way back in, and it won't be shown again."));
+    const box=el('div','rc-code',code);box.setAttribute('aria-label','Recovery code '+code.split('').join(' '));s.append(box);
+    const line=el('p','msgline');
+    const r=el('div','row'),cp=el('button','btn','Copy'),dl=el('button','btn','Download');[cp,dl].forEach(b=>b.type='button');
+    cp.onclick=async()=>{try{await navigator.clipboard.writeText(code);cp.textContent='Copied ✓'}catch(e){line.textContent='Copy didn’t work here. Select the code and copy it, or tap Download.'}};
+    const text=`Ask Harsha recovery code\n\n${code}\n\nLost your device? Open ${location.origin}, tap Sign in, then "Lost your device? Use your recovery code".\nThe code works once. After using it you'll get a new one.\nMade ${new Date().toLocaleDateString([],{year:'numeric',month:'long',day:'numeric'})}.\n`;
+    dl.onclick=()=>download('ask-harsha-recovery-code.txt',text,'text/plain');
+    r.style.justifyContent='center';r.append(cp,dl);
+    if(navigator.share){const sh=el('button','btn','Save to Notes / Files');sh.type='button';sh.onclick=()=>navigator.share({title:'Ask Harsha recovery code',text}).catch(()=>{});r.append(sh)}
+    s.append(r,el('p','rc-tip','Save it in your password manager, your Notes app or a photo of a printout. Anyone with this code can open your chats, so keep it private.'));
+    const ck=el('label','rc-check'),box2=el('input');box2.type='checkbox';box2.dataset.nofocus='1';ck.append(box2,el('span',null,'I saved my recovery code'));
+    const r2=el('div','row'),ok=el('button','btn red primary','Done');ok.type='button';ok.disabled=true;
+    box2.onchange=()=>{ok.disabled=!box2.checked};
+    ok.onclick=()=>{close();done()};
+    r2.append(ok);s.append(ck,line,r2);
+  },{sticky:true}));
+}
+async function makeRecoveryCode(){
+  const d=await api('POST','/api/account/recovery');
+  me.user.recovery=d.recovery;await showRecoveryCode(d.recovery_code,false);
+  return d;
+}
+function offerRecovery(){
+  if(EMBED)return;
+  try{if(sessionStorage.getItem('askh_rec_nudge'))return;sessionStorage.setItem('askh_rec_nudge','1')}catch(e){}
+  sheet((s,close)=>{
+    s.append(el('h3',null,'Protect your chats'),el('p','si-lead','Your account has no recovery code yet. Make one now, so losing your phone never means losing your chats.'));
+    const line=el('p','msgline'),r=el('div','row'),no=el('button','btn','Later'),yes=el('button','btn red primary','Make my recovery code');[no,yes].forEach(b=>b.type='button');
+    no.onclick=close;yes.onclick=async()=>{yes.disabled=true;try{close();await makeRecoveryCode()}catch(e){toast(e.message)}};
+    r.append(no,yes);s.append(line,r);
+  });
+}
+function openRecover(){
+  sheet((s,close)=>{
+    s.classList.add('signin');
+    s.append(el('h3',null,'Use your recovery code'));
+    s.append(el('p','si-lead','Type the 20-character code you saved when you made your passkey.'));
+    const inp=el('input','field rc-input');inp.placeholder='XXXX-XXXX-XXXX-XXXX-XXXX';inp.maxLength=29;inp.autocomplete='off';inp.spellcheck=false;
+    inp.setAttribute('autocapitalize','characters');inp.setAttribute('aria-label','Recovery code');
+    const line=el('p','msgline');
+    inp.oninput=()=>{const raw=inp.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,20);inp.value=raw.match(/.{1,4}/g)?.join('-')||'';line.textContent=''};
+    const go=el('button','si-big red primary');go.type='button';go.append(el('b',null,'Sign in'),el('span',null,'This signs out every other device and uses up the code'));
+    const submit=async()=>{line.textContent='';go.disabled=true;
+      try{const d=await api('POST','/api/auth/recover',{code:inp.value});close();me.user=d.user;$('#savebar').hidden=true;
+        if(cur&&cur.messages.length)persist();await loadSummaries();renderAccount();renderContinue();afterRecover()}
+      catch(e){line.textContent=e.message}finally{go.disabled=false}};
+    go.onclick=submit;inp.onkeydown=e=>{if(e.key==='Enter')submit()};
+    s.append(inp,go,line);
+    const how=el('details','how');how.append(el('summary',null,"Don't have your code?"));
+    how.append(el('p','direct',"Check your password manager, Notes, Files or Downloads for “ask-harsha-recovery-code”. If your passkey synced through iCloud Keychain or Google Password Manager, it may already be on your new device: try “Sign in with a passkey”. Without the code or a passkey, the account can't be opened. There's no email on file, so no one else can open it either."));
+    s.append(how);
+    const r=el('div','row'),b=el('button','btn','Back');b.type='button';b.onclick=()=>{close();openSignIn()};r.append(b);s.append(r);
+  });
+}
+function afterRecover(){
+  sheet((s,close)=>{
+    s.append(el('h3',null,"You're back in"));
+    s.append(el('p','si-lead','Your chats are here. Your old recovery code is used up and every other device was signed out.'));
+    s.append(el('p',null,'Next, add a passkey on this device. You’ll get a new recovery code right after.'));
+    const line=el('p','msgline'),r=el('div','row'),no=el('button','btn','Later'),yes=el('button','btn red primary','Add a passkey here');[no,yes].forEach(b=>b.type='button');
+    no.onclick=()=>{close();toast('Signed in. Add a passkey from “Chats” → Security before you sign out.')};
+    yes.onclick=async()=>{yes.disabled=true;line.textContent='';try{await addPasskey();close()}catch(e){line.textContent=passkeyError(e)}finally{yes.disabled=false}};
+    r.append(no,yes);s.append(line,r);
+  });
+}
+async function addPasskey(){
+  if(!passkeysOK())throw new Error("This browser doesn't support passkeys. Try Safari on iPhone or a recent Chrome.");
+  const {cid,options:o}=await api('POST','/api/account/passkeys/options');
+  o.challenge=b64uToBuf(o.challenge);o.user.id=b64uToBuf(o.user.id);(o.excludeCredentials||[]).forEach(x=>x.id=b64uToBuf(x.id));
+  let cred;try{cred=await navigator.credentials.create({publicKey:o})}
+  catch(e){if(e&&e.name==='InvalidStateError')throw new Error('This device already has a passkey on your account. Try another device or a security key.');throw e}
+  const d=await api('POST','/api/account/passkeys/verify',{cid,credential:credJSON(cred)});
+  me.user.recovery=d.recovery;
+  if(d.recovery_code)await showRecoveryCode(d.recovery_code,false);
+  toast('Passkey added. You can sign in with it from now on.');
+  return d;
 }
 function offerImport(){
   sheet((s,close)=>{
@@ -859,6 +962,7 @@ async function loadMe(){
   if(signedIn())await loadSummaries();
   renderAccount();renderContinue();
   if(signedIn()&&LEGACY.length)offerImport();
+  else if(signedIn()&&!me.user.recovery)offerRecovery();
 }
 // ---------- "Previously on…": past chats as a show ----------
 // A drawer from the left. It opens with a short recap of your latest chats, then lists every chat as an episode,
@@ -971,7 +1075,29 @@ function openRecents(){
   gone.onclick=async()=>{if(gone.dataset.sure){try{await api('DELETE','/api/me');me.user=null;summaries=[];close();newChat();renderAccount();toast('Your account and all its chats were deleted. You may also remove the passkey from your password manager.')}catch(e){toast(e.message)}}else{gone.dataset.sure='1';gone.textContent='Tap again: deletes everything';gone.classList.add('red')}};
   r.append(exp,wipe,gone);
   const wr=el('div','ep-whorow');wr.append(who,out);
-  foot.append(wr,el('small',null,'Your chats are saved to your account, so they follow you to any device where you sign in with this passkey.'),r);dr.append(foot);
+  const sec=el('section','ep-sec');sec.append(el('h5',null,'Security'),el('p','ep-note','Loading…'));
+  const drawSecurity=async()=>{
+    let d;try{d=await api('GET','/api/account/passkeys')}catch(e){sec.lastChild.textContent=e.message;return}
+    me.user.recovery=d.recovery;sec.textContent='';sec.append(el('h5',null,'Security'));
+    const rc=el('div','ep-item '+(d.recovery?'ok':'warn')),rt=el('span');
+    rt.append(el('b',null,d.recovery?'✓ Recovery code saved':'! No recovery code'),el('small',null,d.recovery?'Made '+new Date(d.recovery).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' · gets you in if you lose your devices':"If you lose your device, you'd lose these chats"));
+    const rb=el('button','btn'+(d.recovery?'':' red'),d.recovery?'New code':'Make one');rb.type='button';
+    rb.onclick=async()=>{if(d.recovery&&!rb.dataset.sure){rb.dataset.sure='1';rb.textContent='Old code stops working. Tap again';return}
+      rb.disabled=true;try{await makeRecoveryCode();drawSecurity()}catch(e){toast(e.message);rb.disabled=false}};
+    rc.append(rt,rb);sec.append(rc);
+    d.passkeys.forEach(k=>{const it=el('div','ep-item'),t=el('span');
+      const used=k.last_used?'last used '+new Date(k.last_used).toLocaleDateString([],{month:'short',day:'numeric'}):'not used to sign in yet';
+      t.append(el('b',null,'🔑 Passkey · '+k.label),el('small',null,'Made '+new Date(k.created).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' · '+used));it.append(t);
+      if(d.passkeys.length>1){const rm=el('button','btn','Remove');rm.type='button';rm.setAttribute('aria-label','Remove passkey made on '+k.label);
+        rm.onclick=async()=>{if(!rm.dataset.sure){rm.dataset.sure='1';rm.textContent='Tap again';rm.classList.add('red');return}
+          try{await api('DELETE','/api/account/passkeys/'+encodeURIComponent(k.id));drawSecurity()}catch(e){toast(e.message)}};it.append(rm)}
+      sec.append(it)});
+    const add=el('div','ep-item'),at=el('span');at.append(el('b',null,'Add another device'),el('small',null,'A second passkey, like Windows Hello on your laptop, so one lost device never locks you out'));
+    const ab=el('button','btn','+ Add');ab.type='button';ab.onclick=async()=>{ab.disabled=true;try{await addPasskey();drawSecurity()}catch(e){toast(passkeyError(e));ab.disabled=false}};
+    add.append(at,ab);sec.append(add);
+  };
+  drawSecurity();
+  foot.append(wr,el('small',null,'Your chats are saved to your account, so they follow you to any device where you sign in with this passkey.'),sec,r);dr.append(foot);
 
   bg.append(dr);document.body.append(bg);x.focus();
 }

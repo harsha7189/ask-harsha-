@@ -6,6 +6,11 @@ an optional nickname labels the passkey in their password manager.
 
 Sessions are random tokens in an HttpOnly cookie; the database stores only a SHA-256 hash of each token.
 
+Recovery, without email: every account gets a one-time recovery code (20 characters, about 98 bits) shown once when
+the passkey is made. Only its hash is stored. Using it signs the person in on a new device, signs out every other
+session, and is used up; adding a passkey afterwards issues a fresh code. People can also add more than one passkey
+(say, iPhone and Windows Hello) so losing one device doesn't lock them out.
+
 Storage is Postgres when DATABASE_URL is set (Supabase in production), otherwise SQLite (local runs and tests).
 People who aren't signed in can chat, but nothing of theirs is stored.
 """
@@ -36,7 +41,15 @@ SCHEMA = [
        title TEXT NOT NULL, created BIGINT NOT NULL, updated BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE INDEX IF NOT EXISTS chats_user_updated ON chats (user_id, updated)""",
     """CREATE INDEX IF NOT EXISTS credentials_user ON credentials (user_id)""",
+    """CREATE TABLE IF NOT EXISTS recovery (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+       code_hash TEXT NOT NULL UNIQUE, created BIGINT NOT NULL)""",
 ]
+# Columns added after the first release. Each runs once; "already exists" errors are ignored.
+MIGRATIONS = [
+    "ALTER TABLE credentials ADD COLUMN label TEXT",
+]
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"   # no 0/O, 1/I/L or U, so codes are easy to read and type
+CODE_LENGTH = 20
 
 
 def b64u(b: bytes) -> str:
@@ -55,6 +68,29 @@ def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def new_recovery_code() -> str:
+    raw = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+    return "-".join(raw[i:i + 4] for i in range(0, CODE_LENGTH, 4))
+
+
+def normalize_code(code: str) -> str:
+    return "".join(ch for ch in code.upper() if ch.isalnum())
+
+
+def code_hash(code: str) -> str:
+    return hashlib.sha256(("askh-recovery:" + normalize_code(code)).encode()).hexdigest()
+
+
+def device_label(user_agent: str) -> str:
+    """A friendly name for where a passkey was made, from the browser's user agent ("iPhone", "Windows")."""
+    ua = user_agent or ""
+    for needle, name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("CrOS", "Chromebook"),
+                         ("Windows", "Windows"), ("Macintosh", "Mac"), ("Linux", "Linux")):
+        if needle in ua:
+            return name
+    return "Device"
+
+
 class Database:
     """A tiny wrapper so the same SQL runs on Postgres (psycopg, %s) and SQLite (?)."""
 
@@ -71,6 +107,11 @@ class Database:
             self.conn.execute("PRAGMA foreign_keys = ON")
         for stmt in SCHEMA:
             self.run(stmt)
+        for stmt in MIGRATIONS:
+            try:
+                self.run(stmt)
+            except Exception:  # the column is already there
+                pass
 
     def _sql(self, sql: str) -> str:
         return sql if self.kind == "postgres" else sql.replace("%s", "?")
@@ -145,16 +186,82 @@ class Accounts:
         cid = self._remember(opts.challenge, {"user_id": b64u(user_id), "name": name, "rp_id": rp_id})
         return cid, options_to_json(opts)
 
-    def register(self, cid: str, credential: dict, origin: str) -> User:
+    def register(self, cid: str, credential: dict, origin: str, label: str = "") -> User:
         from webauthn import verify_registration_response
         challenge, data = self._take(cid)
+        if data.get("add"):
+            raise ValueError("That request was for adding a passkey. Please try again.")
         v = verify_registration_response(credential=credential, expected_challenge=challenge,
                                          expected_rp_id=data["rp_id"], expected_origin=origin)
         user = User(data["user_id"], data["name"], now_ms())
         self.db.run("INSERT INTO users (id, name, created) VALUES (%s, %s, %s)", (user.id, user.name, user.created))
-        self.db.run("INSERT INTO credentials (id, user_id, public_key, sign_count, created) VALUES (%s, %s, %s, %s, %s)",
-                    (b64u(v.credential_id), user.id, b64u(v.credential_public_key), v.sign_count, now_ms()))
+        self._save_credential(user.id, v, label)
         return user
+
+    def _save_credential(self, user_id: str, v, label: str) -> None:
+        self.db.run("INSERT INTO credentials (id, user_id, public_key, sign_count, created, label) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (b64u(v.credential_id), user_id, b64u(v.credential_public_key), v.sign_count, now_ms(), label[:40] or None))
+
+    # ---- more passkeys on the same account (a second device, so losing one isn't the end) ----
+    def add_passkey_options(self, user: User, rp_id: str) -> tuple[str, str]:
+        from webauthn import generate_registration_options, options_to_json
+        from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, PublicKeyCredentialDescriptor,
+                                              ResidentKeyRequirement, UserVerificationRequirement)
+        existing = [PublicKeyCredentialDescriptor(id=unb64u(r[0]))
+                    for r in self.db.all("SELECT id FROM credentials WHERE user_id = %s", (user.id,))]
+        opts = generate_registration_options(
+            rp_id=rp_id, rp_name=self.rp_name, user_id=unb64u(user.id), user_name=user.name, user_display_name=user.name,
+            exclude_credentials=existing,
+            authenticator_selection=AuthenticatorSelectionCriteria(
+                resident_key=ResidentKeyRequirement.REQUIRED, user_verification=UserVerificationRequirement.PREFERRED))
+        cid = self._remember(opts.challenge, {"user_id": user.id, "rp_id": rp_id, "add": True})
+        return cid, options_to_json(opts)
+
+    def add_passkey(self, user: User, cid: str, credential: dict, origin: str, label: str = "") -> None:
+        from webauthn import verify_registration_response
+        challenge, data = self._take(cid)
+        if not data.get("add") or data.get("user_id") != user.id:
+            raise ValueError("That request doesn't match your account. Please try again.")
+        v = verify_registration_response(credential=credential, expected_challenge=challenge,
+                                         expected_rp_id=data["rp_id"], expected_origin=origin)
+        if self.db.one("SELECT 1 FROM credentials WHERE id = %s", (b64u(v.credential_id),)):
+            raise ValueError("This passkey is already on your account.")
+        self._save_credential(user.id, v, label)
+
+    def passkeys(self, user_id: str) -> list[dict]:
+        rows = self.db.all("SELECT id, label, created, last_used FROM credentials WHERE user_id = %s ORDER BY created", (user_id,))
+        return [{"id": r[0], "label": r[1] or "Passkey", "created": r[2], "last_used": r[3]} for r in rows]
+
+    def remove_passkey(self, user_id: str, cred_id: str) -> None:
+        if not self.db.one("SELECT 1 FROM credentials WHERE user_id = %s AND id = %s", (user_id, cred_id)):
+            raise ValueError("That passkey isn't on your account.")
+        if self.db.one("SELECT COUNT(*) FROM credentials WHERE user_id = %s", (user_id,))[0] <= 1:
+            raise ValueError("This is your only passkey. Add another one before removing it.")
+        self.db.run("DELETE FROM credentials WHERE user_id = %s AND id = %s", (user_id, cred_id))
+
+    # ---- recovery code ----
+    def make_recovery_code(self, user_id: str) -> str:
+        """A new one-time recovery code for this account. Any older code stops working."""
+        code = new_recovery_code()
+        self.db.run("DELETE FROM recovery WHERE user_id = %s", (user_id,))
+        self.db.run("INSERT INTO recovery (user_id, code_hash, created) VALUES (%s, %s, %s)", (user_id, code_hash(code), now_ms()))
+        return code
+
+    def recovery_status(self, user_id: str) -> int | None:
+        """When the current recovery code was made, or None if the account has none."""
+        row = self.db.one("SELECT created FROM recovery WHERE user_id = %s", (user_id,))
+        return row[0] if row else None
+
+    def recover(self, code: str) -> User:
+        """Sign in with a recovery code. The code is used up and every other session is signed out."""
+        if len(normalize_code(code)) != CODE_LENGTH:
+            raise ValueError("Recovery codes are 20 letters and numbers, like ABCD-EFGH-JKMN-PQRS-TVWX.")
+        row = self.db.one("SELECT user_id FROM recovery WHERE code_hash = %s", (code_hash(code),))
+        if not row:
+            raise ValueError("That recovery code didn't work. Check it, or it may already have been used.")
+        self.db.run("DELETE FROM recovery WHERE user_id = %s", (row[0],))
+        self.db.run("DELETE FROM sessions WHERE user_id = %s", (row[0],))
+        return self.user(row[0])
 
     # ---- passkey sign-in ----
     def authentication_options(self, rp_id: str) -> tuple[str, str]:
@@ -203,7 +310,7 @@ class Accounts:
         return User(*row)
 
     def delete_user(self, user_id: str) -> None:
-        for table in ("chats", "sessions", "credentials"):
+        for table in ("chats", "sessions", "credentials", "recovery"):
             self.db.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
         self.db.run("DELETE FROM users WHERE id = %s", (user_id,))
 

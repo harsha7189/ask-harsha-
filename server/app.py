@@ -129,6 +129,10 @@ class PasskeyFinish(BaseModel):
     credential: dict
 
 
+class RecoveryCode(BaseModel):
+    code: str = Field(min_length=1, max_length=60)
+
+
 class ChatBody(BaseModel):
     title: str = Field(default="", max_length=200)
     created: int = 0
@@ -368,10 +372,16 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         msg = str(e) if isinstance(e, ValueError) and len(str(e)) < 160 else "That passkey couldn't be verified. Please try again."
         return error(400, "passkey", msg)
 
+    def who(user) -> dict:
+        return {"name": user.name, "created": user.created, "recovery": accounts.recovery_status(user.id)}
+
+    def label_for(request: Request) -> str:
+        return acct.device_label(request.headers.get("user-agent", ""))
+
     @app.get("/api/me")
     def me(request: Request):
         user = current_user(request)
-        return {"enabled": accounts is not None, "user": {"name": user.name, "created": user.created} if user else None}
+        return {"enabled": accounts is not None, "user": who(user) if user else None}
 
     @app.post("/api/auth/register/options")
     def register_options(req: PasskeyStart, request: Request):
@@ -386,11 +396,12 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         if (g := auth_guard(request)):
             return g
         try:
-            user = accounts.register(req.cid, req.credential, rp(request)[1])
+            user = accounts.register(req.cid, req.credential, rp(request)[1], label_for(request))
         except Exception as e:
             return account_error(e)
         log.info(json.dumps({"event": "account_created"}))
-        return with_session({"user": {"name": user.name, "created": user.created}, "new": True}, request, accounts.start_session(user))
+        code = accounts.make_recovery_code(user.id)   # shown once, right after the passkey is made
+        return with_session({"user": who(user), "new": True, "recovery_code": code}, request, accounts.start_session(user))
 
     @app.post("/api/auth/login/options")
     def login_options(request: Request):
@@ -407,7 +418,76 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             user = accounts.authenticate(req.cid, req.credential, rp(request)[1])
         except Exception as e:
             return account_error(e)
-        return with_session({"user": {"name": user.name, "created": user.created}}, request, accounts.start_session(user))
+        return with_session({"user": who(user)}, request, accounts.start_session(user))
+
+    @app.post("/api/auth/recover")
+    def recover(req: RecoveryCode, request: Request):
+        """Lost device: sign in with the recovery code. It's used up, and all other sessions are signed out."""
+        if (g := auth_guard(request)):
+            return g
+        try:
+            user = accounts.recover(req.code)
+        except ValueError as e:
+            log.info(json.dumps({"event": "recovery_failed"}))
+            return error(400, "recovery", str(e))
+        log.info(json.dumps({"event": "account_recovered"}))
+        return with_session({"user": who(user), "recovered": True}, request, accounts.start_session(user))
+
+    @app.get("/api/account/passkeys")
+    def list_passkeys(request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"passkeys": accounts.passkeys(user.id), "recovery": accounts.recovery_status(user.id)}
+
+    @app.post("/api/account/passkeys/options")
+    def add_passkey_options(request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        if (g := auth_guard(request)):
+            return g
+        cid, options = accounts.add_passkey_options(user, rp(request)[0])
+        return {"cid": cid, "options": json.loads(options)}
+
+    @app.post("/api/account/passkeys/verify")
+    def add_passkey_verify(req: PasskeyFinish, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        if (g := auth_guard(request)):
+            return g
+        try:
+            accounts.add_passkey(user, req.cid, req.credential, rp(request)[1], label_for(request))
+        except Exception as e:
+            return account_error(e)
+        out = {"passkeys": accounts.passkeys(user.id)}
+        if accounts.recovery_status(user.id) is None:   # e.g. right after recovering: hand out a fresh code
+            out["recovery_code"] = accounts.make_recovery_code(user.id)
+        out["recovery"] = accounts.recovery_status(user.id)
+        return out
+
+    @app.delete("/api/account/passkeys/{cred_id}")
+    def remove_passkey(cred_id: str, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            accounts.remove_passkey(user.id, cred_id)
+        except ValueError as e:
+            return error(400, "passkey", str(e))
+        return {"passkeys": accounts.passkeys(user.id)}
+
+    @app.post("/api/account/recovery")
+    def new_recovery(request: Request):
+        """Make a new recovery code. The old one stops working."""
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        if (g := auth_guard(request)):
+            return g
+        code = accounts.make_recovery_code(user.id)
+        return {"recovery_code": code, "recovery": accounts.recovery_status(user.id)}
 
     @app.post("/api/auth/logout")
     def logout(request: Request):

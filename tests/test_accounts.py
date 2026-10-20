@@ -138,3 +138,67 @@ def test_database_url_passwords_with_symbols_are_encoded():
     assert acct.fix_password(plain) == plain
     with pytest.raises(ValueError, match="YOUR-PASSWORD"):
         acct.connect("postgresql://postgres.abc:[YOUR-PASSWORD]@h:5432/postgres")
+
+
+def test_recovery_code_is_hashed_single_use_and_signs_out_other_devices():
+    a = store()
+    u = user(a)
+    old_session = a.start_session(u)
+    code = a.make_recovery_code(u.id)
+    assert len(acct.normalize_code(code)) == 20 and code.count("-") == 4
+    assert set(acct.normalize_code(code)) <= set(acct.CODE_ALPHABET)
+    assert code not in str(a.db.all("SELECT * FROM recovery"))           # only the hash is stored
+    assert a.recovery_status(u.id) is not None
+    assert a.recover(" " + code.lower().replace("-", " ") + " ").id == u.id   # forgiving about case and spacing
+    assert a.session_user(old_session) is None                            # every other device signed out
+    assert a.recovery_status(u.id) is None
+    with pytest.raises(ValueError, match="didn't work"):
+        a.recover(code)                                                   # used up
+    with pytest.raises(ValueError, match="20 letters"):
+        a.recover("short")
+
+
+def test_new_recovery_code_replaces_the_old_one():
+    a = store()
+    u = user(a)
+    first = a.make_recovery_code(u.id)
+    second = a.make_recovery_code(u.id)
+    with pytest.raises(ValueError):
+        a.recover(first)
+    assert a.recover(second).id == u.id
+
+
+def test_passkeys_list_and_the_last_one_can_not_be_removed():
+    a = store()
+    u = user(a)
+    for i, label in enumerate(["iPhone", "Windows"]):
+        a.db.run("INSERT INTO credentials (id, user_id, public_key, sign_count, created, label) VALUES (%s, %s, %s, 0, %s, %s)",
+                 (f"cred{i}", u.id, "pk", acct.now_ms() + i, label))
+    assert [k["label"] for k in a.passkeys(u.id)] == ["iPhone", "Windows"]
+    a.remove_passkey(u.id, "cred0")
+    with pytest.raises(ValueError, match="only passkey"):
+        a.remove_passkey(u.id, "cred1")
+    kim = user(a, "Kim")
+    with pytest.raises(ValueError, match="isn't on your account"):
+        a.remove_passkey(kim.id, "cred1")
+    assert acct.device_label("Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X)") == "iPhone"
+    assert acct.device_label("Mozilla/5.0 (Windows NT 10.0; Win64; x64)") == "Windows"
+
+
+def test_recovery_api_round_trip():
+    a = store()
+    u = user(a)
+    code = a.make_recovery_code(u.id)
+    c = make(a)
+    assert c.post("/api/auth/recover", json={"code": "ABCD-EFGH-JKMN-PQRS-TVWX"}).status_code == 400
+    d = c.post("/api/auth/recover", json={"code": code}).json()
+    assert d["recovered"] is True and d["user"]["recovery"] is None
+    assert c.get("/api/me").json()["user"]["name"] == "Sam"               # signed in by the cookie
+    assert c.get("/api/account/passkeys").json() == {"passkeys": [], "recovery": None}
+    opts = c.post("/api/account/passkeys/options").json()["options"]
+    assert opts["user"]["id"] == u.id and opts["rp"]["id"] == "testserver"
+    fresh = c.post("/api/account/recovery").json()
+    assert len(acct.normalize_code(fresh["recovery_code"])) == 20 and c.get("/api/me").json()["user"]["recovery"]
+    signed_out = make(a)
+    assert signed_out.post("/api/account/recovery").status_code == 401
+    assert signed_out.get("/api/account/passkeys").status_code == 401
