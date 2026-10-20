@@ -70,6 +70,7 @@ class Agent:
         stream: bool = False,
         record_tools: bool = True,
         speed: str = "chat",
+        container: str | None = None,
     ):
         self.client = client
         self.kb = kb or KnowledgeBase.load()
@@ -88,6 +89,7 @@ class Agent:
         self.strict_grounding = strict_grounding
         self.stream = stream            # stream text deltas through on_event("text", ...)
         self.speed = speed              # how hard the model thinks: chat | deep | helper (see agent/speed.py)
+        self.container_id = container   # code execution sandbox to reuse across calls (files carry over)
         self._first_text: float | None = None
         self.messages: list[dict] = []  # full conversation, kept across turns
 
@@ -122,6 +124,8 @@ class Agent:
                         self.on_event("web_search_start", {})
                     elif _get(block, "type") == "tool_use":
                         self.on_event("tool_start", {"name": _get(block, "name")})   # e.g. "Writing your file" while it's written
+                    elif _get(block, "type") == "server_tool_use":
+                        self.on_event("server_tool_start", {"name": _get(block, "name")})   # e.g. code running in the sandbox
             return s.get_final_message()
 
     def ask(self, question: str) -> Reply:
@@ -150,6 +154,8 @@ class Agent:
             tools = self.tools.specs() + self.server_tools
             if tools:
                 call["tools"] = tools
+            if self.container_id:
+                call["container"] = self.container_id
             t0 = time.monotonic()
             response = self._call(call)
             calls.append(round(time.monotonic() - t0, 2))
@@ -168,6 +174,10 @@ class Agent:
 
             content = list(_get(response, "content", []) or [])
             stop = _get(response, "stop_reason", "")
+            box = _get(response, "container")
+            if box is not None and _get(box, "id"):
+                self.container_id = _get(box, "id")
+            self.on_event("response_content", {"content": content})
             # Keep the assistant turn exactly as returned (thinking blocks, server tool blocks, citations).
             self.messages.append({"role": "assistant", "content": content})
 

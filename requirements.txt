@@ -11,3 +11,4 @@ reportlab>=4.0
 # tests only
 pytest>=8.0
 httpx>=0.27
+pypdf>=5.0

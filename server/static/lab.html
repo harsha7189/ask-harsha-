@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Discovery Lab</title>
+<meta name="description" content="Ask Harsha's research partner: it forms hypotheses, runs real experiments in a sandbox, and tries to break its own results.">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Discovery Lab">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* One page: ask, watch the three stages run, read the evidence. Phone first, one column. */
+:root{
+  --bg:#0b0b0b; --panel:#171717; --raise:#232323; --line:#2e2e2e;
+  --fg:#f5f5f1; --muted:#a3a3a3; --red:#e50914; --red-hot:#ff2a36; --good:#46d369; --warn:#f2b445; --blue:#7cb7ff; --bad:#ff6b6b;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px)); --gr:max(16px,env(safe-area-inset-right,0px));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,textarea:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+a{color:var(--blue)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(10px + env(safe-area-inset-top,0px)) var(--gr) 10px var(--gl);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.back{display:grid;place-items:center;width:44px;height:44px;margin-left:-10px;color:var(--muted);text-decoration:none;border-radius:12px}
+.back:hover{color:var(--fg)}
+.back svg{width:22px;height:22px}
+.who{flex:1;min-width:0}
+.who h1{margin:0;font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:28px;line-height:.95}
+.who h1 span{color:var(--red)}
+.who p{margin:0;font-size:13px;color:var(--muted)}
+.hbtn{font-size:13px;font-weight:600;padding:8px 12px;border-radius:999px;border:1px solid var(--line);color:var(--fg)}
+main{max-width:760px;margin:0 auto;padding:18px var(--gr) calc(48px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;gap:10px}
+.card h2{margin:0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.lead{margin:0;color:var(--muted);font-size:15px}
+.legend{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.l-proven{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.l-evidence{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+.l-hypothesis{background:var(--raise);color:var(--muted)}
+.l-disproven{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.ask{display:grid;gap:10px}
+textarea{width:100%;min-height:96px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:16px;line-height:1.45}
+textarea:focus{border-color:var(--muted);outline:none}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:13px;padding:7px 12px;border-radius:999px;background:var(--bg);border:1px solid var(--line);text-align:left}
+.chip:hover{border-color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{background:var(--raise);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600}
+.btn:hover{background:#2c2c2c}
+.btn.red{background:var(--red)}
+.btn.red:hover{background:var(--red-hot)}
+.fine{font-size:12.5px;color:var(--muted);margin:0}
+.warnline{font-size:13px;color:var(--warn);margin:0}
+/* the three stages */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.step{display:grid;gap:2px;padding:8px 10px;border-radius:12px;background:var(--bg);border:1px solid var(--line);font-size:12px;color:var(--muted)}
+.step b{font-size:13.5px;color:var(--fg)}
+.step.on{border-color:var(--red);background:color-mix(in srgb,var(--red) 10%,var(--bg))}
+.step.done{border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
+.step.done b::after{content:" ✓";color:var(--good)}
+.live{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted)}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--fg);border-radius:50%;animation:spin .8s linear infinite;flex:0 0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-width:480px){.steps{grid-template-columns:repeat(2,1fr)}}
+/* hypotheses */
+.hyp{border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:8px;background:var(--bg)}
+.hyp-top{display:flex;gap:10px;align-items:flex-start}
+.hid{font:700 13px/1 var(--f-mono);color:var(--muted);padding-top:3px}
+.hst{flex:1;min-width:0;font-weight:600}
+.why{margin:0;font-size:13.5px;color:var(--fg)}
+.evl{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.evl li{font-size:12.5px;color:var(--muted);display:flex;gap:6px}
+.evl li .r{font-weight:700;flex:0 0 auto}
+.evl li .r.supports{color:var(--good)}.evl li .r.refutes{color:var(--bad)}.evl li .r.inconclusive{color:var(--muted)}
+details summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.known li{font-size:14px}
+/* the lab notebook: every sandbox action */
+.run{border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden}
+.run summary{display:flex;gap:8px;align-items:center;padding:8px 12px;list-style:none;font-size:13px;color:var(--fg)}
+.run summary::-webkit-details-marker{display:none}
+.run .n{font:700 12px/1 var(--f-mono);color:var(--muted);flex:0 0 auto}
+.run .cmd{flex:1;min-width:0;font-family:var(--f-mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.run .st{font-size:11.5px;font-weight:700;flex:0 0 auto}
+.run .st.ok{color:var(--good)}.run .st.failed,.run .st.error{color:var(--bad)}
+.run pre{margin:0;padding:10px 12px;border-top:1px solid var(--line);font:12px/1.5 var(--f-mono);white-space:pre;overflow:auto;max-height:340px}
+.run pre .mk{color:var(--warn)}
+.run pre.err{color:var(--bad)}
+.tag{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:6px;background:var(--raise);color:var(--muted);flex:0 0 auto}
+/* charts */
+.chart svg{width:100%;height:auto;display:block}
+.chart .ttl{font-size:14px;font-weight:600}
+.att{display:grid;gap:4px;font-size:14px}
+.att small{color:var(--muted)}
+.summary{margin:0;font-size:15.5px;line-height:1.55}
+.history{display:grid;gap:6px}
+.hist{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line);text-align:left;width:100%}
+.hist:hover{border-color:var(--muted)}
+.hist .t{flex:1;min-width:0}
+.hist .t b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist .t small{color:var(--muted);font-size:12px}
+.dots{display:flex;gap:3px}
+.dots i{width:9px;height:9px;border-radius:50%}
+.dots .proven{background:var(--good)}.dots .evidence{background:var(--blue)}.dots .hypothesis{background:#555}.dots .disproven{background:var(--bad)}
+.sig{font-size:12.5px;color:var(--muted)}
+.sig.ok{color:var(--good)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;max-width:min(520px,calc(100vw - 32px));z-index:30}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  <div class="who"><h1>Discovery <span>Lab</span></h1><p>Hypotheses, real experiments, and a fair fight</p></div>
+  <button class="hbtn" id="histbtn" type="button" hidden>History</button>
+</header>
+<main id="main">
+  <section class="card" id="intro">
+    <p class="lead">Ask a question you'd like investigated. The lab states testable hypotheses, writes and runs Python in a sealed sandbox, then tries hard to break its own results. Every label comes from code that actually ran.</p>
+    <div class="legend"><span class="pill l-proven">Proven</span><span class="pill l-evidence">Experimental evidence</span><span class="pill l-hypothesis">Hypothesis</span><span class="pill l-disproven">Disproven</span></div>
+    <p class="fine"><b>Proven</b>: an exact symbolic identity, or every case checked. <b>Experimental evidence</b>: holds on the cases tested, not proven for all. <b>Hypothesis</b>: untested or the evidence conflicts. <b>Disproven</b>: code found a counterexample.</p>
+  </section>
+  <section class="card ask" id="askcard">
+    <h2>Investigate</h2>
+    <textarea id="q" maxlength="3000" placeholder="What do you want to investigate? A claim about numbers, an algorithm, a pattern…" aria-label="What do you want to investigate?"></textarea>
+    <div class="chips" id="examples"></div>
+    <div class="row"><button class="btn red" id="go" type="button">Investigate</button><span class="fine" id="quota"></span></div>
+    <p class="warnline" id="gate" hidden></p>
+    <p class="fine">Takes a few minutes. Code and data go to Anthropic's sandbox (kept up to 30 days); don't paste anything private.</p>
+  </section>
+  <section class="card" id="progress" hidden>
+    <div class="steps" id="steps"></div>
+    <div class="live" id="live"><span class="spin"></span><span id="livetext">Starting…</span><span id="clock"></span></div>
+  </section>
+  <section class="card" id="plancard" hidden></section>
+  <section class="card" id="board" hidden></section>
+  <section id="charts" hidden></section>
+  <section class="card" id="notebook" hidden></section>
+  <section class="card" id="challenge" hidden></section>
+  <section class="card" id="reportcard" hidden></section>
+  <section class="card" id="histcard" hidden></section>
+</main>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+const OWNER_KEY='askh_owner';
+const passcode=(()=>{try{return localStorage.getItem(OWNER_KEY)||''}catch(e){return''}})();
+function headers(){const h={'Content-Type':'application/json'};if(passcode)h['X-Owner-Passcode']=passcode;return h}
+async function api(method,url,body){const res=await fetch(url,{method,headers:headers(),body:body?JSON.stringify(body):undefined,credentials:'same-origin'});const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.message||'Something went wrong.');return d}
+let toastT=null;function toast(t){let b=$('.toast');if(!b){b=el('div','toast');document.body.append(b)}b.textContent=t;b.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{b.hidden=true},4200)}
+const LABEL={proven:'Proven',evidence:'Experimental evidence',hypothesis:'Hypothesis',disproven:'Disproven'};
+const EXAMPLES=["Is n² + n + 41 prime for every whole number n?","Does every even number from 4 to 100,000 split into two primes?",
+  "Is insertion sort faster than merge sort for lists under 50 items?","Is the sum of the first n odd numbers always n²?",
+  "Do random walks on a 2D grid always return to the start?"];
+const box=$('#examples');EXAMPLES.forEach(t=>{const b=el('button','chip',t);b.type='button';b.onclick=()=>{$('#q').value=t;$('#q').focus()};box.append(b)});
+
+let status=null,current=null,continueId='';
+async function loadStatus(){
+  try{status=await api('GET','/api/lab/status')}catch(e){status={allowed:false}}
+  const gate=$('#gate'),go=$('#go');
+  if(!status.allowed){gate.hidden=false;gate.textContent=status.accounts?'Sign in on the chat page first (Menu → Sign in). Each investigation runs real code, so the lab is for accounts.':"The lab needs accounts, which aren't set up on this server.";go.disabled=true}
+  else{gate.hidden=true;go.disabled=false}
+  $('#quota').textContent=status.owner?'Owner: no daily limit':status.signed_in?`${Math.max(0,status.daily-status.used_today)} of ${status.daily} left today`:'';
+  $('#histbtn').hidden=!status.signed_in;
+}
+async function readSSE(res,onEvent){
+  const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
+  for(;;){const {value,done}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);let kind=null,data='';
+      block.split('\n').forEach(l=>{if(l.startsWith('event: '))kind=l.slice(7);else if(l.startsWith('data: '))data+=l.slice(6)});
+      if(kind){let d={};try{d=JSON.parse(data||'{}')}catch(e){}onEvent(kind,d)}}}
+}
+// ---------- the stages ----------
+const STAGES=[['discover','Discover','what to test'],['experiment','Experiment','run the code'],['challenge','Challenge','try to break it'],['report','Report','what held up']];
+function drawSteps(active,done){const s=$('#steps');s.textContent='';STAGES.forEach(([id,name,sub],i)=>{const d=el('div','step'+(id===active?' on':'')+(done.includes(id)?' done':''));d.append(el('b',null,name),el('span',null,sub));s.append(d)})}
+let clockT=null,t0=0;
+function startClock(){t0=Date.now();clearInterval(clockT);clockT=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);$('#clock').textContent=`· ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`},1000)}
+function resetView(){['plancard','board','charts','notebook','challenge','reportcard'].forEach(id=>{const e=$('#'+id);e.hidden=true;e.textContent=''})}
+async function investigate(){
+  const question=$('#q').value.trim();if(question.length<3){toast('Type a question first.');return}
+  const go=$('#go');go.disabled=true;resetView();current={runs:[],charts:[]};
+  $('#progress').hidden=false;$('#live').hidden=false;drawSteps('discover',[]);$('#livetext').textContent='Starting…';startClock();
+  const done=[];let finished=false;
+  try{
+    const res=await fetch('/api/lab/stream',{method:'POST',headers:headers(),body:JSON.stringify({question,continue_id:continueId}),credentials:'same-origin'});
+    if(!res.ok||!(res.headers.get('content-type')||'').includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||"Couldn't start the investigation.")}
+    await readSSE(res,(k,d)=>{
+      if(k==='stage'){const prev=STAGES.findIndex(s=>s[0]===d.stage);STAGES.slice(0,prev).forEach(s=>{if(!done.includes(s[0]))done.push(s[0])});drawSteps(d.stage,done);$('#livetext').textContent=d.label}
+      else if(k==='status'){$('#livetext').textContent=d.label+'…'}
+      else if(k==='plan'){current.plan=d;drawPlan(d);drawBoard(d.hypotheses.map(h=>({...h,label:'hypothesis',why:'Not tested yet.',evidence:[]})),'Hypotheses')}
+      else if(k==='run'){current.runs.push(d);drawRun(d)}
+      else if(k==='chart'){current.charts.push(d);drawChart(d)}
+      else if(k==='verdicts'){drawBoard(d.verdicts,'After the experiments')}
+      else if(k==='final'){finished=true;current=d;showFinal(d,done)}
+      else if(k==='error'){throw new Error(d.message)}
+    });
+    if(!finished)throw new Error('The connection dropped before the investigation finished.');
+  }catch(e){$('#livetext').textContent=e.message;$('#live .spin').hidden=true;toast(e.message)}
+  finally{clearInterval(clockT);go.disabled=false;loadStatus()}
+}
+$('#go').onclick=investigate;
+// ---------- drawing ----------
+function drawPlan(p){
+  const c=$('#plancard');c.textContent='';c.hidden=false;c.append(el('h2',null,'The question'),el('p','summary',p.question));
+  if(p.known&&p.known.length){const d=el('details');d.open=false;d.append(el('summary',null,`What's already known (${p.known.length})`));const ul=el('ul','known');
+    p.known.forEach(k=>{const li=el('li',null,k.fact+' ');if(k.source&&/^https?:/.test(k.source)){const a=el('a',null,'source');a.href=k.source;a.target='_blank';a.rel='noopener';li.append(a)}ul.append(li)});d.append(ul);c.append(d)}
+}
+function drawBoard(vs,title){
+  const c=$('#board');c.textContent='';c.hidden=false;c.append(el('h2',null,title));
+  vs.forEach(v=>{const h=el('div','hyp');const top=el('div','hyp-top');top.append(el('span','hid',v.id),el('span','hst',v.statement),el('span','pill l-'+v.label,LABEL[v.label]));h.append(top);
+    h.append(el('p','why',v.why));
+    if(v.evidence&&v.evidence.length){const ul=el('ul','evl');v.evidence.forEach(e=>{const li=el('li');li.append(el('span','r '+e.result,e.result),el('span',null,`Run ${e.run} · ${e.stage} · ${e.kind}${e.complete?' (all cases)':''}: ${e.detail}`));ul.append(li)});h.append(ul)}
+    if(v.test){const d=el('details');d.append(el('summary',null,'How it was tested'),el('p','fine','Test: '+v.test),el('p','fine','Disproved if: '+v.falsifier));h.append(d)}
+    c.append(h)});
+}
+function drawRun(r){
+  const c=$('#notebook');if(c.hidden){c.hidden=false;c.append(el('h2',null,'Lab notebook: every sandbox action'))}
+  const d=el('details','run');const s=el('summary');
+  const what=r.kind==='bash'?r.command.split('\n')[0]:`${r.action==='create'?'Wrote':'Edited'} ${r.path}`;
+  s.append(el('span','n','#'+r.n),el('span','tag',r.stage),el('span','cmd',what),el('span','st '+r.status,r.status==='ok'?(r.kind==='bash'?'✓ ran':'✓'):r.status));d.append(s);
+  if(r.kind==='file'&&r.code){const pre=el('pre');pre.textContent=r.code;d.append(pre)}
+  if(r.kind==='bash'){
+    if(r.command.includes('\n')){const pre=el('pre');pre.textContent=r.command;d.append(pre)}
+    const pre=el('pre');(r.stdout||'').split('\n').forEach((ln,i,a)=>{const span=el('span',ln.startsWith('@@')?'mk':null,ln+(i<a.length-1?'\n':''));pre.append(span)});if(r.stdout)d.append(pre);
+    if(r.stderr){const e=el('pre','err');e.textContent=r.stderr;d.append(e)}
+    if(r.error){const e=el('pre','err');e.textContent='Sandbox error: '+r.error;d.append(e)}
+    if(/@@EVIDENCE/.test(r.stdout||''))d.open=true;
+  }
+  c.append(d);
+}
+function drawChart(ch){
+  const wrap=$('#charts');wrap.hidden=false;const card=el('section','card chart');card.append(el('span','ttl',ch.title||'Chart'));
+  const W=Math.round(Math.min(680,Math.max(300,(wrap.clientWidth||680)-36))),H=W<480?250:300,L=W<480?64:68,R=14,T=12,B=42;const xs=ch.x;const numeric=xs.every(v=>typeof v==='number');
+  const ys=ch.series.flatMap(s=>s.y.filter(v=>v!=null));if(!ys.length)return;
+  let lo=Math.min(...ys),hi=Math.max(...ys);if(ch.type==='bar')lo=Math.min(0,lo);if(lo===hi){lo-=1;hi+=1}
+  const xlo=numeric?Math.min(...xs):0,xhi=numeric?Math.max(...xs):xs.length-1;
+  const X=(v,i)=>L+((numeric?v:i)-xlo)/((xhi-xlo)||1)*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo))*(H-T-B);
+  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('role','img');svg.setAttribute('aria-label',ch.title||'chart');
+  const add=(tag,attrs,text)=>{const n=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,v));if(text!=null)n.textContent=text;svg.append(n);return n};
+  const fmt=v=>Math.abs(v)>=1e5||(Math.abs(v)<1e-3&&v!==0)?v.toExponential(1):+v.toPrecision(4)+'';
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=Y(v);add('line',{x1:L,x2:W-R,y1:y,y2:y,stroke:'#2e2e2e'});add('text',{x:L-6,y:y+4,'text-anchor':'end','font-size':12,fill:'#a3a3a3'},fmt(v))}
+  const ticks=numeric?[xlo,xlo+(xhi-xlo)/2,xhi]:[0,Math.floor((xs.length-1)/2),xs.length-1];
+  ticks.forEach(t=>{const lab=numeric?fmt(t):String(xs[t]);add('text',{x:numeric?X(t,0):X(0,t),y:H-B+16,'text-anchor':'middle','font-size':12,fill:'#a3a3a3'},lab)});
+  if(ch.xlabel)add('text',{x:(L+W-R)/2,y:H-6,'text-anchor':'middle','font-size':12.5,fill:'#a3a3a3'},ch.xlabel);
+  if(ch.ylabel)add('text',{x:12,y:(T+H-B)/2,'text-anchor':'middle','font-size':12.5,fill:'#a3a3a3',transform:`rotate(-90 12 ${(T+H-B)/2})`},ch.ylabel);
+  const COLORS=['#7cb7ff','#46d369','#f2b445','#ff6b6b','#c79bff','#5ee0d0'];
+  ch.series.forEach((s,si)=>{const col=COLORS[si%COLORS.length];
+    if(ch.type==='bar'){const bw=Math.max(2,(W-L-R)/xs.length/ch.series.length*0.8);s.y.forEach((v,i)=>{if(v==null)return;const x=X(xs[i],i)-bw*ch.series.length/2+si*bw;add('rect',{x,y:Math.min(Y(v),Y(0)),width:bw,height:Math.abs(Y(0)-Y(v)),fill:col})})}
+    else if(ch.type==='scatter'){s.y.forEach((v,i)=>{if(v!=null)add('circle',{cx:X(xs[i],i),cy:Y(v),r:3,fill:col})})}
+    else{let d='';s.y.forEach((v,i)=>{if(v==null)return;d+=(d?'L':'M')+X(xs[i],i).toFixed(1)+' '+Y(v).toFixed(1)});add('path',{d,fill:'none',stroke:col,'stroke-width':2})}});
+  card.append(svg);
+  if(ch.series.length>1){const lg=el('div','legend');ch.series.forEach((s,si)=>{const p=el('span','pill',s.name);p.style.background='#1f1f1f';p.style.color=COLORS[si%COLORS.length];lg.append(p)});card.append(lg)}
+  card.append(el('p','fine',`Drawn from the output of run #${ch.run}.`));wrap.append(card);
+}
+function showFinal(d,done){
+  STAGES.forEach(s=>{if(!done.includes(s[0]))done.push(s[0])});drawSteps('',done);
+  $('#live').hidden=true;
+  drawPlan(d.plan);drawBoard(d.verdicts,'Findings');
+  const ch=$('#challenge');ch.textContent='';const atts=(d.report&&d.report.attacks)||[];
+  if(atts.length){ch.hidden=false;ch.append(el('h2',null,'Challenge my discovery'));atts.forEach(a=>{const x=el('div','att');x.append(el('b',null,`${a.h}: ${a.attack}`),el('small',null,a.outcome));ch.append(x)})}
+  const rc=$('#reportcard');rc.textContent='';rc.hidden=false;rc.append(el('h2',null,'Report'));
+  if(d.report&&d.report.summary)rc.append(el('p','summary',d.report.summary));
+  if(d.report&&d.report.limitations&&d.report.limitations.length){rc.append(el('b',null,'Limitations'));const ul=el('ul');d.report.limitations.forEach(x=>ul.append(el('li',null,x)));rc.append(ul)}
+  if(d.report&&d.report.next_steps&&d.report.next_steps.length){rc.append(el('b',null,'Next steps'));const ul=el('ul');d.report.next_steps.forEach(x=>ul.append(el('li',null,x)));rc.append(ul)}
+  rc.append(el('p','fine',`${d.runs.length} sandbox actions · ${d.evidence.length} code-printed findings${d.seconds?` · ${Math.round(d.seconds)}s`:''}${d.saved?' · saved to your history':''}`));
+  const r=el('div','row');
+  const pdf=el('button','btn red','Report (PDF)'),md=el('button','btn','Report (.md)'),py=el('button','btn','Code (.py)'),rep=el('button','btn','Re-run to reproduce'),sigb=el('button','btn','Check signature');
+  [pdf,md,py,rep,sigb].forEach(b=>b.type='button');
+  const slug=(d.title||'investigation').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40).replace(/^-|-$/g,'')||'investigation';
+  pdf.onclick=()=>buildFile({filename:`${slug}.pdf`,title:d.title,content:d.report_md});
+  md.onclick=()=>buildFile({filename:`${slug}.md`,content:d.report_md});
+  py.onclick=()=>buildFile({filename:'lab-experiments.py',content:d.script||'# no code ran'});
+  const sig=el('p','sig','');
+  rep.onclick=async()=>{rep.disabled=true;rep.textContent='Re-running…';
+    try{const x=await api('POST','/api/lab/reproduce',{runs:d.runs,fingerprint:d.evidence_fingerprint});
+      sig.textContent=x.same?`✓ Reproduced: a fresh sandbox printed the same ${x.after} finding(s).`:`✕ Different result: the original printed ${x.before} finding(s), the re-run printed ${x.after}. Treat these findings with care.`;sig.classList.toggle('ok',x.same)}
+    catch(e){toast(e.message)}finally{rep.disabled=false;rep.textContent='Re-run to reproduce'}};
+  sigb.hidden=!d.signature;sigb.onclick=async()=>{try{const x=await api('POST','/api/proof/verify',{receipt:d.receipt,signature:d.signature});sig.textContent=(x.valid?'✓ Signature valid. ':'✕ ')+(x.valid?d.receipt.scope:x.meaning);sig.classList.toggle('ok',x.valid)}catch(e){toast(e.message)}};
+  r.append(pdf,md,py,rep,sigb);rc.append(r,sig);
+  if(d.saved){const cont=el('div','ask');cont.append(el('b',null,'Continue this research'));const ta=el('textarea');ta.placeholder='Push further: a bigger range, a new angle, a follow-up question…';ta.style.minHeight='70px';
+    const b=el('button','btn','Continue');b.type='button';b.onclick=()=>{continueId=d.id;$('#q').value=ta.value.trim()||`Go further on: ${d.plan.question}`;window.scrollTo({top:0,behavior:'smooth'});investigate().finally(()=>{continueId=''})};cont.append(ta,b);rc.append(cont)}
+}
+async function buildFile(spec){
+  try{const res=await fetch('/api/files/build',{method:'POST',headers:headers(),body:JSON.stringify({spec})});if(!res.ok){const x=await res.json().catch(()=>({}));throw new Error(x.message||"That file couldn't be made.")}
+    const b=await res.blob(),u=URL.createObjectURL(b),a=el('a');a.href=u;a.download=spec.filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000)}catch(e){toast(e.message)}
+}
+// ---------- history ----------
+$('#histbtn').onclick=async()=>{
+  const c=$('#histcard');if(!c.hidden){c.hidden=true;return}
+  c.hidden=false;c.textContent='';c.append(el('h2',null,'Your investigations'));const list=el('div','history');c.append(list);
+  let runs=[];try{runs=(await api('GET','/api/lab/runs')).runs}catch(e){list.append(el('p','fine',e.message));return}
+  if(!runs.length){list.append(el('p','fine','Nothing yet. Your investigations are saved here.'));return}
+  runs.forEach(r=>{const b=el('button','hist');b.type='button';const t=el('span','t');t.append(el('b',null,r.title),el('small',null,new Date(r.created).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+(r.continues?' · continued':'')));
+    const dots=el('span','dots');(r.labels||[]).forEach(l=>{const i=el('i',l);i.title=LABEL[l]||l;dots.append(i)});b.append(t,dots);
+    b.onclick=async()=>{try{const d=await api('GET','/api/lab/runs/'+encodeURIComponent(r.id));resetView();$('#progress').hidden=true;c.hidden=true;
+      current=d;d.runs.forEach(drawRun);d.charts.forEach(drawChart);showFinal(d,[]);$('#progress').hidden=true;window.scrollTo({top:0,behavior:'smooth'})}catch(e){toast(e.message)}};
+    list.append(b)});
+};
+const pre=new URLSearchParams(location.search).get('q');if(pre)$('#q').value=pre;
+loadStatus();
+})();
+</script>
+</body>
+</html>

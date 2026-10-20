@@ -18,6 +18,7 @@ import logging
 import os
 import queue
 import re
+import secrets
 import sys
 import threading
 import time
@@ -42,7 +43,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, memory, personal, proof, remote  # noqa: E402
+from agent import accounts as acct, lab, memory, personal, proof, remote  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -223,6 +224,16 @@ class MemoryEdit(BaseModel):
 
 class ChatProject(BaseModel):
     project: str = Field(default="", max_length=40)
+
+
+class LabRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=3000)
+    continue_id: str = Field(default="", max_length=40)   # continue an earlier investigation (and its sandbox)
+
+
+class LabReproduce(BaseModel):
+    runs: list = Field(max_length=200)
+    fingerprint: str = Field(default="", max_length=80)
 
 
 class ProofCheck(BaseModel):
@@ -745,6 +756,131 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return error(400, "prefs", "Those settings are too long.")
         return {"prefs": accounts.save_prefs(user.id, prefs)}
 
+    # ---------- Discovery Lab ----------
+    LAB_DAILY = int(os.environ.get("LAB_DAILY", "3"))      # investigations per signed-in person per day (owner: unlimited)
+    lab_limiter = RateLimiter(10, 3600)                     # reproduce runs per person per hour
+
+    @app.get("/lab")
+    def lab_page():
+        return FileResponse(STATIC / "lab.html", headers={"Cache-Control": "no-cache"})
+
+    def lab_access(request: Request):
+        """(user or None, owner, error response or None). The lab costs real money, so it needs an account or owner mode."""
+        owner = owner_status(request) == "owner"
+        user = current_user(request) if accounts is not None else None
+        if not owner and not user:
+            return None, False, error(401, "signed_out", "Sign in to use Discovery Lab. Each investigation runs real code, so it's limited to accounts.")
+        if budget.exhausted():
+            return user, owner, error(503, "resting", "Discovery Lab is resting for today. It'll be back tomorrow.")
+        return user, owner, None
+
+    def day_start_ms() -> int:
+        d = datetime.now(ZoneInfo(settings.timezone)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return int(d.timestamp() * 1000)
+
+    @app.get("/api/lab/status")
+    def lab_status(request: Request):
+        owner = owner_status(request) == "owner"
+        user = current_user(request) if accounts is not None else None
+        used = accounts.labs_since(user.id, day_start_ms()) if user else 0
+        return {"allowed": bool(owner or user), "owner": owner, "signed_in": bool(user), "daily": None if owner else LAB_DAILY,
+                "used_today": used, "accounts": accounts is not None}
+
+    @app.post("/api/lab/stream")
+    def lab_stream(req: LabRequest, request: Request):
+        user, owner, denied = lab_access(request)
+        if denied:
+            return denied
+        if user and not owner and accounts.labs_since(user.id, day_start_ms()) >= LAB_DAILY:
+            return error(429, "lab_quota", f"You've used today's {LAB_DAILY} investigations. More tomorrow, or continue one you've already run.")
+        prior = accounts.get_lab(user.id, req.continue_id) if (user and req.continue_id) else None
+        q: queue.Queue = queue.Queue()
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+        run_id = "L" + secrets.token_urlsafe(8)
+
+        def work():
+            started = time.monotonic()
+            try:
+                web = {**WEB_SEARCH_TOOL, "max_uses": 2} if settings.web_search else None
+                rec = lab.investigate(get_client(), settings.model, today, req.question.strip(), lambda k, d: q.put((k, d)),
+                                      web_tool=web, prior=prior, container=(prior or {}).get("container"))
+            except lab.LabError as e:
+                q.put(("error", {"message": str(e)}))
+                return
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": "The investigation stopped unexpectedly. Please try again in a minute."}))
+                return
+            u = rec["usage"]
+            cost = budget.add(u["input_tokens"], u["output_tokens"]) + budget.add_flat(u["web_searches"] * settings.price_per_search)
+            rec.update({"id": run_id, "created": int(time.time() * 1000), "seconds": round(time.monotonic() - started, 1),
+                        "title": rec["plan"]["question"][:120] or req.question[:120], "continues": req.continue_id or None,
+                        "cost_usd": round(cost, 4)})
+            rec["report_md"] = lab.report_markdown(rec)
+            rec["script"] = lab.reproducible_script(rec["runs"])
+            if signer is not None:
+                r = {"v": 1, "type": "lab", "id": run_id, "issued": proof.now_iso(), "key": signer.fingerprint, "model": settings.model,
+                     "question": rec["plan"]["question"][:600],
+                     "verdicts": [{"id": v["id"], "statement": v["statement"], "label": v["label"], "why": v["why"][:400]} for v in rec["verdicts"]],
+                     "evidence_fingerprint": rec["evidence_fingerprint"], "sandbox_actions": len(rec["runs"]),
+                     "scope": "This signature proves Ask Harsha issued this record unaltered. Labels come from code that ran in the sandbox; "
+                              "Experimental evidence is not proof, and a proof covers only the claim as stated."}
+                rec["receipt"], rec["signature"] = r, signer.sign(r)
+            if user:
+                try:
+                    accounts.save_lab(user.id, rec)
+                    rec["saved"] = True
+                except Exception as e:
+                    log.error(json.dumps({"event": "lab_save_error", "detail": str(e)[:200]}))
+            log.info(json.dumps({"event": "lab", "owner": owner, "seconds": rec["seconds"], "runs": len(rec["runs"]),
+                                 "labels": [v["label"] for v in rec["verdicts"]], "cost_usd": rec["cost_usd"],
+                                 "spent_today_usd": round(budget.spent, 4)}))
+            q.put(("final", rec))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    @app.get("/api/lab/runs")
+    def lab_list(request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"runs": accounts.list_labs(user.id)}
+
+    @app.get("/api/lab/runs/{run_id}")
+    def lab_get(run_id: str, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        run = accounts.get_lab(user.id, run_id)
+        return run if run else error(404, "not_found", "That investigation isn't in your history.")
+
+    @app.delete("/api/lab/runs/{run_id}")
+    def lab_delete(run_id: str, request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.delete_lab(user.id, run_id)
+        return {"ok": True}
+
+    @app.post("/api/lab/reproduce")
+    def lab_reproduce(req: LabReproduce, request: Request):
+        """Re-run the recorded code in a fresh sandbox and check it prints the same evidence."""
+        user, owner, denied = lab_access(request)
+        if denied:
+            return denied
+        if not owner and not lab_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "That's a lot of re-runs. Try again later.")
+        try:
+            res = lab.reproduce(get_client(), settings.assist_model, [r for r in req.runs if isinstance(r, dict)])
+        except lab.LabError as e:
+            return error(400, "lab", str(e))
+        except Exception as e:
+            upstream_failed(e)
+            return error(502, "upstream", "The sandbox couldn't re-run it just now. Try again in a minute.")
+        budget.add(res.pop("input_tokens"), res.pop("output_tokens"))
+        res["matches_record"] = bool(req.fingerprint) and req.fingerprint == res["fingerprint_before"]
+        return res
+
     # ---------- Proof Mode ----------
     from concurrent.futures import ThreadPoolExecutor
     proof_pool = ThreadPoolExecutor(max_workers=4)
@@ -753,7 +889,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     @app.post("/api/proof/verify")
     def proof_verify(req: ProofCheck):
         """Check a proof report's signature. Valid means Ask Harsha issued it and it wasn't changed afterwards."""
-        valid = signer is not None and req.receipt.get("type") == "proof" and signer.verify(req.receipt, req.signature)
+        valid = signer is not None and req.receipt.get("type") in ("proof", "lab") and signer.verify(req.receipt, req.signature)
         return {"valid": valid, "fingerprint": signer.fingerprint if signer else "",
                 "meaning": "Ask Harsha issued this report and it hasn't been altered. It records what was checked; it isn't proof of events outside Ask Harsha."
                 if valid else "The signature doesn't match. The report was changed, or it wasn't issued by this Ask Harsha."}

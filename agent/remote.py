@@ -15,7 +15,7 @@ from typing import Any
 from . import speed
 
 SECTIONS = ("projects", "saved", "tools", "customize", "chats")
-TOOLS = ("morning", "meeting", "feedback", "interview", "release", "spec", "assist")
+TOOLS = ("morning", "meeting", "feedback", "interview", "release", "spec", "assist", "lab")
 PREF_VALUES = {
     "length": ("short", "balanced", "detailed"),
     "tone": ("", "friendly", "professional", "direct"),
@@ -132,7 +132,8 @@ def quick(text: str, context: dict) -> Command | None:
                           ("interview", ("customer interview", "interview guide", "user interview")),
                           ("release", ("release notes", "changelog")),
                           ("spec", ("spec review", "review my spec", "prd")),
-                          ("assist", ("assist mode", "speak for me", "talk for me", "can't speak", "cant speak"))):
+                          ("assist", ("assist mode", "speak for me", "talk for me", "can't speak", "cant speak")),
+                          ("lab", ("discovery lab", "research lab", "open the lab", "run an experiment"))):
         if has(*phrases):
             return Command("open_tool", {"tool": tool}, "Opening it now.")
 

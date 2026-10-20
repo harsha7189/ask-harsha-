@@ -54,6 +54,8 @@ SCHEMA = [
        PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS prefs (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
        body TEXT NOT NULL, updated BIGINT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS lab_runs (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
+       title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS memories (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        text TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY (user_id, id))""",
 ]
@@ -325,7 +327,7 @@ class Accounts:
         return User(*row)
 
     def delete_user(self, user_id: str) -> None:
-        for table in ("chats", "projects", "saved", "prefs", "memories", "sessions", "credentials", "recovery"):
+        for table in ("chats", "projects", "saved", "prefs", "memories", "lab_runs", "sessions", "credentials", "recovery"):
             self.db.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
         self.db.run("DELETE FROM users WHERE id = %s", (user_id,))
 
@@ -487,6 +489,42 @@ class Accounts:
 
     def clear_memories(self, user_id: str) -> None:
         self.db.run("DELETE FROM memories WHERE user_id = %s", (user_id,))
+
+    # ---- Discovery Lab research history ----
+    def save_lab(self, user_id: str, run: dict) -> str:
+        run_id = str(run.get("id") or ("L" + secrets.token_urlsafe(8)))[:40]
+        body = json.dumps(run, ensure_ascii=False)
+        if len(body.encode()) > 2_000_000:
+            raise ValueError("This investigation is too large to save.")
+        title = " ".join(str(run.get("title") or run.get("question") or "Investigation").split())[:120]
+        if self.db.one("SELECT 1 FROM lab_runs WHERE user_id = %s AND id = %s", (user_id, run_id)):
+            self.db.run("UPDATE lab_runs SET title = %s, body = %s WHERE user_id = %s AND id = %s", (title, body, user_id, run_id))
+        else:
+            self.db.run("INSERT INTO lab_runs (user_id, id, title, created, body) VALUES (%s, %s, %s, %s, %s)",
+                        (user_id, run_id, title, int(run.get("created") or now_ms()), body))
+        return run_id
+
+    def list_labs(self, user_id: str) -> list[dict]:
+        rows = self.db.all("SELECT id, title, created, body FROM lab_runs WHERE user_id = %s ORDER BY created DESC LIMIT 200", (user_id,))
+        out = []
+        for rid, title, created, body in rows:
+            try:
+                d = json.loads(body)
+            except json.JSONDecodeError:
+                continue
+            out.append({"id": rid, "title": title, "created": created, "labels": [v.get("label") for v in d.get("verdicts", [])],
+                        "continues": d.get("continues")})
+        return out
+
+    def get_lab(self, user_id: str, run_id: str) -> dict | None:
+        row = self.db.one("SELECT body FROM lab_runs WHERE user_id = %s AND id = %s", (user_id, run_id))
+        return json.loads(row[0]) if row else None
+
+    def delete_lab(self, user_id: str, run_id: str) -> None:
+        self.db.run("DELETE FROM lab_runs WHERE user_id = %s AND id = %s", (user_id, run_id))
+
+    def labs_since(self, user_id: str, since_ms: int) -> int:
+        return self.db.one("SELECT COUNT(*) FROM lab_runs WHERE user_id = %s AND created >= %s", (user_id, since_ms))[0]
 
     # ---- saved answers (starred answers and verified share cards) ----
     def list_saved(self, user_id: str) -> list[dict]:
