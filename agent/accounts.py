@@ -64,6 +64,8 @@ MIGRATIONS = [
     "ALTER TABLE credentials ADD COLUMN label TEXT",
     "ALTER TABLE chats ADD COLUMN project TEXT",
     "ALTER TABLE projects ADD COLUMN notes TEXT",
+    "ALTER TABLE memories ADD COLUMN quote TEXT",
+    "ALTER TABLE memories ADD COLUMN source TEXT",
 ]
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"   # no 0/O, 1/I/L or U, so codes are easy to read and type
 CODE_LENGTH = 20
@@ -457,18 +459,22 @@ class Accounts:
 
     # ---- personal memory: durable things a person told the agent about themselves ----
     def list_memories(self, user_id: str) -> list[dict]:
-        rows = self.db.all("SELECT id, text, created FROM memories WHERE user_id = %s ORDER BY created", (user_id,))
-        return [{"id": r[0], "text": r[1], "created": r[2]} for r in rows]
+        rows = self.db.all("SELECT id, text, created, quote, source FROM memories WHERE user_id = %s ORDER BY created", (user_id,))
+        return [{"id": r[0], "text": r[1], "created": r[2], "quote": r[3] or "", "source": r[4] or ""} for r in rows]
 
-    def add_memories(self, user_id: str, texts: list[str]) -> list[dict]:
+    def add_memories(self, user_id: str, texts: list[str], quotes: list[str] | None = None, source: str = "chat") -> list[dict]:
+        """Save memories with where each came from: the person's own words (quote), how (source) and when (created)."""
         from .memory import MAX_MEMORIES, MAX_MEMORY_CHARS
         added = []
-        for t in texts:
+        quotes = quotes or []
+        for n, t in enumerate(texts):
             t = " ".join(str(t).split())[:MAX_MEMORY_CHARS]
             if not t:
                 continue
-            m = {"id": "M" + secrets.token_hex(3), "text": t, "created": now_ms() + len(added)}
-            self.db.run("INSERT INTO memories (user_id, id, text, created) VALUES (%s, %s, %s, %s)", (user_id, m["id"], m["text"], m["created"]))
+            m = {"id": "M" + secrets.token_hex(3), "text": t, "created": now_ms() + len(added),
+                 "quote": (quotes[n] if n < len(quotes) else "")[:200], "source": source}
+            self.db.run("INSERT INTO memories (user_id, id, text, created, quote, source) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (user_id, m["id"], m["text"], m["created"], m["quote"], m["source"]))
             added.append(m)
         count = self.db.one("SELECT COUNT(*) FROM memories WHERE user_id = %s", (user_id,))[0]
         if count > MAX_MEMORIES:   # keep the newest
@@ -481,7 +487,7 @@ class Accounts:
         text = " ".join(text.split())[:MAX_MEMORY_CHARS]
         if not text:
             raise ValueError("A memory can't be empty. Delete it instead.")
-        self.db.run("UPDATE memories SET text = %s WHERE user_id = %s AND id = %s", (text, user_id, memory_id))
+        self.db.run("UPDATE memories SET text = %s, source = %s WHERE user_id = %s AND id = %s", (text, "edited", user_id, memory_id))
 
     def forget_memories(self, user_id: str, ids: list[str]) -> None:
         for i in ids:

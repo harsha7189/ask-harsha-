@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agent import assist, attachments as files, factcheck, inbox as inboxmod, receipts as rcpt, toolkit  # noqa: E402
+from agent import assist, attachments as files, factcheck, grounding, inbox as inboxmod, receipts as rcpt, toolkit, trust, trusteval  # noqa: E402
 from server import mcp  # noqa: E402
 from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
@@ -47,6 +47,7 @@ from agent import accounts as acct, lab, memory, personal, proof, remote  # noqa
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
+TRUST_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 4}
 from agent.notes import FileNotesStore, GitHubNotesStore, NotesIndex, NotesStore, NotesUnavailable  # noqa: E402
 from agent.prompts import build_general_prompt  # noqa: E402
 from agent.tools import add_ask_harsha_tool, add_file_tool, add_notes_tools  # noqa: E402
@@ -179,6 +180,13 @@ class InboxAnswer(BaseModel):
 
 class FactCheckRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=6000)
+
+
+class TrustRequest(BaseModel):
+    question: str = Field(default="", max_length=4000)
+    answer: str = Field(min_length=1, max_length=12000)
+    passages: list[dict] = Field(default_factory=list, max_length=12)
+    citations: list[str] = Field(default_factory=list, max_length=20)
 
 
 class PastPick(BaseModel):
@@ -885,6 +893,9 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     from concurrent.futures import ThreadPoolExecutor
     proof_pool = ThreadPoolExecutor(max_workers=4)
     proof_stats = proof.Stats()
+    trust_stats = trust.Stats()
+    trust_limiter = RateLimiter(10, 3600)     # on-demand deep checks: 10 an hour per visitor
+    skeptic_model = os.environ.get("TRUST_SKEPTIC_MODEL", "").strip() or settings.assist_model
 
     @app.post("/api/proof/verify")
     def proof_verify(req: ProofCheck):
@@ -1174,8 +1185,17 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         except Exception as e:
             upstream_failed(e)
             raise mcp.ToolFailure("The agent couldn't reach its model just now. Please try again.")
-        data = finish(agent, reply, False, question, event="mcp_answer")
+        trust_out = check_answer(agent, question, reply, lambda k, d: None)
+        data = finish(agent, reply, False, question, event="mcp_answer", trust_out=trust_out)
         out = [data["answer"]]
+        if trust_out and trust_out["status"] in ("corrected", "contradicted", "mixed"):
+            t = trust_out
+            line = {"corrected": "Checked before answering: a mistake in the first draft was found and corrected.",
+                    "contradicted": "Checked before answering: some claims conflict with the evidence; treat them with care.",
+                    "mixed": "Checked before answering: some claims couldn't be verified."}[t["status"]]
+            if t["uncertain"]:
+                line += " Unverified: " + "; ".join(t["uncertain"][:3])
+            out.append(line)
         if data["citations"]:
             out.append("Sources from Harsha's record:\n" + "\n".join(f"- [{c['id']}] {c['text']}" for c in data["citations"]))
         if data["web_sources"]:
@@ -1495,7 +1515,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             add_file_tool(agent.tools)
         return agent
 
-    def finish(agent: Agent, reply, owner: bool, question: str, event: str = "answer") -> dict:
+    def finish(agent: Agent, reply, owner: bool, question: str, event: str = "answer", trust_out: dict | None = None) -> dict:
         """Charge the budget, log one line, and build the response payload."""
         cost = budget.add(reply.input_tokens, reply.output_tokens) + budget.add_flat(reply.web_searches * settings.price_per_search)
         report = reply.report
@@ -1511,6 +1531,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         timing = {**reply.timing, "prep_s": (getattr(agent, "ctx", None) or {}).get("prep_s", 0)}
         record.update({"seconds": timing.get("total_s"), "first_text_s": timing.get("first_text_s"), "prep_s": timing["prep_s"],
                        "model_calls_s": timing.get("calls_s")})
+        if trust_out:
+            record.update({"trust_level": trust_out["level"], "trust_status": trust_out["status"], "trust_s": trust_out["seconds"]})
         if settings.log_questions or event == "eval_case":  # eval questions are our own test cases
             record["question"] = question[:200]
         log.info(json.dumps(record))
@@ -1534,14 +1556,17 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "cost_usd": round(cost, 5),
             **({"summary": agent.ctx["summary"], "summarized": agent.ctx["summarized"]}
                if getattr(agent, "ctx", None) and agent.ctx.get("summarized") else {}),
+            **({"trust": trust_out} if trust_out else {}),
             **sign_answer(question, reply.text, label, report.ok, cited, reply.web_sources[:8],
-                          [a["kind"] for a in getattr(agent, "attached", [])]),
+                          [a["kind"] for a in getattr(agent, "attached", [])], trust_out),
         }
 
-    def sign_answer(question, answer, label, grounded, cited, web_sources, attachments) -> dict:
+    def sign_answer(question, answer, label, grounded, cited, web_sources, attachments, trust_out=None) -> dict:
         if signer is None or not answer:
             return {}
         receipt = rcpt.build(question, answer, settings.model, label, grounded, cited, web_sources, attachments, signer.fingerprint)
+        if trust_out:   # what the check found is part of the signed record; the signature still isn't proof it's true
+            receipt["trust"] = {k: trust_out[k] for k in ("level", "status", "counts", "corrected")}
         return {"receipt": receipt, "signature": signer.sign(receipt)}
 
     def upstream_failed(e: Exception) -> None:
@@ -1560,10 +1585,50 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         except Exception as e:  # API outage, bad key, network: log the cause, show a friendly message
             upstream_failed(e)
             return error(502, "upstream", UPSTREAM_MSG)
-        out = finish(agent, reply, owner, question)
+        trust_out = check_answer(agent, question, reply, lambda k, d: None)
+        out = finish(agent, reply, owner, question, trust_out=trust_out)
         if proof_out:
             out["proof"] = proof_out
-        threading.Thread(target=learn_from, args=(agent, question, reply.text), daemon=True).start()
+        threading.Thread(target=learn_from, args=(agent, question, reply.text, trust_out), daemon=True).start()
+        return out
+
+    def check_answer(agent: Agent, question: str, reply, emit, level: str | None = None) -> dict | None:
+        """Hallucination defense: check the answer's claims before it's final, and correct it if evidence says so."""
+        if not reply.text.strip() or getattr(agent, "skip_trust", False):
+            return None
+        prefs = (getattr(agent, "ctx", None) or {}).get("prefs") or {}
+        passages = trust.passages_from(agent.messages)
+        lookup = _Lookup(kb, store).by_id
+        record = {i: lookup[i].text for i in (reply.report.cited if reply.report else []) if i in lookup}
+        lvl = level or trust.route(question, reply.text, bool(passages or record), prefs.get("trust", "auto"))
+        if lvl != "light" and budget.exhausted():
+            lvl = "light"
+        if lvl == "deep":
+            emit("checking", {"level": "deep"})   # the streamed text is a draft until this finishes
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+        try:
+            rep = trust.run(get_client(), settings.model, settings.assist_model, today, question, reply.text, level=lvl,
+                            passages=passages, record=record, grounding=reply.report,
+                            web_tool=TRUST_SEARCH_TOOL if settings.web_search else None, skeptic_model=skeptic_model,
+                            emit=emit, files_made=len(agent.tools.files))
+        except Exception as e:   # never lose the answer because the check failed
+            upstream_failed(e)
+            return None
+        u = rep.usage
+        cost = budget.add(u.input_tokens + u.helper_input, u.output_tokens + u.helper_output) + budget.add_flat(u.web_searches * settings.price_per_search)
+        if rep.corrected:
+            reply.text = rep.answer
+            reply.report = grounding.check(reply.text, set(agent.tools.retrieved), agent.lookup or agent.kb, strict=False)
+        out = rep.to_dict()
+        out["cost_usd"] = round(cost, 5)
+        out["passages"] = [{"url": p["url"], "title": p["title"], "quote": p["quote"][:300], "text": p["text"][:200]} for p in passages]
+        c = rep.counts()
+        row = {"level": lvl, "status": rep.status, "claims": sum(c.values()), "verified": c["verified"], "partial": c["partial"],
+               "contradicted_found": sum(1 for x in rep.claims if x["label"] == "contradicted" or x.get("fixed")),
+               "corrected": rep.corrected, "fix_verified": rep.fix_verified, "uncertain": len(rep.uncertain),
+               "seconds": round(rep.seconds, 2), "cost_usd": round(cost, 5), "searches": u.web_searches}
+        trust_stats.add(row)
+        log.info(json.dumps({"event": "trust", **row}))
         return out
 
     def run_task(agent: Agent, question: str, emit) -> tuple:
@@ -1632,7 +1697,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             nxt.text = prev.text
         return nxt
 
-    def learn_from(agent: Agent, question: str, answer: str) -> dict | None:
+    def learn_from(agent: Agent, question: str, answer: str, trust_out: dict | None = None) -> dict | None:
         """Update the person's memory and the project's notes from one exchange. Returns what changed, if anything."""
         ctx = getattr(agent, "ctx", None)
         if not ctx or not ctx.get("user") or accounts is None or not answer:
@@ -1641,9 +1706,11 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             return None
         uid = ctx["user"].id
         try:
-            res = memory.learn(get_client(), settings.assist_model, question, answer, ctx["memories"], ctx["project"], ctx["prefs"]["memory"])
+            avoid = [c["text"] for c in (trust_out or {}).get("claims", []) if c["label"] in ("contradicted", "unverified") and not c.get("fixed")]
+            res = memory.learn(get_client(), settings.assist_model, question, answer, ctx["memories"], ctx["project"],
+                               ctx["prefs"]["memory"], avoid=avoid)
             budget.add(res.usage.input_tokens, res.usage.output_tokens)
-            added = accounts.add_memories(uid, res.remember) if res.remember else []
+            added = accounts.add_memories(uid, res.remember, res.quotes, source="chat") if res.remember else []
             if res.forget:
                 accounts.forget_memories(uid, res.forget)
             if res.project_notes and ctx["project"]:
@@ -1651,7 +1718,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         except Exception as e:
             log.error(json.dumps({"event": "memory_error", "type": type(e).__name__, "detail": str(e)[:200]}))
             return None
-        log.info(json.dumps({"event": "memory", "added": len(added), "forgot": len(res.forget), "project_notes": bool(res.project_notes)}))
+        log.info(json.dumps({"event": "memory", "added": len(added), "rejected": len(res.rejected), "forgot": len(res.forget), "project_notes": bool(res.project_notes)}))
         if not (added or res.forget or res.project_notes):
             return None
         return {"remembered": [m["text"] for m in added], "forgot": len(res.forget),
@@ -1727,7 +1794,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                 if n:
                     q.put(("status", {"label": "Reading your file" if n == 1 else f"Reading your {n} files"}))
                 reply, proof_out = run_task(agent, question, lambda k, d: q.put((k, d)))
-                out = finish(agent, reply, owner, question)
+                trust_out = check_answer(agent, question, reply, lambda k, d: q.put((k, d)))
+                out = finish(agent, reply, owner, question, trust_out=trust_out)
                 if proof_out:
                     out["proof"] = proof_out
                 q.put(("final", out))
@@ -1735,7 +1803,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                 upstream_failed(e)
                 q.put(("error", {"message": UPSTREAM_MSG}))
                 return
-            learned = learn_from(agent, question, reply.text)   # after the answer, so it never slows it down
+            learned = learn_from(agent, question, reply.text, trust_out)   # after the answer, so it never slows it down
             if learned:
                 q.put(("memory", learned))
 
@@ -1785,7 +1853,144 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
         return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
 
+    @app.post("/api/trust/check")
+    def trust_check(req: TrustRequest, request: Request):
+        """A deep check of an answer on demand (the "Run a deep check" button). It suggests a correction; it doesn't change the chat."""
+        ip = client_ip(request)
+        status = owner_status(request)
+        if status == "denied" and too_many_wrong(ip):
+            return error(429, "locked", "Too many wrong passcodes. Try again in an hour.")
+        owner = status == "owner"
+        if not owner and not trust_limiter.allow(ip):
+            return error(429, "rate_limited", "That's a lot of deep checks for one hour. Try again a little later.")
+        if budget.exhausted():
+            return error(503, "resting", f"Ask Harsha is resting for today. You can reach Harsha directly at {settings.contact_email}.")
+        q: queue.Queue = queue.Queue()
+        lookup = _Lookup(kb, store).by_id
+        record = {i: lookup[i].text for i in req.citations if i in lookup}
+        passages = [{"url": str(p.get("url", ""))[:500], "title": str(p.get("title", ""))[:200], "quote": str(p.get("quote", ""))[:800],
+                     "text": str(p.get("text", ""))[:400]} for p in req.passages if isinstance(p, dict) and p.get("url")]
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+
+        def work():
+            try:
+                rep = trust.run(get_client(), settings.model, settings.assist_model, today, req.question, req.answer, level="deep",
+                                passages=passages, record=record, web_tool=TRUST_SEARCH_TOOL if settings.web_search else None,
+                                skeptic_model=skeptic_model, emit=lambda k, d: q.put((k, d)))
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": UPSTREAM_MSG}))
+                return
+            u = rep.usage
+            cost = budget.add(u.input_tokens + u.helper_input, u.output_tokens + u.helper_output) + budget.add_flat(u.web_searches * settings.price_per_search)
+            out = rep.to_dict()
+            out.update({"cost_usd": round(cost, 5), "passages": passages, "answer": rep.answer, "on_demand": True})
+            c = rep.counts()
+            trust_stats.add({"level": "deep", "status": rep.status, "claims": sum(c.values()), "verified": c["verified"], "partial": c["partial"],
+                             "contradicted_found": sum(1 for x in rep.claims if x["label"] == "contradicted" or x.get("fixed")),
+                             "corrected": rep.corrected, "fix_verified": rep.fix_verified, "uncertain": len(rep.uncertain),
+                             "seconds": round(rep.seconds, 2), "cost_usd": round(cost, 5), "searches": u.web_searches})
+            log.info(json.dumps({"event": "trust_on_demand", "owner": owner, "status": rep.status, "seconds": round(rep.seconds, 2), "cost_usd": round(cost, 5)}))
+            q.put(("final", out))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    @app.get("/api/owner/trust-stats")
+    def trust_stats_view(request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        return trust_stats.summary()
+
     eval_lock = threading.Lock()
+    trust_eval_last: dict = {}
+    BASELINE_PROMPT = "You are a helpful assistant. Today's date is {today}."
+
+    @app.post("/api/owner/trust-eval")
+    def run_trust_eval(request: Request):
+        """Baseline (plain model) vs engine (Ask Harsha + trust check) on fixed cases, plus planted errors for the checker."""
+        denied = require_owner(request)
+        if denied:
+            return denied
+        if budget.exhausted():
+            return error(503, "resting", "Today's budget is used up, so the evaluation can't run until tomorrow.")
+        if not eval_lock.acquire(blocking=False):
+            return error(409, "busy", "An evaluation is already running.")
+        cases = trusteval.load_cases()
+        q: queue.Queue = queue.Queue()
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+
+        def spend(inp, out, searches):
+            return budget.add(inp, out) + budget.add_flat(searches * settings.price_per_search)
+
+        def baseline(question):
+            a = Agent(get_client(), kb=kb, model=settings.model, max_steps=4, max_tokens=1500, system=BASELINE_PROMPT.format(today=today),
+                      server_tools=[WEB_SEARCH_TOOL] if settings.web_search else [], record_tools=False, strict_grounding=False)
+            a.cache_system = False
+            r = a.ask(question)
+            return {"answer": r.text[:1500], "seconds": r.seconds, "cost_usd": round(spend(r.input_tokens, r.output_tokens, r.web_searches), 5)}
+
+        def engine(question):
+            a = build_agent(owner=False)
+            r = a.ask(question)
+            t = check_answer(a, question, r, lambda k, d: None)
+            payload = finish(a, r, False, question, event="trust_eval_case", trust_out=t)
+            return {"answer": r.text[:1500], "seconds": round(r.seconds + (t["seconds"] if t else 0), 2),
+                    "cost_usd": round(payload["cost_usd"] + (t["cost_usd"] if t else 0), 5),
+                    "trust_status": t["status"] if t else None, "trust_level": t["level"] if t else None, "corrected": bool(t and t["corrected"])}
+
+        def checker(case):
+            rep = trust.run(get_client(), settings.model, settings.assist_model, today, case["question"], case["planted"], level="deep",
+                            web_tool=TRUST_SEARCH_TOOL if settings.web_search else None, skeptic_model=skeptic_model)
+            u = rep.usage
+            d = rep.to_dict()
+            d["answer"] = rep.answer
+            return {**trusteval.score_check(case, d), "status": rep.status, "answer": rep.answer[:800],
+                    "labels": [c["label"] + ("→corrected" if c.get("fixed") else "") for c in rep.claims],
+                    "seconds": round(rep.seconds, 2), "cost_usd": round(spend(u.input_tokens + u.helper_input, u.output_tokens + u.helper_output, u.web_searches), 5)}
+
+        def work():
+            started, rows = time.monotonic(), []
+            try:
+                q.put(("start", {"total": len(cases)}))
+                for i, case in enumerate(cases, 1):
+                    if budget.exhausted():
+                        q.put(("stopped", {"message": "Stopped early: today's budget is used up.", "done": i - 1}))
+                        break
+                    row = {"n": i, "id": case["id"], "kind": case["kind"], "question": case["question"]}
+                    try:
+                        if case["kind"] in ("answer", "unanswerable"):
+                            b, e = baseline(case["question"]), engine(case["question"])
+                            row["baseline"] = {**b, **trusteval.score_answer(case, b["answer"])}
+                            row["engine"] = {**e, **trusteval.score_answer(case, e["answer"])}
+                        else:
+                            row["planted"] = case["planted"]
+                            row["check"] = checker(case)
+                    except Exception as ex:
+                        upstream_failed(ex)
+                        row["error"] = "model unreachable"
+                    rows.append(row)
+                    q.put(("case", row))
+                summary = {**trusteval.aggregate(rows), "seconds": round(time.monotonic() - started, 1), "model": settings.model,
+                           "skeptic_model": skeptic_model, "web_search": settings.web_search, "ran_at": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
+                           "total_cost_usd": round(sum((r.get("baseline") or {}).get("cost_usd", 0) + (r.get("engine") or {}).get("cost_usd", 0)
+                                                       + (r.get("check") or {}).get("cost_usd", 0) for r in rows), 4)}
+                trust_eval_last.clear()
+                trust_eval_last.update({"summary": summary, "rows": rows})
+                log.info(json.dumps({"event": "trust_eval", "baseline": summary["baseline"], "engine": summary["engine"], "cost_usd": summary["total_cost_usd"]}))
+                q.put(("summary", summary))
+            finally:
+                eval_lock.release()
+
+        start_worker(work, q)
+        return StreamingResponse(stream_events(q), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    @app.get("/api/owner/trust-eval/last")
+    def last_trust_eval(request: Request):
+        denied = require_owner(request)
+        if denied:
+            return denied
+        return trust_eval_last or {"summary": None, "rows": []}
 
     @app.post("/api/owner/evals")
     def run_evals(request: Request):

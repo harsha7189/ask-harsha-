@@ -37,6 +37,7 @@ def clean_prefs(d: dict | None) -> dict:
         "jury": d.get("jury") is not False,
         "memory": d.get("memory") is not False,
         "proof": bool(d.get("proof")),
+        "trust": d.get("trust") if d.get("trust") in ("auto", "deep", "light") else "auto",
     }
     try:
         out["rate"] = min(1.6, max(0.6, float(d.get("rate", 1))))

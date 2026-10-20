@@ -171,6 +171,60 @@ html.embed .fine{display:none}
 .fcwhy b{color:var(--fg);font-weight:600}
 .fcrow.ok .fcwhy b{color:var(--good)}.fcrow.bad .fcwhy b{color:var(--red-hot)}.fcrow.unk .fcwhy b{color:var(--warn)}
 .fcfoot{font-size:12px;color:var(--muted)}
+/* hallucination defense: what was checked, what changed, what's still uncertain */
+.tr-note{display:grid;gap:4px;margin-top:10px;padding:8px 11px;border-radius:10px;font-size:13px;line-height:1.45;white-space:normal}
+.tr-note b{font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+.tr-note.fix{background:color-mix(in srgb,var(--blue) 10%,transparent);border:1px solid color-mix(in srgb,var(--blue) 35%,var(--line))}
+.tr-note.fix b{color:var(--blue)}
+.tr-note.unc{background:color-mix(in srgb,var(--warn) 9%,transparent);border:1px solid color-mix(in srgb,var(--warn) 35%,var(--line))}
+.tr-note.unc b{color:var(--warn)}
+.tr-note.bad{background:color-mix(in srgb,var(--red-hot) 9%,transparent);border:1px solid color-mix(in srgb,var(--red-hot) 40%,var(--line))}
+.tr-note.bad b{color:var(--red-hot)}
+.tr-chg{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.tr-chg del{color:var(--muted);text-decoration-color:var(--red-hot)}
+.tr-chg ins{text-decoration:none;color:var(--fg);font-weight:600}
+.tr-chg small{flex-basis:100%;color:var(--muted);font-size:12px}
+.fcbtn.trust{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;max-width:100%;min-width:0}
+.fcbtn.trust span{flex:0 0 auto}
+.fcbtn.trust small{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tr-claim .tc-text.was{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--red-hot) 70%,transparent)}
+.fcbtn.trust i{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:0 0 auto}
+.fcbtn.trust.st-verified i,.fcbtn.trust.st-corrected i{background:var(--good)}
+.fcbtn.trust.st-mixed i{background:var(--warn)}
+.fcbtn.trust.st-contradicted i{background:var(--red-hot)}
+.fcbtn.trust small{font-weight:500;color:var(--muted)}
+.msg.bot.drafting .body{opacity:.72}
+.tr-draft{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--warn);margin-bottom:6px}
+.tr-draft::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--warn);animation:pulse 1.2s infinite}
+.trs h4{margin:14px 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.trs .tr-lead{margin:2px 0 4px;font-size:15px;line-height:1.5}
+.trs .tr-meta{font-size:12.5px;color:var(--muted)}
+.tr-counts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tr-pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;background:var(--raise);color:var(--muted)}
+.tr-pill.verified,.tr-pill.corrected{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.tr-pill.partial{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+.tr-pill.contradicted{background:color-mix(in srgb,var(--red-hot) 18%,transparent);color:var(--red-hot)}
+.tr-pill.unverified{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.tr-claims{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.tr-claim{display:grid;gap:5px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.tr-claim .tc-top{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+.tr-claim .tc-text{font-size:14px;line-height:1.45;min-width:0}
+.tr-claim .tc-why{font-size:13px;color:var(--muted);line-height:1.45}
+.tr-claim .tc-how{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tr-ev{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.tr-ev code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--raise);padding:2px 6px;border-radius:6px;color:var(--fg);word-break:break-all}
+.tr-ev blockquote{margin:0;padding:4px 0 4px 9px;border-left:2px solid var(--line);color:var(--fg);font-size:12.5px}
+.tr-ev a{color:var(--blue);word-break:break-all}
+.tr-list{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13.5px}
+.tr-how{font-size:12.5px;color:var(--muted);line-height:1.5;margin:0}
+.te-table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+.te-table th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:right;padding:6px 4px;font-weight:700}
+.te-table th:first-child{text-align:left}
+.te-table td{padding:7px 4px;border-top:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+.te-table td:first-child{text-align:left}
+.te-table td small{display:block;color:var(--muted);font-size:11px}
+.ep-hint{display:block;margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.45}
+.tr-orig{white-space:pre-wrap;font-size:13px;color:var(--muted);border:1px dashed var(--line);border-radius:10px;padding:8px 10px;margin:6px 0 0}
 .askh{margin-top:12px;border-radius:14px;padding:12px 14px;background:linear-gradient(135deg,color-mix(in srgb,var(--red) 20%,var(--panel)),var(--panel));border:1px solid color-mix(in srgb,var(--red) 55%,var(--line));display:grid;gap:8px;white-space:normal;animation:askpop .35s cubic-bezier(.2,.9,.3,1.3)}
 @keyframes askpop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
 .askh .ah-top{display:flex;gap:10px;align-items:center}
@@ -732,7 +786,7 @@ const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturda
 function partOfDay(h){return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night'}
 const PARAMS=new URLSearchParams(location.search),EMBED=PARAMS.has('embed');
 // Customize settings (see "Customize" below): kept on this device, and in the account when signed in.
-const PREF_DEFAULTS={name:'',length:'balanced',tone:'',about:'',city:'',voice:'',rate:1,read_aloud:false,jury:true,memory:true,proof:false};
+const PREF_DEFAULTS={name:'',length:'balanced',tone:'',about:'',city:'',voice:'',rate:1,read_aloud:false,jury:true,memory:true,proof:false,trust:'auto'};
 let prefs=(()=>{try{return {...PREF_DEFAULTS,...JSON.parse(localStorage.getItem('askh_prefs')||'{}')}}catch(e){return {...PREF_DEFAULTS}}})();
 if(EMBED)document.documentElement.classList.add('embed');
 const EMBED_CHIPS=["What does Harsha do at IBM?","Has Harsha shipped anything with AI?","What are his strongest results?","How can I contact Harsha?"];
@@ -888,10 +942,12 @@ function openLock(){
       const tools=el('div','tools');
       const ev=el('button','tool');ev.type='button';ev.append(el('b',null,'Run evals'),el('span',null,'Ask the test questions as a visitor and score every answer. Takes a few minutes and about 20 to 40 cents.'));
       ev.onclick=()=>{close();openEvals()};
+      const te=el('button','tool');te.type='button';te.append(el('b',null,'Trust evaluation'),el('span',null,'Plain model vs Ask Harsha with the trust check: hallucinations, false verifications, admitted doubt, corrections, speed and cost. About $1 and 10 minutes.'));
+      te.onclick=()=>{close();openTrustEval()};
       const ib=el('button','tool');ib.type='button';ib.append(el('b',null,inboxCount?`Inbox · ${inboxCount} waiting`:'Inbox'),el('span',null,'Questions visitors sent to the real you. Answer once, and optionally teach the agent.'));
       ib.onclick=()=>{close();openInbox()};
       const mb=el('button','tool');mb.type='button';mb.append(el('b',null,'Memory'),el('span',null,'Everything you have taught the agent. Remove any note.'));
-      mb.onclick=()=>{close();openMemory()};tools.append(ib,mb,ev);s.append(tools);
+      mb.onclick=()=>{close();openMemory()};tools.append(ib,mb,ev,te);s.append(tools);
       const r=el('div','row'),out=el('button','btn','Sign out'),ok=el('button','btn red primary','Done');
       out.type=ok.type='button';out.onclick=()=>{passcode='';store.set('');setOwner(false);close()};ok.onclick=close;r.append(out,ok);s.append(r);
     });return;
@@ -936,6 +992,48 @@ function openEvals(){
         }
       });
     }catch(e){head.textContent="Lost connection during the run. Results so far are shown below."}
+  });
+}
+// ---------- owner: does the hallucination defense help? baseline vs engine on fixed cases ----------
+const TE_ROWS=[['hallucination_rate','Hallucination rate','lower is better',true],['accuracy','Correct answers','',false],['uncertainty_rate','Admits it doesn’t know (unanswerable)','',false],
+  ['false_verification_rate','False “verified” labels','lower is better',true],['detection_rate','Planted errors caught','',false],['correction_success_rate','Planted errors fixed','',false],
+  ['false_alarm_rate','False alarms on correct answers','lower is better',true],['avg_seconds','Seconds per answer','',true],['avg_cost_usd','Cost per answer','',true]];
+function teTable(sum){
+  const pct=v=>v==null?'–':Math.round(v*100)+'%',fmt=(k,v)=>v==null?'–':k==='avg_seconds'?v.toFixed(1)+'s':k==='avg_cost_usd'?'$'+v.toFixed(3):pct(v);
+  const tb=el('table','te-table');const hd=el('tr');['','Plain model','Ask Harsha'].forEach(h=>hd.append(el('th',null,h)));tb.append(hd);
+  TE_ROWS.forEach(([k,label,hint])=>{const b=sum.baseline[k],e=sum.engine[k];if(b===undefined&&e===undefined)return;const tr=el('tr');const th=el('td');th.append(el('b',null,label));if(hint)th.append(el('small',null,hint));
+    tr.append(th,el('td',null,b===undefined?'n/a':fmt(k,b)),el('td',null,fmt(k,e)));tb.append(tr)});
+  return tb;
+}
+function openTrustEval(){
+  sheet(async (s,close)=>{
+    s.append(el('h3',null,'Trust evaluation'),el('small',null,'Same questions to a plain model and to Ask Harsha with the trust check. Planted-error cases hand a known wrong answer straight to the checker.'));
+    const head=el('p','evhead',''),bar=el('div','evbar'),fill=el('i');bar.append(fill);bar.hidden=true;
+    const table=el('div'),list=el('div','evlist'),r=el('div','row'),go=el('button','btn red','Run evaluation'),b=el('button','btn','Close');go.type=b.type='button';b.onclick=close;r.append(b,go);
+    s.append(head,bar,table,list,r);
+    try{const last=await fetch('/api/owner/trust-eval/last',{headers:headers()}).then(x=>x.json());
+      if(last&&last.summary){head.textContent=`Last run ${new Date(last.summary.ran_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} · $${last.summary.total_cost_usd.toFixed(2)} · ${Math.round(last.summary.seconds)}s`;table.append(teTable(last.summary));go.textContent='Run again'}
+      else head.textContent='Not run yet since the server started.'}catch(e){}
+    go.onclick=async()=>{go.disabled=true;table.textContent='';list.textContent='';bar.hidden=false;fill.style.width='0%';let total=0;
+      try{const res=await fetch('/api/owner/trust-eval',{method:'POST',headers:headers()});const type=res.headers.get('content-type')||'';
+        if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));head.textContent=d.message||'The evaluation couldn’t start.';go.disabled=false;return}
+        await readSSE(res,(kind,d)=>{
+          if(kind==='start'){total=d.total;head.textContent=`Running 0 of ${total}…`}
+          else if(kind==='case'){fill.style.width=(d.n/total*100)+'%';head.textContent=`Running ${d.n} of ${total}…`;
+            const row=el('details','evrow');const sm=el('summary');let mark,ok;
+            if(d.error){mark='ERROR';ok=false}
+            else if(d.check){ok=d.kind==='planted'?(d.check.detected&&!d.check.false_verified):!d.check.false_alarm;mark=d.kind==='planted'?(d.check.corrected?'FIXED':d.check.detected?'CAUGHT':'MISSED'):(d.check.false_alarm?'ALARM':'OK')}
+            else{ok=!d.engine.hallucinated;mark=(d.baseline.hallucinated?'✕':'✓')+' → '+(d.engine.hallucinated?'✕':'✓')}
+            row.classList.add(ok?'pass':'fail');sm.append(el('span','evmark',mark),el('span','q',d.question));row.append(sm);
+            if(d.check){row.append(el('p','why',`Planted: ${d.planted}`),el('p','ans',`After the check (${d.check.status}; ${d.check.labels.join(', ')}): ${d.check.answer}`),el('p','meta',`${d.check.seconds}s · $${d.check.cost_usd.toFixed(3)}`))}
+            else if(d.engine){row.append(el('p','why','Plain model: '+d.baseline.answer),el('p','ans','Ask Harsha ('+(d.engine.trust_level||'')+', '+(d.engine.trust_status||'')+(d.engine.corrected?', corrected':'')+'): '+d.engine.answer),
+              el('p','meta',`plain ${d.baseline.seconds}s $${d.baseline.cost_usd.toFixed(3)} · Ask Harsha ${d.engine.seconds}s $${d.engine.cost_usd.toFixed(3)}`))}
+            list.append(row)}
+          else if(kind==='stopped'){head.textContent=d.message}
+          else if(kind==='summary'){fill.style.width='100%';head.textContent=`Done · $${d.total_cost_usd.toFixed(2)} · ${Math.round(d.seconds)}s · ${d.model}`;table.append(teTable(d));go.textContent='Run again'}
+        });
+      }catch(e){head.textContent='Lost connection during the run. Results so far are below.'}
+      go.disabled=false};
   });
 }
 function openMemory(){
@@ -1082,8 +1180,11 @@ function renderBot(bot,data,text,live){
   Object.entries(data.sources||{}).forEach(([id,v])=>{cache[id]=v});
   (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
-  bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);if(data.files&&data.files.length)renderFiles(bot,data.files);if(data.proof)renderProof(bot,data.proof);renderExtras(bot,data);
-  if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);
+  bot.textContent='';bot.classList.remove('drafting');const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);
+  if(data.trust)renderTrustNotes(bot,data.trust);
+  if(data.files&&data.files.length)renderFiles(bot,data.files);if(data.proof)renderProof(bot,data.proof);renderExtras(bot,data);
+  if(data.trust&&data.answer)addTrust(bot,text,data);
+  else if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);   // answers saved before the trust check
   addStar(bot,text,data);
   if(juryOn&&['general','web'].includes(data.label)&&data.answer)addJury(bot,text,data.answer);
   if(data.receipt&&data.signature)addShare(bot,data);
@@ -1096,7 +1197,7 @@ function renderBot(bot,data,text,live){
 // and shown under "Chats". The current chat is always kept in memory, so signing in mid-chat saves it too.
 let me={enabled:false,user:null},summaries=[],chatId=null,cur=null;
 const LEGACY=(()=>{try{const d=JSON.parse(localStorage.getItem('askh_chats')||'{}');return Array.isArray(d.chats)?d.chats:[]}catch(e){return[]}})();  // chats saved on this device before accounts existed
-const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature','timing','files','proof'];
+const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature','timing','files','proof','trust'];
 const signedIn=()=>!!(me&&me.user);
 async function api(method,url,body){
   const res=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
@@ -1689,7 +1790,8 @@ function mountSidebar(){
     let items=[];try{items=(await api('GET','/api/memory')).memories||[]}catch(e){list.textContent=e.message;return}
     const draw=()=>{list.textContent='';
       if(!items.length){list.append(el('p','ep-note','Nothing yet. Tell it about yourself in a chat, like “I’m a product manager in Austin”, and it will show up here.'));return}
-      items.forEach(m=>{const r=el('div','ep-card static mem');const t=el('span','ep-ctx');t.append(el('b','memtext',m.text),el('small',null,'Learned '+new Date(m.created).toLocaleDateString([],{month:'short',day:'numeric'})));
+      items.forEach(m=>{const r=el('div','ep-card static mem');const t=el('span','ep-ctx');const when=new Date(m.created).toLocaleDateString([],{month:'short',day:'numeric'});
+        t.append(el('b','memtext',m.text),el('small',null,m.quote?`From your words on ${when}: “${m.quote}”`:m.source==='edited'?`Edited by you · ${when}`:`Learned ${when}`));
         const ed=el('button','btn','Edit'),del=el('button','btn','Forget');ed.type=del.type='button';
         ed.onclick=()=>{const inp=el('input','field');inp.value=m.text;inp.maxLength=200;t.textContent='';const ok=el('button','btn red','Save');ok.type='button';
           ok.onclick=async()=>{try{items=(await api('PATCH','/api/memory/'+encodeURIComponent(m.id),{text:inp.value})).memories}catch(e){toast(e.message)}draw()};inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};t.append(inp,ok);inp.focus()};
@@ -1734,7 +1836,7 @@ function mountSidebar(){
     const labA=el('a','btn','Open');labA.href='/lab';
     row('🔬','Discovery Lab','Investigate a question: hypotheses, real experiments, then a try at breaking them',labA);
     row('🛡️','Proof Mode','Checks that a task really worked, fixes what didn’t, and signs the evidence',toggle(!!prefs.proof,x=>setPref('proof',x),'Proof Mode'));
-    row('✓','Fact-check','Checks every claim in an answer against sources');
+    row('✓','Trust check','Every answer is checked before it’s final: math recomputed, sources compared, mistakes fixed. Tap “Why trust this?” under any answer');
     row('🔏','Share verified','A signed link and QR code that prove an answer is real');
     row('🙋','Ask the real Harsha','When a question needs a person, send it to Harsha');
     row('🎙️','Voice typing','Tap the mic next to the message box and speak');
@@ -1767,6 +1869,9 @@ function mountSidebar(){
     const applyCity=async()=>{setPref('city',city.value.trim());cs.textContent='Updating…';await loadWeather();cs.textContent=weatherData&&prefs.city&&weatherData.city?`✓ ${weatherData.city}`:'Update'};
     cs.onclick=applyCity;city.onkeydown=e=>{if(e.key==='Enter')applyCity()};
     const l=el('label','ep-field');l.append(el('span',null,'Weather greeting for'),cr,el('small',null,'Type a city, like “Chicago” or “Hyderabad, India”. Leave empty to use where you are.'));h.append(l);
+    const tc=sec('Answer checking');
+    tc.append(seg([['auto','Auto'],['deep','Deep'],['light','Quick']],prefs.trust||'auto',v=>setPref('trust',v),'Answer checking'),
+      el('small','ep-hint','Auto: every answer gets a free check by code; math, money, health, law, science and research answers also face a skeptic that tries to disprove them. Deep: every answer gets the skeptic (slower, a few cents each). Quick: code and citation checks only.'));
     const pf=sec('Proof Mode');
     const pi=el('div','ep-item');const pt=el('span');pt.append(el('b',null,'Check every task'),el('small',null,'Code checks the real result against what you asked, fixes what fails, and shows the evidence. Files are always checked.'));
     pi.append(pt,toggle(!!prefs.proof,x=>setPref('proof',x),'Proof Mode'));pf.append(pi);
@@ -1867,7 +1972,7 @@ async function syncPrefs(){
   }catch(e){}
   juryOn=juryAvail&&prefs.jury!==false;
 }
-const chatPrefs=()=>({name:prefs.name,length:prefs.length,tone:prefs.tone,about:prefs.about,memory:prefs.memory!==false});
+const chatPrefs=()=>({name:prefs.name,length:prefs.length,tone:prefs.tone,about:prefs.about,memory:prefs.memory!==false,trust:prefs.trust||'auto'});
 // Read answers aloud with the device's own voices.
 const voices=()=>('speechSynthesis' in window)?speechSynthesis.getVoices():[];
 function speakText(t){
@@ -1955,6 +2060,109 @@ async function runFactCheck(wrap,btn,answer){
     btn.disabled=false;btn.textContent='Try the fact check again';
   }
   scrollDown();
+}
+// ---------- Hallucination defense: "Why should I trust this answer?" ----------
+// The server checks each answer before it's final: calculations are recomputed in code, quoted sources are compared
+// word for word, and risky answers face a skeptic with web search. Labels come from that evidence, never from a model
+// simply agreeing, and there are no made-up confidence percentages.
+const TR_LABEL={verified:'Verified',partial:'Partially supported',contradicted:'Contradicted',unverified:'Unverified',corrected:'Corrected'};
+const TR_HOW={calculation:'Recomputed in code',record:"Checked against Harsha's record",source:'Checked against the cited source',web:'Survived a search for counterexamples'};
+const TR_LEVEL={light:'Quick check: calculations recomputed in code, citations checked',cited:'Citation check: every cited source compared with its exact words',deep:'Deep check: claims, sources, and a skeptic that tried to disprove them'};
+function trustLine(t){
+  const c=t.counts||{},n=(c.verified||0)+(c.partial||0)+(c.contradicted||0)+(c.unverified||0)+(c.corrected||0);
+  if(t.status==='corrected')return `Corrected ${c.corrected} mistake${c.corrected===1?'':'s'} · re-checked`;
+  if(t.status==='contradicted')return `${c.contradicted} claim${c.contradicted===1?'':'s'} conflict${c.contradicted===1?'s':''} with the evidence`;
+  if(t.status==='verified')return `${n} claim${n===1?'':'s'} verified`;
+  if(t.status==='mixed')return [c.verified?`${c.verified} verified`:'',c.partial?`${c.partial} partly`:'',c.unverified?`${c.unverified} unverified`:''].filter(Boolean).join(' · ');
+  return t.level==='light'?'Quick check · nothing to verify':'Nothing factual to verify';
+}
+function renderTrustNotes(bot,t){
+  if(t.corrected&&t.changes&&t.changes.length){
+    const n=el('div','tr-note fix');n.append(el('b',null,t.fix_verified?'Corrected before you saw it':'I tried to correct this'));
+    t.changes.slice(0,4).forEach(ch=>{const r=el('div','tr-chg');if(ch.before)r.append(el('del',null,ch.before));r.append('→');r.append(el('ins',null,ch.after||'(removed)'));if(ch.why)r.append(el('small',null,ch.why));n.append(r)});
+    if(!t.fix_verified)n.append(el('small',null,'The fix couldn’t be fully confirmed, so treat the changed parts with care.'));
+    bot.append(n);
+  }
+  const bad=(t.claims||[]).filter(c=>c.label==='contradicted'&&!c.fixed);
+  if(bad.length){const n=el('div','tr-note bad');n.append(el('b',null,'Conflicts with the evidence'));bad.slice(0,3).forEach(c=>n.append(el('span',null,`“${c.text}”: ${c.why}`)));bot.append(n)}
+  if(t.uncertain&&t.uncertain.length){const n=el('div','tr-note unc');n.append(el('b',null,'Couldn’t verify'));t.uncertain.slice(0,3).forEach(u=>n.append(el('span',null,u)));bot.append(n)}
+}
+function addTrust(bot,question,data){
+  const t=data.trust,row=actionsFor(bot).querySelector('.arow');
+  const b=el('button','fcbtn trust st-'+t.status);b.type='button';b.append(el('i'),el('span',null,'Why trust this?'),el('small',null,trustLine(t)));
+  b.setAttribute('aria-label','Why should I trust this answer? '+trustLine(t));b.onclick=()=>openTrust(bot,question,data);row.prepend(b);
+}
+function host(u){try{return new URL(u).hostname.replace(/^www\./,'')}catch(e){return u}}
+function openTrust(bot,question,data){
+  sheet((s,close)=>{
+    s.classList.add('trs');const wrap=el('div');s.append(el('h3',null,'Why should I trust this answer?'),wrap);
+    const r=el('div','row'),cl=el('button','btn','Close');cl.type='button';cl.onclick=close;r.append(cl);s.append(r);
+    drawTrust(wrap,data.trust,question,data,bot);
+    requestAnimationFrame(()=>{s.scrollTop=0});   // open at the top, not wherever the focused button is
+  });
+}
+function drawTrust(wrap,t,question,data,bot){
+  wrap.textContent='';const c=t.counts||{};
+  const LEAD={verified:'Every claim it could check holds up.',corrected:'The first draft had a mistake. It was fixed, and the fix was checked again.',
+    mixed:'Some of this checks out, but not everything could be verified. The details are below.',contradicted:'Some claims conflict with the evidence. Treat them with care.',
+    nothing:t.level==='light'?'This answer didn’t contain calculations or citations to check, and it didn’t look risky, so it only got the quick check.':'There were no factual claims to check in this answer.'};
+  wrap.append(el('p','tr-lead',LEAD[t.status]||''),el('p','tr-meta',[TR_LEVEL[t.level]||'',t.seconds?`${t.seconds.toFixed(1)}s`:'',t.cost_usd?`${(t.cost_usd*100).toFixed(1)}¢`:''].filter(Boolean).join(' · ')));
+  const cs=el('div','tr-counts');['verified','corrected','partial','contradicted','unverified'].forEach(k=>{if(c[k])cs.append(el('span','tr-pill '+k,`${c[k]} ${TR_LABEL[k].toLowerCase()}`))});if(cs.childNodes.length)wrap.append(cs);
+  if(t.corrected&&t.changes&&t.changes.length){
+    wrap.append(el('h4',null,'What changed'));const n=el('div','tr-note fix');
+    t.changes.forEach(ch=>{const r=el('div','tr-chg');if(ch.before)r.append(el('del',null,ch.before));r.append('→',el('ins',null,ch.after||'(removed)'));if(ch.why)r.append(el('small',null,ch.why));n.append(r)});
+    wrap.append(n);
+    if(t.original){const d=el('details');d.append(el('summary',null,'Show the first draft'),el('p','tr-orig',t.original));wrap.append(d)}
+  }
+  if(t.on_demand&&t.corrected&&t.answer){
+    wrap.append(el('h4',null,'Corrected version'));const p=el('p','tr-orig',t.answer);p.style.color='var(--fg)';
+    const cp=el('button','btn','Copy corrected answer');cp.type='button';cp.onclick=async()=>{try{await navigator.clipboard.writeText(t.answer);cp.textContent='Copied ✓'}catch(e){toast('Copy didn’t work here.')}};
+    wrap.append(p,cp);
+  }
+  const claims=t.claims||[];
+  if(claims.length){
+    wrap.append(el('h4',null,'Each claim'));const ol=el('ol','tr-claims');
+    claims.forEach(cl=>{const li=el('li','tr-claim');const top=el('div','tc-top');const lab=cl.fixed?'corrected':cl.label;
+      top.append(el('span','tc-text'+(cl.fixed?' was':''),cl.text),el('span','tr-pill '+lab,TR_LABEL[lab]));li.append(top);
+      if(cl.how&&TR_HOW[cl.how])li.append(el('span','tc-how',TR_HOW[cl.how]));
+      if(cl.why&&cl.how!=='calculation')li.append(el('span','tc-why',cl.why));   // calculations show the code line instead
+      const ev=el('div','tr-ev');
+      (cl.evidence||[]).forEach(e=>{
+        if(e.kind==='calc'){const x=el('span');x.append(el('code',null,`${e.expression} = ${e.computed}`),e.claimed?(e.ok?` · matches ${e.claimed}`:` · the answer said ${e.claimed}`):'');ev.append(x)}
+        else if(e.kind==='record'){const x=el('span');const b=el('button','cite'+(e.ref.startsWith('N')?' note':''),e.ref);b.type='button';b.onclick=()=>openSource(e.ref);cache[e.ref]=cache[e.ref]||{text:e.text,kind:e.ref.startsWith('N')?'note':'fact'};x.append(b,' ',e.text.slice(0,220)+(e.text.length>220?'…':''));ev.append(x)}
+        else if(e.kind==='web'||e.kind==='search'){const x=el('span');const a=el('a',null,host(e.url));a.href=e.url;a.target='_blank';a.rel='noopener';a.title=e.title||e.url;x.append(e.kind==='web'?'Cited source: ':'Checked: ',a);ev.append(x)}
+      });
+      if(cl.quote){ev.append(el('blockquote',null,`“${cl.quote}”`))}
+      if(cl.challenge&&cl.challenge.note&&!(cl.why||'').includes(cl.challenge.note)){const x=el('span');x.append(el('b',null,'Skeptic: '),cl.challenge.note);ev.append(x)}
+      if(cl.challenge&&cl.challenge.dropped){ev.append(el('span',null,`${cl.challenge.dropped} source${cl.challenge.dropped===1?'':'s'} the skeptic named weren’t ones it really searched, so they don’t count.`))}
+      if(ev.childNodes.length)li.append(ev);ol.append(li)});
+    wrap.append(ol);
+  }
+  if(t.uncertain&&t.uncertain.length){wrap.append(el('h4',null,'Still uncertain'));const ul=el('ul','tr-list');t.uncertain.forEach(u=>ul.append(el('li',null,u)));wrap.append(ul)}
+  if(t.notes&&t.notes.length){wrap.append(el('h4',null,'Also worth knowing'));const ul=el('ul','tr-list');t.notes.forEach(u=>ul.append(el('li',null,u)));wrap.append(ul)}
+  if(t.error)wrap.append(el('p','tr-meta',t.error+' The answer is shown as written.'));
+  if(t.level!=='deep'&&!t.on_demand){
+    const go=el('button','btn red','Run a deep check');go.type='button';const line=el('p','tr-meta');
+    go.onclick=()=>deepCheck(wrap,go,line,question,data,bot);wrap.append(el('h4',null,'Want more certainty?'),el('p','tr-how','A deep check lists every claim, compares each with its sources, and has a skeptic search for evidence against it. It takes 10 to 30 seconds and costs a few cents.'),go,line);
+  }
+  wrap.append(el('h4',null,'What these labels mean'),el('p','tr-how','Verified means code recomputed it or a real source’s words support it. It isn’t a guarantee. A model agreeing doesn’t count as proof, and the 🔏 signature only proves this answer came from Ask Harsha unchanged, not that it’s true. Recomputing a number isn’t a proof of a general claim; for that, use Discovery Lab.'));
+}
+async function deepCheck(wrap,btn,line,question,data,bot){
+  btn.disabled=true;btn.textContent='Checking…';line.textContent='Starting…';
+  const t=data.trust||{};
+  try{
+    const res=await fetch('/api/trust/check',{method:'POST',headers:headers(),body:JSON.stringify({question,answer:data.answer,passages:(t.passages||[]).slice(0,12),citations:(data.citations||[]).map(c=>c.id)})});
+    const type=res.headers.get('content-type')||'';
+    if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||'The deep check couldn’t start.')}
+    let done=false;
+    await readSSE(res,(kind,d)=>{
+      if(kind==='status')line.textContent=d.label+'…';
+      else if(kind==='final'){done=true;const merged={...d,passages:t.passages||d.passages};data.trust=merged;drawTrust(wrap,merged,question,data,bot);
+        const old=bot.querySelector('.fcbtn.trust');if(old){old.remove();addTrust(bot,question,data)}}
+      else if(kind==='error')throw new Error(d.message);
+    });
+    if(!done)throw new Error('The connection dropped before the check finished.');
+  }catch(e){btn.disabled=false;btn.textContent='Try the deep check again';line.textContent=e.message}
 }
 // ---------- photos and files ----------
 // Photos are shrunk on the phone (longest side 1568 px, JPEG), which is all the model uses and keeps uploads small.
@@ -2284,6 +2492,7 @@ async function ask(text){
       if(kind==='status'){stxt.textContent=d.label+'…';status.hidden=false}
       else if(kind==='text'){streamed+=d.delta;status.hidden=true;renderAnswer(live,streamed);scrollDown()}
       else if(kind==='text_reset'){streamed='';live.textContent='';status.hidden=false}
+      else if(kind==='checking'){bot.classList.add('drafting');if(!bot.querySelector('.tr-draft'))bot.insertBefore(el('div','tr-draft','Draft · checking before it’s final'),status);status.hidden=false;stxt.textContent='Checking the claims…';scrollDown()}
       else if(kind==='final'){finished=true;showFinal(bot,d,text);busy=false;send.disabled=false}
       else if(kind==='memory'){showMemory(bot,d)}
       else if(kind==='error'){finished=true;bot.classList.add('err');bot.textContent=d.message||'Something went wrong. Please try again.'}

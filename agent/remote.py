@@ -22,6 +22,7 @@ PREF_VALUES = {
     "read_aloud": (True, False),
     "jury": (True, False),
     "proof": (True, False),
+    "trust": ("auto", "deep", "light"),
 }
 ACTIONS = ("open_section", "open_project", "open_chat", "search_chats", "search_saved", "new_chat", "create_project",
            "set_pref", "open_tool", "ask", "sign_in", "channel_up", "channel_down", "reply")
@@ -45,8 +46,8 @@ TOOL_SPEC = {
             "name": {"type": "string", "description": "Name for a new project."},
             "icon": {"type": "string", "description": "One emoji for a new project."},
             "instructions": {"type": "string", "description": "Instructions for a new project, if they gave any."},
-            "pref": {"type": "string", "enum": ["length", "tone", "read_aloud", "jury", "proof", "name", "city", "about"]},
-            "value": {"description": "length: short|balanced|detailed. tone: ''|friendly|professional|direct. read_aloud/jury: true|false. name/city/about: text."},
+            "pref": {"type": "string", "enum": ["length", "tone", "read_aloud", "jury", "proof", "trust", "name", "city", "about"]},
+            "value": {"description": "length: short|balanced|detailed. tone: ''|friendly|professional|direct. read_aloud/jury/proof: true|false. trust (answer checking): auto|deep|light. name/city/about: text."},
             "tool": {"type": "string", "enum": list(TOOLS)},
             "say": {"type": "string", "description": "One short, friendly line confirming what you did (under 12 words)."},
         },

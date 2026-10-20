@@ -18,6 +18,19 @@ def turns(n):
     return out
 
 
+def test_memories_must_come_from_the_persons_own_words():
+    reply = {"remember": [{"text": "Is moving to Denver in June", "quote": "moving to Denver in June"},
+                          {"text": "Has two kids", "quote": "I have two kids"},              # quote isn't in the message
+                          {"text": "Prefers Python", "quote": "moving to Denver"}],          # quote doesn't say it
+             "forget": [], "project_notes": None}
+    out = memory.learn(FakeClient([response([text(json.dumps(reply))], "end_turn")]), "m",
+                       "We're moving to Denver in June. Any tips?", "Python is great for that.", [], None)
+    assert out.remember == ["Is moving to Denver in June"] and out.quotes == ["moving to Denver in June"]
+    assert out.rejected == ["Has two kids", "Prefers Python"]
+    assert memory.stated_by_person("Works as a product manager", "", "I'm a product manager in Austin") == "I'm a product manager in Austin"
+    assert memory.stated_by_person("Lives in Paris", "", "I'm a product manager in Austin") is None
+
+
 def test_condense_keeps_recent_turns_word_for_word():
     assert memory.condense(turns(8)) == ([], turns(8))
     older, recent = memory.condense(turns(11))
@@ -30,7 +43,9 @@ def test_learn_filters_what_the_model_returns():
     client = FakeClient([response([text(json.dumps(reply))], "end_turn")])
     out = memory.learn(client, "m", "I'm a PM at IBM in Austin", "Nice!", [{"id": "M1", "text": "Works as a PM at IBM"}],
                        {"id": "p1", "name": "Trip"})
-    assert out.remember == ["Lives in Austin", "Likes tea", "extra"]   # max 3, no repeats of what it already knows
+    assert out.remember == ["Lives in Austin"]            # no repeats of what it already knows…
+    assert out.rejected == ["Likes tea", "extra"]         # …and nothing they never said
+    assert out.quotes == ["I'm a PM at IBM in Austin"]
     assert out.forget == ["M1"] and out.project_notes == "- Budget is $2k"
     off = memory.learn(FakeClient([response([text(json.dumps(reply))], "end_turn")]), "m", "I'm a PM", "ok", [], None, memory_on=False)
     assert off.remember == [] and off.project_notes is None
