@@ -284,7 +284,14 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     weather = weather or Weather()
     greet_limiter = RateLimiter(60, 600)
     # accounts=None: use DATABASE_URL if set; accounts=False: turned off (tests)
-    accounts = acct.connect(os.environ.get("DATABASE_URL", "")) if accounts is None else (accounts or None)
+    if accounts is None:
+        try:
+            accounts = acct.connect(os.environ.get("DATABASE_URL", ""))
+        except Exception as e:  # a bad DATABASE_URL must never take the whole agent down
+            log.error(json.dumps({"event": "database_unavailable", "type": type(e).__name__, "detail": str(e)[:300]}))
+            accounts = None
+    else:
+        accounts = accounts or None
     auth_limiter = RateLimiter(30, 600)
     jury = jury or Jury(os.environ.get("OPENAI_API_KEY", ""), os.environ.get("OPENAI_MODEL", ""),
                         os.environ.get("GEMINI_API_KEY", ""), os.environ.get("GEMINI_MODEL", ""))
