@@ -87,3 +87,26 @@ def test_invented_number_is_caught():
     ])
     reply = Agent(client).ask("AI adoption?")
     assert not reply.report.ok and "60%" in reply.report.unsupported_numbers
+
+
+def test_chat_calls_skip_up_front_thinking_and_report_timing():
+    from agent import speed
+    from fakes import FakeClient, response, text
+    from agent.loop import Agent
+    assert speed.params("claude-sonnet-5-5", "chat") == {"output_config": {"effort": "medium"}, "thinking": {"type": "between_tools"}}
+    assert speed.params("claude-haiku-5-5", "helper") == {"output_config": {"effort": "low"}, "thinking": {"type": "disabled"}}
+    assert speed.params("claude-sonnet-5-5", "deep") == {"output_config": {"effort": "medium"}}
+    assert speed.params("some-other-model", "chat") == {}          # unknown models get nothing extra
+    client = FakeClient([response([text("Hi.")], "end_turn")])
+    reply = Agent(client, model="claude-sonnet-5-5").ask("Hello")
+    req = client.requests[0]
+    assert req["thinking"] == {"type": "between_tools"} and req["output_config"] == {"effort": "medium"}
+    assert set(reply.timing) >= {"total_s", "model_s", "tools_s", "calls_s", "first_text_s"} and len(reply.timing["calls_s"]) == 1
+
+
+def test_chat_effort_can_be_changed_by_env(monkeypatch):
+    from agent import speed
+    monkeypatch.setenv("CHAT_EFFORT", "low")
+    assert speed.params("claude-sonnet-5-5", "chat")["output_config"] == {"effort": "low"}
+    monkeypatch.setenv("CHAT_EFFORT", "max")
+    assert speed.params("claude-sonnet-5-5", "chat")["thinking"] == {"type": "adaptive"}   # between_tools isn't allowed at max

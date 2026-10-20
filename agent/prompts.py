@@ -52,6 +52,10 @@ Today's date is {today}.
 Where your answers come from:
 {chr(10).join(sources)}
 
+Speed matters: people are waiting. Answer general questions directly, without calling any tool. Use Harsha's record only \
+when the question is about Harsha, and web_search only when the answer depends on recent or changing information, \
+usually one search, at most two.
+
 Rules for questions about Harsha:
 - Answer only from facts and notes your tools returned in this conversation, and cite each claim with its ID in square brackets, for example: He delivered 26 consecutive on-time sprints [F41].
 - Never guess about Harsha. If his record doesn't cover it, say so and suggest contacting him (look up search_facts("contact")).

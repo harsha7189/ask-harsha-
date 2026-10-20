@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from . import speed
 from .loop import Agent, _get
 
 MAX_CLAIMS = 8
@@ -92,7 +93,7 @@ def _usage(resp) -> tuple[int, int]:
 
 def extract_claims(client: Any, model: str, answer: str) -> tuple[list[dict], int, int]:
     resp = client.messages.create(
-        model=model, max_tokens=1200,
+        model=model, max_tokens=1200, **speed.params(model, "helper"),
         system=EXTRACT_PROMPT.format(max_claims=MAX_CLAIMS),
         messages=[{"role": "user", "content": f"Answer to split into claims:\n\n{answer}"}],
     )
@@ -154,7 +155,7 @@ def verify_claims(client: Any, model: str, claims: list[dict], lookup: dict, tod
     agent = Agent(client, kb=kb, model=model, max_steps=6, max_tokens=2000,
                   system=VERIFY_PROMPT.format(today=today),
                   server_tools=[web_tool] if (web and web_tool) else [], strict_grounding=False,
-                  on_event=on_event or (lambda k, d: None), stream=True)
+                  on_event=on_event or (lambda k, d: None), stream=True, speed="helper")
     reply = agent.ask(user)
     stats = {"input_tokens": reply.input_tokens, "output_tokens": reply.output_tokens, "web_searches": reply.web_searches}
     data = parse_json(reply.text)

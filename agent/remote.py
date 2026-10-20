@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import speed
+
 SECTIONS = ("projects", "saved", "tools", "customize", "chats")
 TOOLS = ("morning", "meeting", "feedback", "interview", "release", "spec", "assist")
 PREF_VALUES = {
@@ -177,7 +179,7 @@ def interpret(client: Any, model: str, text: str, context: dict) -> Command:
         saved=_list([f"- {str(s.get('question', ''))[:80]}" for s in saved], "(none)"),
         prefs={k: v for k, v in (context.get("prefs") or {}).items() if k in ("length", "tone", "read_aloud", "jury", "name", "city")},
     )
-    resp = client.messages.create(model=model, max_tokens=300, system=system, tools=[TOOL_SPEC],
+    resp = client.messages.create(model=model, max_tokens=300, system=system, tools=[TOOL_SPEC], **speed.params(model, "helper"),
                                   tool_choice={"type": "tool", "name": "do"},
                                   messages=[{"role": "user", "content": text[:300]}])
     usage = _get(resp, "usage")

@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import speed
 from .factcheck import FactCheckError, parse_json
 
 SUMMARY_AT = 8        # once a chat has more than this many exchanges in play…
@@ -89,7 +90,7 @@ def condense(messages: list[dict]) -> tuple[list[dict], list[dict]]:
 
 def summarize(client: Any, model: str, previous: str, older: list[dict], usage: Usage | None = None) -> str:
     resp = client.messages.create(
-        model=model, max_tokens=400, system=SUMMARY_PROMPT,
+        model=model, max_tokens=400, system=SUMMARY_PROMPT, **speed.params(model, "helper"),
         messages=[{"role": "user", "content": f"PREVIOUS SUMMARY:\n{previous.strip() or '(none)'}\n\nMESSAGES:\n{_transcript(older)}"}])
     if usage is not None:
         usage.add(resp)
@@ -107,7 +108,7 @@ def learn(client: Any, model: str, question: str, answer: str, memories: list[di
     proj = (f"PROJECT: {project.get('name', '')}\nINSTRUCTIONS: {str(project.get('instructions') or '')[:600]}\n"
             f"CURRENT NOTES:\n{project.get('notes') or '(none yet)'}") if project else "PROJECT: none"
     resp = client.messages.create(
-        model=model, max_tokens=700, system=LEARN_PROMPT,
+        model=model, max_tokens=700, system=LEARN_PROMPT, **speed.params(model, "helper"),
         messages=[{"role": "user", "content": f"MEMORIES:\n{mem}\n\n{proj}\n\nPERSON: {question[:2000]}\n\nASSISTANT: {answer[:2500]}"}])
     out = Learned()
     out.usage.add(resp)

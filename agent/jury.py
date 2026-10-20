@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from . import speed
 from .factcheck import FactCheckError, parse_json
 from .loop import _get
 
@@ -211,7 +212,7 @@ class Jury:
         if len(answers) < 2:
             return None, 0, 0
         body = f"Question:\n{question}\n\n" + "\n\n".join(f'<answer model="{n}">\n{t}\n</answer>' for n, t in answers)
-        resp = client.messages.create(model=model, max_tokens=1500, system=COMPARE_PROMPT.format(today=today),
+        resp = client.messages.create(model=model, max_tokens=1500, **speed.params(model, "helper"), system=COMPARE_PROMPT.format(today=today),
                                       messages=[{"role": "user", "content": body}])
         text = "".join(_get(b, "text", "") for b in (_get(resp, "content", []) or []) if _get(b, "type") == "text")
         u = _get(resp, "usage")

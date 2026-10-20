@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import speed
 from .factcheck import FactCheckError, parse_json
 from .loop import _get
 
@@ -103,7 +104,7 @@ def interpret(client: Any, model: str, heard: list[str] | None = None, typed: st
     if not message or not any(k in message for k in ("HEARD:", "TYPED:", "PARTNER:")):
         return AssistResult()
     resp = client.messages.create(
-        model=model, max_tokens=400,
+        model=model, max_tokens=400, **speed.params(model, "helper"),
         system=ASSIST_PROMPT.format(max_guesses=MAX_GUESSES),
         messages=[{"role": "user", "content": message}],
     )

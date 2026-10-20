@@ -872,7 +872,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         agent = Agent(get_client(), kb=kb, model=settings.model, max_steps=4, max_tokens=tool.max_tokens,
                       system=toolkit.system_prompt(tool_id, today, options), on_event=on_event,
                       server_tools=[{**WEB_SEARCH_TOOL, "max_uses": 5}] if (tool.web and settings.web_search) else [],
-                      strict_grounding=False, stream=True, record_tools=False)
+                      strict_grounding=False, stream=True, record_tools=False, speed="deep")
         agent.messages = file_turns(prepared.blocks)
 
         def work():
@@ -1230,6 +1230,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
     def prepare(req: ChatRequest, request: Request, stream: bool):
         """Validate and build the agent for one question. Returns (agent, owner, question) or an error response."""
+        prep_start = time.monotonic()
         question = req.question.strip()
         if not question:
             return error(400, "empty", "Type a question first.")
@@ -1269,7 +1270,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                 recent = history[-settings.max_history_turns * 2:]
         agent.context += personal.prompt_block(req.prefs, project, memories, summary)
         agent.ctx = {"user": user, "prefs": prefs, "project": project, "memories": memories,
-                     "summary": summary if summarized else None, "summarized": summarized}
+                     "summary": summary if summarized else None, "summarized": summarized,
+                     "prep_s": round(time.monotonic() - prep_start, 2)}
         agent.messages = file_turns(prepared.blocks) + recent
         agent.attached = prepared.summary
         return agent, owner, question
@@ -1303,6 +1305,9 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                   "declined": bool(DECLINE.search(reply.text)), "spent_today_usd": round(budget.spent, 4),
                   "attachments": [a["kind"] for a in getattr(agent, "attached", [])],
                   "cache_read": reply.cache_read_tokens, "cache_write": reply.cache_write_tokens}
+        timing = {**reply.timing, "prep_s": (getattr(agent, "ctx", None) or {}).get("prep_s", 0)}
+        record.update({"seconds": timing.get("total_s"), "first_text_s": timing.get("first_text_s"), "prep_s": timing["prep_s"],
+                       "model_calls_s": timing.get("calls_s")})
         if settings.log_questions or event == "eval_case":  # eval questions are our own test cases
             record["question"] = question[:200]
         log.info(json.dumps(record))
@@ -1321,6 +1326,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "retrieved": sorted(agent.tools.retrieved),
             "sources": {i: {"text": lookup[i].text, "kind": "note" if i.startswith("N") else "fact"} for i in agent.tools.retrieved if i in lookup},
             "steps": reply.steps,
+            "timing": timing,
             "cost_usd": round(cost, 5),
             **({"summary": agent.ctx["summary"], "summarized": agent.ctx["summarized"]}
                if getattr(agent, "ctx", None) and agent.ctx.get("summarized") else {}),

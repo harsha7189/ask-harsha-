@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from . import grounding
+from . import grounding, speed
 from .kb import KnowledgeBase
 from .prompts import SYSTEM_PROMPT
 from .tools import ToolRegistry
@@ -44,6 +44,7 @@ class Reply:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     seconds: float = 0.0
+    timing: dict = field(default_factory=dict)   # where the time went: first words, each model call, tools
 
 
 def _get(block: Any, key: str, default=None):
@@ -68,6 +69,7 @@ class Agent:
         strict_grounding: bool = True,
         stream: bool = False,
         record_tools: bool = True,
+        speed: str = "chat",
     ):
         self.client = client
         self.kb = kb or KnowledgeBase.load()
@@ -85,6 +87,8 @@ class Agent:
         self.lookup = lookup          # object with .by_id covering facts (+ notes); defaults to the KB
         self.strict_grounding = strict_grounding
         self.stream = stream            # stream text deltas through on_event("text", ...)
+        self.speed = speed              # how hard the model thinks: chat | deep | helper (see agent/speed.py)
+        self._first_text: float | None = None
         self.messages: list[dict] = []  # full conversation, kept across turns
 
     def system_param(self):
@@ -109,6 +113,8 @@ class Agent:
                 if kind == "text":
                     delta = _get(ev, "text", "")
                     if delta:
+                        if self._first_text is None:
+                            self._first_text = time.monotonic()
                         self.on_event("text", {"delta": delta})
                 elif kind == "content_block_start":
                     block = _get(ev, "content_block")
@@ -127,6 +133,8 @@ class Agent:
 
     def _ask(self, question: str) -> Reply:
         start = time.monotonic()
+        self._first_text = None
+        model_s, tools_s, calls = 0.0, 0.0, []
         self.tools.reset_turn()
         self.messages.append({"role": "user", "content": question})
         reply = Reply(text="", stop_reason="", steps=0)
@@ -135,11 +143,15 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             reply.steps = step
-            call = dict(model=self.model, max_tokens=self.max_tokens, system=self.system_param(), messages=self.messages)
+            call = dict(model=self.model, max_tokens=self.max_tokens, system=self.system_param(), messages=self.messages,
+                        **speed.params(self.model, self.speed))
             tools = self.tools.specs() + self.server_tools
             if tools:
                 call["tools"] = tools
+            t0 = time.monotonic()
             response = self._call(call)
+            calls.append(round(time.monotonic() - t0, 2))
+            model_s += calls[-1]
             usage = _get(response, "usage")
             if usage is not None:
                 cw = _get(usage, "cache_creation_input_tokens", 0) or 0
@@ -190,7 +202,9 @@ class Agent:
                 name, args, use_id = _get(block, "name"), _get(block, "input") or {}, _get(block, "id")
                 self.on_event("tool_call", {"name": name, "input": args})
                 before = set(self.tools.retrieved)
+                t1 = time.monotonic()
                 output, is_error = self.tools.call(name, args)
+                tools_s += time.monotonic() - t1
                 self.on_event("tool_result", {"name": name, "is_error": is_error, "output": output})
                 reply.tool_calls.append({"name": name, "input": args, "is_error": is_error})
                 reply.steps_log.append({
@@ -220,5 +234,7 @@ class Agent:
         reply.memory_changes = list(self.tools.changes)
         reply.report = grounding.check(reply.text, set(self.tools.retrieved), self.lookup or self.kb, strict=self.strict_grounding)
         reply.seconds = round(time.monotonic() - start, 2)
+        reply.timing = {"total_s": reply.seconds, "model_s": round(model_s, 2), "tools_s": round(tools_s, 2), "calls_s": calls,
+                        "first_text_s": round(self._first_text - start, 2) if self._first_text else None}
         self.on_event("done", {"report": reply.report.summary(), "steps": reply.steps})
         return reply

@@ -780,13 +780,14 @@ function renderExtras(box,data){
     x.append(v);
   }
   const steps=data.trace||[];
+  const tm=data.timing&&data.timing.total_s?` · ${(data.timing.total_s+(data.timing.prep_s||0)).toFixed(1)}s`:'';   // how long it took
   if(!steps.length&&label!=='none'){
-    const d=el('details','how');d.append(el('summary',null,'How I got this · no lookups needed'));
+    const d=el('details','how');d.append(el('summary',null,'How I got this · no lookups needed'+tm));
     d.append(el('p','direct',label==='file'?"Read your attached file and answered in one step. It didn't need to search the web, Harsha's record or memory.":"Answered straight from the model's own knowledge in one step. It didn't need to search the web, Harsha's record or memory."));
     x.append(d);
   }
   if(steps.length){
-    const d=el('details','how');const sm=el('summary',null,`How I got this · ${steps.length} lookup${steps.length===1?'':'s'}`);d.append(sm);
+    const d=el('details','how');const sm=el('summary',null,`How I got this · ${steps.length} lookup${steps.length===1?'':'s'}${tm}`);d.append(sm);
     const ol=el('ol','steps');
     steps.forEach(st=>{const li=el('li');li.append(el('span','sk',STEP_LABEL[st.kind]||st.kind));
       if(st.query)li.append(el('span','sq',`“${st.query}”`));
@@ -937,7 +938,7 @@ function renderBot(bot,data,text,live){
 // and shown under "Chats". The current chat is always kept in memory, so signing in mid-chat saves it too.
 let me={enabled:false,user:null},summaries=[],chatId=null,cur=null;
 const LEGACY=(()=>{try{const d=JSON.parse(localStorage.getItem('askh_chats')||'{}');return Array.isArray(d.chats)?d.chats:[]}catch(e){return[]}})();  // chats saved on this device before accounts existed
-const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature'];
+const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature','timing'];
 const signedIn=()=>!!(me&&me.user);
 async function api(method,url,body){
   const res=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
@@ -2093,11 +2094,12 @@ async function askOnce(bot,text){  // fallback when streaming isn't available
 }
 async function ask(text){
   text=text.trim();if(busy)return;if(!text&&files.length)text=defaultQuestion();if(!text)return;
-  busy=true;send.disabled=true;hello.hidden=true;resetBtn.hidden=false;
+  busy=true;send.disabled=true;hello.hidden=true;resetBtn.hidden=false;const mine=++askSeq;
   const ub=bubble('user'),fresh=files.filter(f=>!f.sent);
   if(fresh.length){const fl=el('div','ufiles');fresh.forEach(f=>fl.append(f.kind==='image'?fileIcon(f):el('span','ficon',f.name)));ub.append(fl,el('div','utext',text))}
   else ub.textContent=text;
   pendingNames=fresh.map(f=>f.name);
+  try{speechSynthesis.cancel()}catch(e){}
   const bot=bubble('bot');
   const status=el('div','status');status.innerHTML='<span class="typing"><span></span><span></span><span></span></span>';const stxt=el('span',null,'Thinking');status.append(stxt);
   const live=el('div','body');bot.append(status,live);
@@ -2115,15 +2117,16 @@ async function ask(text){
       if(kind==='status'){stxt.textContent=d.label+'…';status.hidden=false}
       else if(kind==='text'){streamed+=d.delta;status.hidden=true;renderAnswer(live,streamed);scrollDown()}
       else if(kind==='text_reset'){streamed='';live.textContent='';status.hidden=false}
-      else if(kind==='final'){finished=true;showFinal(bot,d,text)}
+      else if(kind==='final'){finished=true;showFinal(bot,d,text);busy=false;send.disabled=false}
       else if(kind==='memory'){showMemory(bot,d)}
       else if(kind==='error'){finished=true;bot.classList.add('err');bot.textContent=d.message||'Something went wrong. Please try again.'}
     });
     if(!finished){bot.classList.add('err');status.remove();if(!streamed)bot.textContent="The connection dropped before the answer finished. Please try again.";else bot.append(el('div','verdict warn','Connection dropped; this answer may be incomplete.'))}
   }catch(e){
     if(!finished){bot.classList.add('err');bot.textContent="Couldn't connect. Check your connection and try again."}
-  }finally{busy=false;send.disabled=false;scrollDown()}
+  }finally{if(mine===askSeq){busy=false;send.disabled=false}scrollDown()}
 }
+let askSeq=0;
 
 // ---------- speak instead of typing ----------
 // The phone turns speech into text (Web Speech API); words appear in the box live and you review before sending.
