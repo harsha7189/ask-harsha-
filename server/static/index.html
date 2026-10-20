@@ -358,6 +358,92 @@ textarea.listening{border-color:var(--fg)}
 .ep-item .btn{padding:6px 12px;font-size:12.5px;white-space:nowrap}
 .ep-item.warn>span b{color:var(--warn)}
 .ep-item.ok>span b{color:var(--good)}
+/* sidebar: home tiles and section panels */
+.ep-view{display:flex;flex-direction:column;min-height:100%}
+.ep-view>*{flex-shrink:0}
+.ep-back{font-weight:700;font-size:14.5px;padding:8px 10px;border-radius:10px;color:var(--fg)}
+.ep-back:hover{background:var(--raise)}
+.ep-title{flex:1;font-size:17px;padding-left:4px}
+.t-projects{--c:var(--blue)}.t-saved{--c:var(--warn)}.t-tools{--c:var(--good)}.t-customize{--c:var(--red-hot)}
+.ep-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 12px 12px}
+.ep-tile{position:relative;display:grid;gap:3px;justify-items:start;text-align:left;padding:12px 12px 11px;border-radius:14px;border:1px solid var(--line);
+  background:radial-gradient(90% 120% at 0% 0%,color-mix(in srgb,var(--c) 22%,transparent),transparent 65%),var(--panel);overflow:hidden;transition:border-color .15s,transform .15s}
+.ep-tile:hover{border-color:color-mix(in srgb,var(--c) 60%,var(--line));transform:translateY(-1px)}
+.ep-tile .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);margin-bottom:4px}
+.ep-tile .ic svg{width:20px;height:20px}
+.ep-tile b{font-size:15px}
+.ep-tile small{font-size:12px;color:var(--muted);line-height:1.3}
+.ep-signin{margin:4px 12px 12px;padding:16px;border-radius:16px;border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));background:linear-gradient(160deg,#1c0507,var(--bg) 75%);display:grid;gap:8px;justify-items:start}
+.ep-signin b{font-size:18px}
+.ep-signin p{margin:0;color:var(--muted);font-size:14px;line-height:1.45}
+.ep-sechead{display:flex;align-items:baseline;justify-content:space-between;padding:6px 16px 8px}
+.ep-sechead h4{margin:0;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.ep-sechead small{color:var(--muted);font-size:12px}
+.ep-pad{padding:0 16px}
+.ep-panel{display:grid;gap:12px;padding:4px 14px 18px;align-content:start}
+.ep-lead{margin:0;color:var(--muted);font-size:14px;line-height:1.45}
+.ep-wide{justify-self:stretch;text-align:center;padding:11px 16px;font-weight:700}
+.ep-cards{display:grid;gap:8px}
+.ep-card{display:flex;align-items:center;gap:12px;text-align:left;padding:11px 12px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--fg);text-decoration:none}
+a.ep-card:hover,button.ep-card:hover{border-color:color-mix(in srgb,var(--c,var(--muted)) 60%,var(--line))}
+.ep-card .btn,.ep-card .ep-toggle{flex:0 0 auto}
+.ep-card .btn{padding:6px 12px;font-size:12.5px;text-decoration:none;color:var(--fg)}
+.ep-cic{width:38px;height:38px;flex:0 0 auto;border-radius:11px;display:grid;place-items:center;font-size:19px;background:color-mix(in srgb,var(--c,var(--muted)) 13%,var(--raise))}
+.ep-cic.big{width:48px;height:48px;font-size:24px;border-radius:14px}
+.ep-ctx{flex:1;min-width:0;display:grid;gap:1px}
+.ep-ctx b{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ep-ctx small{color:var(--muted);font-size:12.5px;line-height:1.35}
+.ep-cline{color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ep-ideas{display:flex;flex-wrap:wrap;gap:8px}
+.ep-phead{display:flex;align-items:center;gap:12px}
+.ep-phead>div{flex:1;min-width:0;display:grid}
+.ep-phead b{font-size:18px}
+.ep-phead small{color:var(--muted);font-size:12.5px}
+.ep-box{display:grid;gap:10px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--panel)}
+.ep-box p{margin:0;font-size:13.5px;line-height:1.45}
+.ep-box h5,.ep-h5{margin:0;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.ep-h5{margin-top:6px}
+.ep-instr{white-space:pre-wrap;color:var(--fg)}
+.ep-label{font-size:13px;color:var(--muted)}
+.ep-icons{display:flex;flex-wrap:wrap;gap:6px}
+.ep-ico{width:42px;height:42px;border-radius:12px;font-size:20px;border:1px solid var(--line);background:var(--panel)}
+.ep-ico.on{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 18%,var(--panel))}
+.ep-field{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+.ep-field>span{color:var(--fg);font-weight:600;font-size:13.5px}
+.ep-field small{font-size:12px}
+.ep-field textarea{resize:vertical;min-height:84px;line-height:1.45}
+.ep-seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;padding:4px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.ep-seg button{padding:8px 4px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--muted)}
+.ep-seg button.on{background:var(--raise);color:var(--fg);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c,var(--red)) 55%,transparent)}
+.ep-saved{border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.ep-saved summary{list-style:none;display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer}
+.ep-saved summary::-webkit-details-marker{display:none}
+.ep-saved[open] summary{border-bottom:1px solid var(--line)}
+.ep-saved .row{padding:0 12px 12px;justify-content:flex-start}
+.ep-saved .btn{padding:6px 12px;font-size:12.5px;text-decoration:none;color:var(--fg)}
+.ep-full{padding:12px;font-size:14.5px}
+.ep-sk{width:28px;height:28px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;font-size:14px;font-weight:800}
+.ep-sk.star{color:var(--warn);background:color-mix(in srgb,var(--warn) 15%,transparent)}
+.ep-sk.card{color:var(--good);background:color-mix(in srgb,var(--good) 15%,transparent)}
+.ep-date{color:var(--muted);font-size:12px;white-space:nowrap}
+.ep-coderow{display:flex;gap:8px;align-items:center}
+.ep-coderow .field{flex:1;min-width:0}
+.ep-code{flex:1;min-width:0;font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);overflow-wrap:anywhere}
+.ep-toggle{width:48px;height:28px;flex:0 0 auto;border-radius:999px;background:var(--raise);border:1px solid var(--line);position:relative;transition:background-color .15s}
+.ep-toggle i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--muted);transition:transform .15s,background-color .15s}
+.ep-toggle.on{background:var(--good);border-color:var(--good)}
+.ep-toggle.on i{transform:translateX(20px);background:#fff}
+.ep-range{width:100%;accent-color:var(--red)}
+.ep-saved-line{margin:0;font-size:12.5px;color:var(--muted)}
+.ep-ptag{display:block;font-style:normal;font-weight:600;font-size:11px;color:var(--blue);margin-bottom:1px}
+.ep-panel .ep-list{padding:0}
+.fcbtn.star.on{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
+.projchip{display:flex;align-items:center;gap:4px;max-width:720px;margin:0 auto 8px}
+.pc-open{display:flex;align-items:center;gap:6px;min-width:0;padding:6px 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--blue) 45%,var(--line));background:color-mix(in srgb,var(--blue) 10%,var(--panel));font-size:13px}
+.pc-open b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-open small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-x{width:30px;height:30px;border-radius:50%;color:var(--muted);font-size:18px}
+.pc-x:hover{background:var(--raise);color:var(--fg)}
 .ep-whorow{display:flex;align-items:center;gap:10px;justify-content:space-between}
 .ep-who{display:flex;align-items:center;gap:10px;min-width:0}
 .ep-who b{display:block;font-size:14.5px}
@@ -415,7 +501,7 @@ textarea.listening{border-color:var(--fg)}
   <a class="hbtn" id="toolkit" href="/tools" aria-label="PM Toolkit" title="PM Toolkit"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></a>
   <a class="hbtn" id="assist" href="/assist" aria-label="Assist mode: speak or type and it talks for you" title="Assist mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
   <button class="hbtn" id="memory" hidden aria-label="Manage memory">Memory</button>
-  <button class="hbtn chats-btn" id="recents" hidden aria-label="Your chats: past conversations" title="Your chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v3.7h3.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Chats</span></button>
+  <button class="hbtn chats-btn" id="recents" aria-label="Menu" title="Menu"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 4.5v15M5.8 8.5h1.6M5.8 11.5h1.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Menu</span></button>
   <button class="hbtn" id="reset" hidden aria-label="New chat" title="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.5 4.5l2 2L13 13l-2.7.7.7-2.7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
   <button class="hbtn" id="lock" aria-label="Owner sign-in"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
 </header>
@@ -435,6 +521,7 @@ textarea.listening{border-color:var(--fg)}
 
 <footer>
   <div class="savebar" id="savebar" hidden><span>This chat isn't saved.</span><button type="button" id="savebar-in">Sign in to save it</button><button type="button" id="savebar-x" aria-label="Dismiss">×</button></div>
+  <div class="projchip" id="projchip" hidden></div>
   <div class="tray" id="tray" hidden></div>
   <p class="toast" id="toast" role="status" hidden></p>
   <form class="ask" id="form">
@@ -469,6 +556,9 @@ const WX={
 const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 function partOfDay(h){return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night'}
 const PARAMS=new URLSearchParams(location.search),EMBED=PARAMS.has('embed');
+// Customize settings (see "Customize" below): kept on this device, and in the account when signed in.
+const PREF_DEFAULTS={name:'',length:'balanced',tone:'',about:'',city:'',voice:'',rate:1,read_aloud:false,jury:true};
+let prefs=(()=>{try{return {...PREF_DEFAULTS,...JSON.parse(localStorage.getItem('askh_prefs')||'{}')}}catch(e){return {...PREF_DEFAULTS}}})();
 if(EMBED)document.documentElement.classList.add('embed');
 const EMBED_CHIPS=["What does Harsha do at IBM?","Has Harsha shipped anything with AI?","What are his strongest results?","How can I contact Harsha?"];
 function greet(w){
@@ -490,11 +580,11 @@ function greet(w){
     h.append(kind.word+' ',el('span',null,day+(part==='night'||part==='evening'?' '+part:'')));
     wx.textContent='';wx.append(el('span','wi',kind.icon),`${w.temp}°${w.unit}${w.city?' in '+w.city:''}`);
     if(Math.abs(w.feels-w.temp)>=3)wx.append(el('small',null,`feels like ${w.feels}°`));
-    wx.hidden=false;p.textContent=kind.line;
+    wx.hidden=false;p.textContent=(prefs.name?`Hi ${prefs.name}! `:'')+kind.line;
     chips=kind.chips.map(c=>c.replace('{city}',w.city||'my area'));
   }else{
     h.append(`Good ${part==='night'?'evening':part} `,el('span',null,day));
-    p.textContent="Ask me anything: today's news, code, writing, plans, or Harsha's work.";
+    p.textContent=(prefs.name?`Hi ${prefs.name}! `:'')+"Ask me anything: today's news, code, writing, plans, or Harsha's work.";
     chips=["What's in the news today?","Help me plan my day","Teach me something interesting in 5 minutes"];
   }
   const box=$('#chips');box.textContent='';
@@ -522,7 +612,7 @@ function renderContinue(){
 }
 let weatherData=null;
 async function loadWeather(){
-  try{const res=await fetch('/api/greeting');const d=await res.json();if(d&&d.ok){weatherData=d;greet(d)}}catch(e){}
+  try{const res=await fetch('/api/greeting'+(prefs.city?'?city='+encodeURIComponent(prefs.city):''));const d=await res.json();if(d&&d.ok){weatherData=d;greet(d)}}catch(e){}
 }
 const KEY='askh_owner';
 let history=[],busy=false,passcode='',pendingNames=[];
@@ -707,7 +797,7 @@ async function readSSE(res,onEvent){
 }
 function showFinal(bot,data,text){
   if(passcode&&!data.owner){passcode='';store.set('');setOwner(false)}  // passcode was changed on the server
-  renderBot(bot,data,text,true);
+  renderBot(bot,data,text,true);speakAnswer(data.answer);
   history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer});history=history.slice(-12);
   recordTurn(text,pendingNames,data);
   pendingNames=[];if(files.length){files.forEach(f=>{f.sent=true});renderTray()}
@@ -718,6 +808,7 @@ function renderBot(bot,data,text,live){
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
   bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
   if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);
+  addStar(bot,text,data);
   if(juryOn&&['general','web'].includes(data.label)&&data.answer)addJury(bot,text,data.answer);
   if(data.receipt&&data.signature)addShare(bot,data);
   if(live&&data.ask_harsha&&!passcode)addAskHarsha(bot,text,data);
@@ -739,7 +830,7 @@ async function api(method,url,body){
 }
 function summarize(c){
   const answers=c.messages.filter(m=>m.role==='assistant').map(m=>m.data||{});
-  return {id:c.id,title:c.title,created:c.created,updated:c.updated,wx:c.wx,questions:c.messages.filter(m=>m.role==='user').length,
+  return {id:c.id,title:c.title,created:c.created,updated:c.updated,wx:c.wx,project:c.project||null,questions:c.messages.filter(m=>m.role==='user').length,
     last_answer:(answers.length?answers[answers.length-1].answer||'':'').slice(0,400),labels:answers.map(a=>[a.label,!!a.grounded]).slice(-20)};
 }
 let saveTimer=null;
@@ -752,7 +843,8 @@ function persist(){
 }
 function recordTurn(question,names,data){
   if(!data.answer)return;
-  if(!cur){cur={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:question.replace(/\s+/g,' ').slice(0,70),created:Date.now(),updated:Date.now(),messages:[]};
+  if(!cur){cur={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:question.replace(/\s+/g,' ').slice(0,70),created:Date.now(),updated:Date.now(),project:(signedIn()&&nextProject)||null,messages:[]};
+    if(cur.project){const pr=projectById(cur.project);if(pr)pr.chats++}
     if(weatherData&&weatherData.ok){const k=WX[weatherData.condition]||WX.cloudy;cur.wx={icon:weatherData.condition==='sunny'&&!weatherData.is_day?WX.clear.icon:k.icon,temp:weatherData.temp,unit:weatherData.unit}}
     chatId=cur.id}
   const keep={};KEEP.forEach(k=>{if(data[k]!=null)keep[k]=data[k]});
@@ -760,7 +852,7 @@ function recordTurn(question,names,data){
   cur.messages=cur.messages.slice(-200);cur.updated=Date.now();
   if(signedIn()){
     persist();
-    try{if(!localStorage.getItem('askh_chats_hint')){localStorage.setItem('askh_chats_hint','1');$('#recents').classList.add('nudge');toast('Saved to your account. Find it under “Chats” at the top.')}}catch(e){}
+    try{if(!localStorage.getItem('askh_chats_hint')){localStorage.setItem('askh_chats_hint','1');$('#recents').classList.add('nudge');toast('Saved to your account. Find it under “Menu” at the top.')}}catch(e){}
   }else showSaveBar();
 }
 function showSaveBar(){
@@ -771,7 +863,7 @@ function showSaveBar(){
 async function openChat(id){
   if(busy)return;
   let c;try{c=await api('GET','/api/chats/'+encodeURIComponent(id))}catch(e){toast(e.message);return}
-  stopDictation();cur=c;chatId=c.id;history=[];files=[];renderTray();
+  stopDictation();cur=c;chatId=c.id;nextProject=null;renderProjChip();history=[];files=[];renderTray();
   thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=true;resetBtn.hidden=false;
   let hadFiles=false,lastQ='';
   for(const m of c.messages){
@@ -823,7 +915,7 @@ async function afterSignIn(d,fresh){
   me.user=d.user;$('#savebar').hidden=true;
   if(d.recovery_code)await showRecoveryCode(d.recovery_code,true);
   if(cur&&cur.messages.length)persist();               // keep the chat that's on screen
-  await loadSummaries();
+  await Promise.all([loadSummaries(),loadProjects(),loadSaved(),syncPrefs()]);syncStars();greet(weatherData);if(prefs.city)loadWeather();
   if(cur&&cur.messages.length&&!summaries.some(x=>x.id===cur.id))summaries.unshift(summarize(cur));
   renderAccount();renderContinue();
   if(LEGACY.length)offerImport();
@@ -904,7 +996,7 @@ function openRecover(){
     const go=el('button','si-big red primary');go.type='button';go.append(el('b',null,'Sign in'),el('span',null,'This signs out every other device and uses up the code'));
     const submit=async()=>{line.textContent='';go.disabled=true;
       try{const d=await api('POST','/api/auth/recover',{code:inp.value});close();me.user=d.user;$('#savebar').hidden=true;
-        if(cur&&cur.messages.length)persist();await loadSummaries();renderAccount();renderContinue();afterRecover()}
+        if(cur&&cur.messages.length)persist();await Promise.all([loadSummaries(),loadProjects(),loadSaved(),syncPrefs()]);syncStars();greet(weatherData);renderAccount();renderContinue();afterRecover()}
       catch(e){line.textContent=e.message}finally{go.disabled=false}};
     go.onclick=submit;inp.onkeydown=e=>{if(e.key==='Enter')submit()};
     s.append(inp,go,line);
@@ -947,19 +1039,16 @@ function offerImport(){
     r.append(no,yes);s.append(line,r);
   });
 }
-const ICON_HISTORY='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v3.7h3.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const ICON_KEY='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12h8.5M17 12v3M20 12v2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+// The Menu button opens the sidebar: chats, projects, saved answers, tools and settings.
 function renderAccount(){
   const b=$('#recents');if(!b)return;
-  const svg=b.querySelector('svg');if(svg)svg.outerHTML=signedIn()?ICON_HISTORY:ICON_KEY;
-  b.hidden=EMBED||!me.enabled;
-  if(signedIn()){b.lastChild.textContent='Chats';b.setAttribute('aria-label','Your chats');b.title='Your chats';b.onclick=openRecents}
-  else{b.lastChild.textContent='Sign in';b.setAttribute('aria-label','Sign in to save your chats');b.title='Sign in to save your chats';b.onclick=openSignIn}
-  b.classList.toggle('signed-in',signedIn());
+  b.hidden=EMBED;b.onclick=()=>openSidebar();
+  b.setAttribute('aria-label',signedIn()?'Menu: your chats, projects, saved answers, tools and settings':'Menu: sign in, tools and settings');
+  b.title='Menu';b.classList.toggle('signed-in',signedIn());
 }
 async function loadMe(){
   try{me=await api('GET','/api/me')}catch(e){me={enabled:false,user:null}}
-  if(signedIn())await loadSummaries();
+  if(signedIn()){await Promise.all([loadSummaries(),loadProjects(),loadSaved(),syncPrefs()]);syncStars();greet(weatherData);if(prefs.city)loadWeather()}
   renderAccount();renderContinue();
   if(signedIn()&&LEGACY.length)offerImport();
   else if(signedIn()&&!me.user.recovery)offerRecovery();
@@ -982,126 +1071,408 @@ function badge(c){
   if(ls.some(([l])=>l==='file'))return['file','plain'];
   return null;
 }
-function openRecents(){
+// ---------- the sidebar: Chats, Projects, Saved, Tools, Customize ----------
+// Opens from the left. Home shows four section tiles, then your chats as "Previously on…" (a recap reel, then every
+// chat as an episode grouped into weekly seasons). Each tile opens its own panel with a Back button.
+const SB_ICONS={
+  projects:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4.2l1.8 2H19a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  saved:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.4l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  tools:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  customize:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M18 7h2M4 17h3M12 17h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="15.5" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9.5" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+};
+const SECTIONS=[
+  {id:'projects',name:'Projects',sub:()=>signedIn()?`${projects.length} project${projects.length===1?'':'s'}`:'Group chats by goal'},
+  {id:'saved',name:'Saved',sub:()=>signedIn()?`${savedItems.length} answer${savedItems.length===1?'':'s'}`:'Star answers to keep'},
+  {id:'tools',name:'Tools',sub:()=>'PM toolkit, Assist & more'},
+  {id:'customize',name:'Customize',sub:()=>prefs.name?`Answers for ${prefs.name}`:'Make it yours'},
+];
+const PM_TOOLS=[['morning','☀️','Morning brief','News on your topics, a lesson and a quiz'],['meeting','🗓️','Meeting','Summary, decisions and action items'],
+  ['feedback','💬','Customer feedback','Themes, quotes and next steps'],['interview','🎙️','Customer interview','Prepare a guide or analyze a transcript'],
+  ['release','🚀','Release notes','For customers, sales or engineers'],['spec','📝','Spec review','Gaps, risks and questions before you build']];
+const PROJECT_ICONS=['📁','💼','✈️','🎓','🏠','💡','📈','🧪','🎨','❤️','🛠️','🍳'];
+let projects=[],savedItems=[],savedIds=new Set(),nextProject=null;
+const projectById=id=>projects.find(p=>p.id===id);
+async function loadProjects(){if(!signedIn()){projects=[];return}try{projects=(await api('GET','/api/projects')).projects||[]}catch(e){}}
+async function loadSaved(){if(!signedIn()){savedItems=[];savedIds=new Set();return}try{savedItems=(await api('GET','/api/saved')).saved||[];savedIds=new Set(savedItems.map(x=>x.id))}catch(e){}}
+
+function openSidebar(start,arg){
   if(document.querySelector('.ep-drawer'))return;
-  const bg=el('div','ep-bg'),dr=el('aside','ep-drawer');dr.setAttribute('role','dialog');dr.setAttribute('aria-label','Previously on Ask Harsha');
+  const bg=el('div','ep-bg'),dr=el('aside','ep-drawer');dr.setAttribute('role','dialog');dr.setAttribute('aria-label','Menu');
   let timer=null;
   const close=()=>{clearInterval(timer);dr.classList.add('out');bg.classList.add('out');setTimeout(()=>{bg.remove();document.removeEventListener('keydown',esc)},220);$('#recents').focus()};
   function esc(e){if(e.key==='Escape')close()}
   document.addEventListener('keydown',esc);bg.onclick=e=>{if(e.target===bg)close()};
+  const view=el('div','ep-view');dr.append(view);
+  const go=(section,a)=>{clearInterval(timer);view.textContent='';dr.scrollTop=0;
+    if(!section)home();else panel(section,a);
+    const f=view.querySelector('.ep-back,.ep-x');if(f)f.focus()};
+  const topBar=(title,back)=>{
+    const top=el('div','ep-top');
+    if(back){const b=el('button','ep-back','‹ Back');b.type='button';b.onclick=back;top.append(b,el('b','ep-title',title))}
+    else{const brand=el('div','ep-brand'),bt=el('div');bt.append(el('b',null,'Ask Harsha'),el('small',null,signedIn()?`Signed in as ${me.user.name||'you'}`:'Not signed in · nothing is saved'));brand.append(el('span','ep-h','H'),bt);top.append(brand)}
+    const x=el('button','ep-x','×');x.type='button';x.setAttribute('aria-label','Close');x.onclick=close;top.append(x);view.append(top);
+  };
 
-  const top=el('div','ep-top');const brand=el('div','ep-brand');const bt=el('div');bt.append(el('b',null,'Your chats'),el('small',null,`${summaries.length} saved to your account`));brand.append(el('span','ep-h','H'),bt);
-  const x=el('button','ep-x','×');x.type='button';x.setAttribute('aria-label','Close');x.onclick=close;top.append(brand,x);dr.append(top);
-
-  // the recap reel
-  const recent=[...summaries].sort((a,b)=>b.updated-a.updated).filter(c=>highlight(c)).slice(0,4).reverse();
-  const reel=el('section','ep-reel');
-  if(recent.length){
-    reel.append(el('div','ep-prev','Previously on'),el('div','ep-show',"Ask Harsha"));
-    const stage=el('button','ep-stage');stage.type='button';const segs=el('div','ep-segs');
-    recent.forEach(()=>{const g=el('span');g.append(el('i'));segs.append(g)});
-    const ctrl=el('div','ep-ctrl'),skip=el('button','ep-skip','Skip ▸');skip.type='button';ctrl.append(segs,skip);
-    reel.append(stage,ctrl);
-    let i=-1,done=false;
-    const show=k=>{const c=recent[k];stage.textContent='';stage.onclick=()=>{close();openChat(c.id)};
-      const when=new Date(c.updated).toLocaleDateString([],{weekday:'long'});
-      stage.append(el('q','ep-line',highlight(c)),el('span','ep-from',`${c.wx?c.wx.icon+' ':''}${when} · ${c.title}`));
-      stage.setAttribute('aria-label',`${c.title}: open this chat`);
-      [...segs.children].forEach((g,j)=>{g.className=j<k?'done':j===k?'on':''})};
-    const finish=()=>{if(done)return;done=true;clearInterval(timer);[...segs.children].forEach(g=>g.className='done');reel.classList.add('ended');
-      skip.textContent='↺ Replay';skip.onclick=()=>{done=false;reel.classList.remove('ended');i=-1;step();timer=setInterval(step,2100);skip.textContent='Skip ▸';skip.onclick=finish}};
-    const step=()=>{i++;if(i>=recent.length){finish();show(recent.length-1);return}show(i)};
-    skip.onclick=finish;
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches){show(recent.length-1);finish()}
-    else{step();timer=setInterval(step,2100)}
-  }else{
-    reel.classList.add('empty');reel.append(el('div','ep-prev','Coming soon'),el('div','ep-show','Episode 1'),el('p','ep-note','Your chats will appear here after you ask something.'));
+  // ----- home: tiles, then chats -----
+  function home(){
+    topBar();
+    const tiles=el('nav','ep-tiles');tiles.setAttribute('aria-label','Sections');
+    SECTIONS.forEach(s=>{const t=el('button','ep-tile t-'+s.id);t.type='button';const ic=el('span','ic');ic.innerHTML=SB_ICONS[s.id];
+      t.append(ic,el('b',null,s.name),el('small',null,s.sub()));t.onclick=()=>go(s.id);tiles.append(t)});
+    view.append(tiles);
+    if(!me.enabled){view.append(el('p','ep-note ep-pad','Saving chats isn’t switched on for this site yet.'));return}
+    if(!signedIn()){
+      const card=el('section','ep-signin');card.append(el('div','ep-prev','Your chats'),el('b',null,'Sign in to save your chats'),
+        el('p',null,'Use Face ID, your fingerprint or your device PIN. No password, no email. Then your chats, projects and saved answers follow you to every device.'));
+      const b=el('button','btn red','Sign in with a passkey');b.type='button';b.onclick=()=>{close();openSignIn()};card.append(b);view.append(card);return;
+    }
+    chatsHome();
+    const foot=el('div','ep-foot');const wr=el('div','ep-whorow');wr.append(whoRow());
+    const out=el('button','btn','Sign out');out.type='button';out.onclick=()=>{close();signOut()};wr.append(out);foot.append(wr);view.append(foot);
   }
-  dr.append(reel);
-
-  const tools=el('div','ep-tools');
-  const nb=el('button','ep-new','+ New chat');nb.type='button';nb.onclick=()=>{close();newChat();q.focus()};
-  const search=el('input','ep-search');search.type='search';search.placeholder='Search your chats';search.setAttribute('aria-label','Search your chats');
-  tools.append(nb,search);dr.append(tools);
-  const list=el('div','ep-list');dr.append(list);
-
-  const first=summaries.length?Math.min(...summaries.map(c=>c.created||c.updated)):Date.now();
-  const thisWeek=weekStart(Date.now());
-  let found=null,seq=0;
-  const draw=()=>{
-    list.textContent='';const term=search.value.trim();
-    const hits=term?(found||[]):summaries;
-    if(term&&found===null){list.append(el('p','ep-note','Searching…'));return}
-    if(summaries.length&&!hits.length){list.append(el('p','ep-note','No chats match.'));return}
-    const seasons=new Map();
+  function chatsHome(){
+    const head=el('div','ep-sechead');head.append(el('h4',null,'Your chats'),el('small',null,`${summaries.length} saved`));view.append(head);
+    const recent=[...summaries].sort((a,b)=>b.updated-a.updated).filter(c=>highlight(c)).slice(0,4).reverse();
+    const reel=el('section','ep-reel');
+    if(recent.length){
+      reel.append(el('div','ep-prev','Previously on'),el('div','ep-show',"Ask Harsha"));
+      const stage=el('button','ep-stage');stage.type='button';const segs=el('div','ep-segs');
+      recent.forEach(()=>{const g=el('span');g.append(el('i'));segs.append(g)});
+      const ctrl=el('div','ep-ctrl'),skip=el('button','ep-skip','Skip ▸');skip.type='button';ctrl.append(segs,skip);
+      reel.append(stage,ctrl);
+      let i=-1,done=false;
+      const show=k=>{const c=recent[k];stage.textContent='';stage.onclick=()=>{close();openChat(c.id)};
+        const when=new Date(c.updated).toLocaleDateString([],{weekday:'long'});
+        stage.append(el('q','ep-line',highlight(c)),el('span','ep-from',`${c.wx?c.wx.icon+' ':''}${when} · ${c.title}`));
+        stage.setAttribute('aria-label',`${c.title}: open this chat`);
+        [...segs.children].forEach((g,j)=>{g.className=j<k?'done':j===k?'on':''})};
+      const finish=()=>{if(done)return;done=true;clearInterval(timer);[...segs.children].forEach(g=>g.className='done');reel.classList.add('ended');
+        skip.textContent='↺ Replay';skip.onclick=()=>{done=false;reel.classList.remove('ended');i=-1;step();timer=setInterval(step,2100);skip.textContent='Skip ▸';skip.onclick=finish}};
+      const step=()=>{i++;if(i>=recent.length){finish();show(recent.length-1);return}show(i)};
+      skip.onclick=finish;
+      if(matchMedia('(prefers-reduced-motion: reduce)').matches){show(recent.length-1);finish()}
+      else{step();timer=setInterval(step,2100)}
+    }else{
+      reel.classList.add('empty');reel.append(el('div','ep-prev','Coming soon'),el('div','ep-show','Episode 1'),el('p','ep-note','Your chats will appear here after you ask something.'));
+    }
+    view.append(reel);
+    const tools=el('div','ep-tools');
+    const nb=el('button','ep-new','+ New chat');nb.type='button';nb.onclick=()=>{close();newChat();q.focus()};
+    const search=el('input','ep-search');search.type='search';search.placeholder='Search your chats';search.setAttribute('aria-label','Search your chats');
+    tools.append(nb,search);view.append(tools);
+    const list=el('div','ep-list');view.append(list);
+    let found=null,seq=0;
+    const draw=()=>{list.textContent='';const term=search.value.trim();
+      const hits=term?(found||[]):summaries;
+      if(term&&found===null){list.append(el('p','ep-note','Searching…'));return}
+      if(summaries.length&&!hits.length){list.append(el('p','ep-note','No chats match.'));return}
+      episodeList(list,hits,draw)};
+    search.oninput=()=>{const term=search.value.trim();found=null;const my=++seq;draw();if(!term)return;
+      clearTimeout(search.t);search.t=setTimeout(async()=>{try{const d=await api('GET','/api/chats?q='+encodeURIComponent(term));if(my===seq){found=d.chats||[];draw()}}catch(e){if(my===seq){found=[];draw()}}},250)};
+    draw();
+  }
+  // Chats as episodes, grouped into one season per week (counted from your first chat).
+  function episodeList(list,hits,redraw){
+    const first=summaries.length?Math.min(...summaries.map(c=>c.created||c.updated)):Date.now();
+    const thisWeek=weekStart(Date.now()),seasons=new Map();
     hits.forEach(c=>{const w=weekStart(c.created||c.updated);if(!seasons.has(w))seasons.set(w,[]);seasons.get(w).push(c)});
     [...seasons.keys()].sort((a,b)=>b-a).forEach(w=>{
       const n=Math.round((w-weekStart(first))/(7*DAY))+1;
       const label=w===thisWeek?'This week':w===thisWeek-7*DAY?'Last week':'Week of '+new Date(w).toLocaleDateString([],{month:'short',day:'numeric'});
       const sec=el('section','ep-season');const h=el('h4');h.append(el('b',null,label),` · Season ${n}`);sec.append(h);
       const eps=seasons.get(w).sort((a,b)=>(a.created||a.updated)-(b.created||b.updated));
-      eps.map((c,k)=>[c,k+1]).reverse().forEach(([c,num])=>{
-        const row=el('div','ep-row'+(c.id===chatId?' current':''));
-        const open=el('button','ep-open');open.type='button';
-        const n=el('span','ep-num',`E${num}`),wx=el('span','ep-wx',c.wx?c.wx.icon:'·');wx.title=c.wx?`${c.wx.temp}°${c.wx.unit}`:'';
-        const tx=el('span','ep-tx');tx.append(el('b',null,c.title),el('span',null,highlight(c)));
-        const meta=el('span','ep-meta');const bd=badge(c);if(bd)meta.append(el('i','ep-badge '+bd[1],bd[0]));
-        open.append(n,wx,tx,meta);open.title=`${new Date(c.updated).toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})} · ${c.questions} question${c.questions===1?'':'s'}`;open.onclick=()=>{close();openChat(c.id)};
-        const more=el('button','ep-more','⋯');more.type='button';more.setAttribute('aria-label',`Options for ${c.title}`);
-        const acts=el('div','racts');acts.hidden=true;
-        const rn=el('button','btn','Rename'),dl=el('button','btn','Download'),del=el('button','btn','Delete');[rn,dl,del].forEach(b=>b.type='button');
-        rn.onclick=()=>{const inp=el('input','field');inp.value=c.title;inp.maxLength=80;acts.textContent='';const ok=el('button','btn red','Save');ok.type='button';
-          ok.onclick=async()=>{const v=inp.value.trim();if(v){try{await api('PATCH','/api/chats/'+encodeURIComponent(c.id),{title:v});c.title=v;if(cur&&cur.id===c.id)cur.title=v}catch(e){toast(e.message)}}draw()};inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};acts.append(inp,ok);inp.focus()};
-        dl.onclick=async()=>{try{const full=await api('GET','/api/chats/'+encodeURIComponent(c.id));download(`${c.title.replace(/[^\w\- ]+/g,'').slice(0,40)||'chat'}.md`,chatMarkdown(full),'text/markdown')}catch(e){toast(e.message)}};
-        del.onclick=async()=>{if(del.dataset.sure){try{await api('DELETE','/api/chats/'+encodeURIComponent(c.id));summaries=summaries.filter(y=>y.id!==c.id);if(found)found=found.filter(y=>y.id!==c.id);if(chatId===c.id)newChat();renderContinue()}catch(e){toast(e.message)}draw()}else{del.dataset.sure='1';del.textContent='Tap again to delete';del.classList.add('red')}};
-        acts.append(rn,dl,del);more.onclick=()=>{acts.hidden=!acts.hidden};
-        const line=el('div','ep-line-row');line.append(open,more);row.append(line,acts);sec.append(row);
-      });
+      eps.map((c,k)=>[c,k+1]).reverse().forEach(([c,num])=>sec.append(episodeRow(c,`E${num}`,redraw)));
       list.append(sec);
     });
-  };
-  search.oninput=()=>{const term=search.value.trim();found=null;const my=++seq;draw();if(!term)return;
-    clearTimeout(search.t);search.t=setTimeout(async()=>{try{const d=await api('GET','/api/chats?q='+encodeURIComponent(term));if(my===seq){found=d.chats||[];draw()}}catch(e){if(my===seq){found=[];draw()}}},250)};
-  draw();
+  }
+  function episodeRow(c,num,redraw){
+    const row=el('div','ep-row'+(c.id===chatId?' current':''));
+    const open=el('button','ep-open');open.type='button';
+    const p=c.project&&projectById(c.project);
+    const n=el('span','ep-num',num),wx=el('span','ep-wx',c.wx?c.wx.icon:'·');wx.title=c.wx?`${c.wx.temp}°${c.wx.unit}`:'';
+    const tx=el('span','ep-tx'),tl=el('b',null,c.title);if(p)tl.prepend(el('i','ep-ptag',p.icon+' '+p.name));
+    tx.append(tl,el('span',null,highlight(c)));
+    const meta=el('span','ep-meta');const bd=badge(c);if(bd)meta.append(el('i','ep-badge '+bd[1],bd[0]));
+    open.append(n,wx,tx,meta);open.title=`${new Date(c.updated).toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})} · ${c.questions} question${c.questions===1?'':'s'}`;open.onclick=()=>{close();openChat(c.id)};
+    const more=el('button','ep-more','⋯');more.type='button';more.setAttribute('aria-label',`Options for ${c.title}`);
+    const acts=el('div','racts');acts.hidden=true;
+    const rn=el('button','btn','Rename'),mv=el('button','btn','Move to project'),dl=el('button','btn','Download'),del=el('button','btn','Delete');[rn,mv,dl,del].forEach(b=>b.type='button');
+    rn.onclick=()=>{const inp=el('input','field');inp.value=c.title;inp.maxLength=80;acts.textContent='';const ok=el('button','btn red','Save');ok.type='button';
+      ok.onclick=async()=>{const v=inp.value.trim();if(v){try{await api('PATCH','/api/chats/'+encodeURIComponent(c.id),{title:v});c.title=v;if(cur&&cur.id===c.id)cur.title=v}catch(e){toast(e.message)}}redraw()};inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};acts.append(inp,ok);inp.focus()};
+    mv.onclick=()=>{acts.textContent='';const sel=el('select','field');sel.setAttribute('aria-label','Project');
+      sel.append(new Option('No project',''));projects.forEach(pr=>sel.append(new Option(pr.icon+' '+pr.name,pr.id)));sel.value=c.project||'';
+      const ok=el('button','btn red','Move');ok.type='button';
+      if(!projects.length){acts.append(el('span','ep-note','Make a project first, under Projects.'));return}
+      ok.onclick=async()=>{try{await api('PUT','/api/chats/'+encodeURIComponent(c.id)+'/project',{project:sel.value});
+        projects.forEach(pr=>{if(pr.id===c.project)pr.chats--;if(pr.id===sel.value)pr.chats++});
+        c.project=sel.value||null;summaries.forEach(s=>{if(s.id===c.id)s.project=c.project});if(cur&&cur.id===c.id){cur.project=c.project;renderProjChip()}
+        toast(c.project?`Moved to ${projectById(c.project).name}.`:'Removed from the project.')}catch(e){toast(e.message)}redraw()};
+      acts.append(sel,ok)};
+    dl.onclick=async()=>{try{const full=await api('GET','/api/chats/'+encodeURIComponent(c.id));download(`${c.title.replace(/[^\w\- ]+/g,'').slice(0,40)||'chat'}.md`,chatMarkdown(full),'text/markdown')}catch(e){toast(e.message)}};
+    del.onclick=async()=>{if(del.dataset.sure){try{await api('DELETE','/api/chats/'+encodeURIComponent(c.id));summaries=summaries.filter(y=>y.id!==c.id);if(chatId===c.id)newChat();renderContinue()}catch(e){toast(e.message)}redraw()}else{del.dataset.sure='1';del.textContent='Tap again to delete';del.classList.add('red')}};
+    acts.append(rn,mv,dl,del);more.onclick=()=>{acts.hidden=!acts.hidden};
+    const line=el('div','ep-line-row');line.append(open,more);row.append(line,acts);return row;
+  }
+  function whoRow(){
+    const who=el('div','ep-who');const av=el('span','ep-av',(me.user.name||'A').trim().charAt(0).toUpperCase()||'A');
+    const wt=el('div');wt.append(el('b',null,me.user.name||'Ask Harsha user'),el('small',null,'Signed in with a passkey · since '+new Date(me.user.created).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})));who.append(av,wt);
+    return who;
+  }
+  function needSignIn(what){
+    const card=el('section','ep-signin');card.append(el('b',null,`Sign in to use ${what}`),el('p',null,'Sign in with a passkey (Face ID, fingerprint or device PIN). No password, no email.'));
+    const b=el('button','btn red','Sign in with a passkey');b.type='button';b.onclick=()=>{close();openSignIn()};card.append(b);
+    if(!me.enabled){card.textContent='';card.append(el('p',null,`${what[0].toUpperCase()+what.slice(1)} need accounts, which aren’t switched on for this site yet.`))}
+    view.append(card);
+  }
 
-  const foot=el('div','ep-foot');
-  const who=el('div','ep-who');const av=el('span','ep-av',(me.user.name||'A').trim().charAt(0).toUpperCase()||'A');
-  const wt=el('div');wt.append(el('b',null,me.user.name||'Ask Harsha user'),el('small',null,'Signed in with a passkey · since '+new Date(me.user.created).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})));who.append(av,wt);
-  const out=el('button','btn','Sign out');out.type='button';
-  out.onclick=async()=>{try{await api('POST','/api/auth/logout')}catch(e){}me.user=null;summaries=[];close();newChat();renderAccount();toast('Signed out. New chats won’t be saved until you sign in again.')};
-  const r=el('div','row'),exp=el('button','btn','Download all'),wipe=el('button','btn','Delete all chats'),gone=el('button','btn','Delete account');[exp,wipe,gone].forEach(b=>b.type='button');
-  exp.onclick=async()=>{try{const d=await api('GET','/api/chats/export');download('ask-harsha-chats.json',JSON.stringify(d,null,2),'application/json')}catch(e){toast(e.message)}};
-  wipe.onclick=async()=>{if(wipe.dataset.sure){try{await api('DELETE','/api/chats');summaries=[];found=null;newChat();draw();wipe.textContent='Deleted'}catch(e){toast(e.message)}}else{wipe.dataset.sure='1';wipe.textContent='Tap again to delete all';wipe.classList.add('red')}};
-  gone.onclick=async()=>{if(gone.dataset.sure){try{await api('DELETE','/api/me');me.user=null;summaries=[];close();newChat();renderAccount();toast('Your account and all its chats were deleted. You may also remove the passkey from your password manager.')}catch(e){toast(e.message)}}else{gone.dataset.sure='1';gone.textContent='Tap again: deletes everything';gone.classList.add('red')}};
-  r.append(exp,wipe,gone);
-  const wr=el('div','ep-whorow');wr.append(who,out);
-  const sec=el('section','ep-sec');sec.append(el('h5',null,'Security'),el('p','ep-note','Loading…'));
-  const drawSecurity=async()=>{
-    let d;try{d=await api('GET','/api/account/passkeys')}catch(e){sec.lastChild.textContent=e.message;return}
-    me.user.recovery=d.recovery;sec.textContent='';sec.append(el('h5',null,'Security'));
-    const rc=el('div','ep-item '+(d.recovery?'ok':'warn')),rt=el('span');
-    rt.append(el('b',null,d.recovery?'✓ Recovery code saved':'! No recovery code'),el('small',null,d.recovery?'Made '+new Date(d.recovery).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' · gets you in if you lose your devices':"If you lose your device, you'd lose these chats"));
-    const rb=el('button','btn'+(d.recovery?'':' red'),d.recovery?'New code':'Make one');rb.type='button';
-    rb.onclick=async()=>{if(d.recovery&&!rb.dataset.sure){rb.dataset.sure='1';rb.textContent='Old code stops working. Tap again';return}
-      rb.disabled=true;try{await makeRecoveryCode();drawSecurity()}catch(e){toast(e.message);rb.disabled=false}};
-    rc.append(rt,rb);sec.append(rc);
-    d.passkeys.forEach(k=>{const it=el('div','ep-item'),t=el('span');
-      const used=k.last_used?'last used '+new Date(k.last_used).toLocaleDateString([],{month:'short',day:'numeric'}):'not used to sign in yet';
-      t.append(el('b',null,'🔑 Passkey · '+k.label),el('small',null,'Made '+new Date(k.created).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' · '+used));it.append(t);
-      if(d.passkeys.length>1){const rm=el('button','btn','Remove');rm.type='button';rm.setAttribute('aria-label','Remove passkey made on '+k.label);
-        rm.onclick=async()=>{if(!rm.dataset.sure){rm.dataset.sure='1';rm.textContent='Tap again';rm.classList.add('red');return}
-          try{await api('DELETE','/api/account/passkeys/'+encodeURIComponent(k.id));drawSecurity()}catch(e){toast(e.message)}};it.append(rm)}
-      sec.append(it)});
-    const add=el('div','ep-item'),at=el('span');at.append(el('b',null,'Add another device'),el('small',null,'A second passkey, like Windows Hello on your laptop, so one lost device never locks you out'));
-    const ab=el('button','btn','+ Add');ab.type='button';ab.onclick=async()=>{ab.disabled=true;try{await addPasskey();drawSecurity()}catch(e){toast(passkeyError(e));ab.disabled=false}};
-    add.append(at,ab);sec.append(add);
-  };
-  drawSecurity();
-  foot.append(wr,el('small',null,'Your chats are saved to your account, so they follow you to any device where you sign in with this passkey.'),sec,r);dr.append(foot);
-
-  bg.append(dr);document.body.append(bg);x.focus();
+  // ----- the panels -----
+  function panel(section,a){
+    const back=()=>go(section==='project'||section==='project-form'?'projects':null);
+    const titles={projects:'Projects',project:'Project','project-form':a&&a.id?'Edit project':'New project',saved:'Saved',tools:'Tools',customize:'Customize'};
+    topBar(titles[section],back);
+    const body=el('div','ep-panel t-'+(section.startsWith('project')?'projects':section));view.append(body);
+    ({projects:projectsPanel,project:projectPanel,'project-form':projectForm,saved:savedPanel,tools:toolsPanel,customize:customizePanel})[section](body,a);
+  }
+  async function projectsPanel(body){
+    body.append(el('p','ep-lead','Group chats by goal. Each project has its own instructions, and the agent follows them in every chat inside it.'));
+    if(!signedIn()){view.removeChild(body);needSignIn('projects');return}
+    const nb=el('button','btn red ep-wide','+ New project');nb.type='button';nb.onclick=()=>go('project-form',{});body.append(nb);
+    const list=el('div','ep-cards');list.append(el('p','ep-note','Loading…'));body.append(list);
+    await loadProjects();list.textContent='';
+    if(!projects.length){
+      list.append(el('p','ep-note','No projects yet. Start one from an idea:'));
+      const ideas=el('div','ep-ideas');[['💼','Job search','I’m looking for senior product manager roles. Keep answers practical and tell me what to practice.'],
+        ['✈️','Trip planning','We travel on a mid-range budget and like food, walking and museums.'],['📈','Q4 roadmap','I’m a PM at an enterprise software company. Keep answers short and structured.']]
+        .forEach(([icon,name,instructions])=>{const b=el('button','chip',icon+' '+name);b.type='button';b.onclick=()=>go('project-form',{icon,name,instructions});ideas.append(b)});
+      list.append(ideas);return;
+    }
+    projects.forEach(p=>{const b=el('button','ep-card');b.type='button';
+      const t=el('span','ep-ctx');t.append(el('b',null,p.name),el('small',null,`${p.chats} chat${p.chats===1?'':'s'} · updated ${new Date(p.updated).toLocaleDateString([],{month:'short',day:'numeric'})}`));
+      if(p.instructions)t.append(el('span','ep-cline',p.instructions));
+      b.append(el('span','ep-cic',p.icon),t);b.onclick=()=>go('project',p.id);list.append(b)});
+  }
+  function projectPanel(body,id){
+    const p=projectById(id);if(!p){go('projects');return}
+    const head=el('div','ep-phead');head.append(el('span','ep-cic big',p.icon));const ht=el('div');ht.append(el('b',null,p.name),el('small',null,`${p.chats} chat${p.chats===1?'':'s'}`));head.append(ht);
+    const edit=el('button','btn','Edit');edit.type='button';edit.onclick=()=>go('project-form',p);head.append(edit);body.append(head);
+    const start=el('button','btn red ep-wide','+ New chat in this project');start.type='button';start.onclick=()=>{close();startInProject(p.id)};body.append(start);
+    const box=el('div','ep-box');box.append(el('h5',null,'Instructions the agent follows here'));
+    box.append(p.instructions?el('p','ep-instr',p.instructions):el('p','ep-note','None yet. Tap Edit to add goals, background or how you want answers.'));body.append(box);
+    body.append(el('h5','ep-h5','Chats in this project'));
+    const list=el('div','ep-list');body.append(list);
+    const mine=summaries.filter(c=>c.project===p.id).sort((a,b)=>b.updated-a.updated);
+    if(!mine.length)list.append(el('p','ep-note','No chats yet. Start one above, or move a chat here from its ⋯ menu.'));
+    mine.forEach((c,i)=>list.append(episodeRow(c,`${i+1}`,()=>go('project',p.id))));
+  }
+  function projectForm(body,p){
+    const editing=!!p.id;let icon=p.icon||'📁';
+    const icons=el('div','ep-icons');icons.setAttribute('role','radiogroup');icons.setAttribute('aria-label','Icon');
+    PROJECT_ICONS.forEach(i=>{const b=el('button','ep-ico'+(i===icon?' on':''),i);b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',i===icon);
+      b.onclick=()=>{icon=i;[...icons.children].forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-checked',x===b)})};icons.append(b)});
+    const nl=el('label','ep-field');const name=el('input','field');name.maxLength=60;name.value=p.name||'';name.placeholder='e.g. Job search';nl.append(el('span',null,'Name'),name);
+    const il=el('label','ep-field');const ins=el('textarea','field');ins.rows=6;ins.maxLength=4000;ins.value=p.instructions||'';
+    ins.placeholder='What should the agent know? Your goal, background, and how you want answers. e.g. “I’m preparing for senior PM interviews. Keep answers practical and tell me what to practice.”';
+    il.append(el('span',null,'Instructions'),ins,el('small',null,'Used in every chat in this project. Up to 4,000 characters.'));
+    const line=el('p','msgline'),r=el('div','row'),save=el('button','btn red',editing?'Save':'Create project');save.type='button';
+    save.onclick=async()=>{save.disabled=true;line.textContent='';
+      try{const d=await api(editing?'PUT':'POST',editing?'/api/projects/'+encodeURIComponent(p.id):'/api/projects',{name:name.value,icon,instructions:ins.value});
+        await loadProjects();renderProjChip();go('project',d.id)}catch(e){line.textContent=e.message}finally{save.disabled=false}};
+    if(editing){const del=el('button','btn','Delete project');del.type='button';
+      del.onclick=async()=>{if(!del.dataset.sure){del.dataset.sure='1';del.textContent='Tap again. Chats are kept';del.classList.add('red');return}
+        try{await api('DELETE','/api/projects/'+encodeURIComponent(p.id));summaries.forEach(c=>{if(c.project===p.id)c.project=null});if(cur&&cur.project===p.id)cur.project=null;if(nextProject===p.id)nextProject=null;
+          await loadProjects();renderProjChip();go('projects')}catch(e){line.textContent=e.message}};r.append(del)}
+    r.append(save);body.append(el('span','ep-label','Icon'),icons,nl,il,line,r);setTimeout(()=>name.focus(),50);
+  }
+  async function savedPanel(body){
+    body.append(el('p','ep-lead','Answers you starred, and verified links you shared. Tap ☆ Save under any answer to keep it here.'));
+    if(!signedIn()){view.removeChild(body);needSignIn('saved answers');return}
+    let filter='all';
+    const chips=el('div','ep-seg');[['all','All'],['star','★ Starred'],['card','✓ Verified']].forEach(([k,t])=>{const b=el('button',k===filter?'on':'',t);b.type='button';
+      b.onclick=()=>{filter=k;[...chips.children].forEach(x=>x.classList.toggle('on',x===b));draw()};chips.append(b)});
+    const list=el('div','ep-cards');list.append(el('p','ep-note','Loading…'));body.append(chips,list);
+    await loadSaved();
+    const draw=()=>{list.textContent='';const items=savedItems.filter(x=>filter==='all'||x.kind===filter);
+      if(!items.length){list.append(el('p','ep-note',savedItems.length?'Nothing here yet.':'Nothing saved yet. Tap ☆ Save under an answer you want to keep.'));return}
+      items.forEach(it=>{const d=el('details','ep-saved');const sm=el('summary');
+        const tx=el('span','ep-ctx');tx.append(el('b',null,it.question||'Answer'),el('span','ep-cline',cleanLine(it.data.answer).slice(0,160)));
+        sm.append(el('span','ep-sk '+it.kind,it.kind==='card'?'✓':'★'),tx,el('small','ep-date',new Date(it.created).toLocaleDateString([],{month:'short',day:'numeric'})));d.append(sm);
+        const full=el('div','body ep-full');d.addEventListener('toggle',()=>{if(d.open&&!full.childNodes.length)renderAnswer(full,it.data.answer)},{once:false});
+        const r=el('div','row');
+        if(it.chat_id&&summaries.some(c=>c.id===it.chat_id)){const o=el('button','btn','Open chat');o.type='button';o.onclick=()=>{close();openChat(it.chat_id)};r.append(o)}
+        if(it.data.url){const a=el('a','btn','Open verified link ↗');a.href=it.data.url;a.target='_blank';a.rel='noopener';r.append(a)}
+        const cp=el('button','btn','Copy');cp.type='button';cp.onclick=async()=>{try{await navigator.clipboard.writeText(cleanLine(it.data.answer));cp.textContent='Copied ✓'}catch(e){toast('Copy didn’t work here.')}};
+        const rm=el('button','btn','Remove');rm.type='button';rm.onclick=async()=>{try{await api('DELETE','/api/saved/'+encodeURIComponent(it.id));savedItems=savedItems.filter(x=>x.id!==it.id);savedIds.delete(it.id);syncStars();draw()}catch(e){toast(e.message)}};
+        r.append(cp,rm);d.append(full,r);list.append(d)})};
+    draw();
+  }
+  function toolsPanel(body){
+    body.append(el('h5','ep-h5','PM Toolkit'));
+    const pm=el('div','ep-cards');PM_TOOLS.forEach(([id,ic,name,sub])=>{const a=el('a','ep-card');a.href='/tools#'+id;const t=el('span','ep-ctx');t.append(el('b',null,name),el('small',null,sub));a.append(el('span','ep-cic',ic),t);pm.append(a)});
+    body.append(pm,el('h5','ep-h5','Built into every chat'));
+    const b=el('div','ep-cards');
+    const row=(ic,name,sub,action)=>{const r=el('div','ep-card static');const t=el('span','ep-ctx');t.append(el('b',null,name),el('small',null,sub));r.append(el('span','ep-cic',ic),t);if(action)r.append(action);b.append(r);return r};
+    const assist=el('a','btn','Open');assist.href='/assist';
+    row('🗣️','Assist mode','Speak or type and it talks for you. Made for people who can’t speak.',assist);
+    if(juryAvail){row('⚖️','Second opinions',`Ask ${juryNames.join(' and ')} the same question and compare`,toggle(prefs.jury,v=>{setPref('jury',v);juryOn=juryAvail&&v},'Second opinions'))}
+    row('✓','Fact-check','Checks every claim in an answer against sources');
+    row('🔏','Share verified','A signed link and QR code that prove an answer is real');
+    row('🙋','Ask the real Harsha','When a question needs a person, send it to Harsha');
+    row('🎙️','Voice typing','Tap the mic next to the message box and speak');
+    row('📎','Photos & files','Snap a photo or attach a PDF, Word file or spreadsheet');
+    body.append(b,el('h5','ep-h5','Use Ask Harsha inside other AIs'));
+    const mcp=location.origin+'/mcp';
+    const box=el('div','ep-box');box.append(el('p',null,'Add this address as a custom connector in Claude or ChatGPT. They can then look up Harsha’s verified record and check verified links.'));
+    const code=el('code','ep-code',mcp);const cp=el('button','btn','Copy');cp.type='button';cp.onclick=async()=>{try{await navigator.clipboard.writeText(mcp);cp.textContent='Copied ✓'}catch(e){toast('Copy didn’t work here.')}};
+    const cr=el('div','ep-coderow');cr.append(code,cp);box.append(cr);body.append(box,el('h5','ep-h5','Add the chat to a website'));
+    const snip=`<script src="${location.origin}/widget.js" defer><\/script>`;
+    const box2=el('div','ep-box');box2.append(el('p',null,'Paste this before </body> on any page to add a floating “Ask my AI” button.'));
+    const code2=el('code','ep-code',snip);const cp2=el('button','btn','Copy');cp2.type='button';cp2.onclick=async()=>{try{await navigator.clipboard.writeText(snip);cp2.textContent='Copied ✓'}catch(e){toast('Copy didn’t work here.')}};
+    const cr2=el('div','ep-coderow');cr2.append(code2,cp2);box2.append(cr2);body.append(box2);
+  }
+  function customizePanel(body){
+    const status=el('p','ep-saved-line',signedIn()?'Saved to your account, so it follows you to every device.':'Saved on this device. Sign in to keep it everywhere.');body.append(status);
+    const sec=(title)=>{const s=el('section','ep-box');s.append(el('h5',null,title));body.append(s);return s};
+    const field=(s,label,input,hint)=>{const l=el('label','ep-field');l.append(el('span',null,label),input);if(hint)l.append(el('small',null,hint));s.append(l);return l};
+    const a=sec('About you');
+    const nm=el('input','field');nm.maxLength=40;nm.value=prefs.name;nm.placeholder='Your first name';nm.autocomplete='given-name';
+    nm.oninput=()=>setPref('name',nm.value.trim());field(a,'What should I call you?',nm);
+    const ab=el('textarea','field');ab.rows=3;ab.maxLength=1000;ab.value=prefs.about;ab.placeholder='e.g. I’m a product manager in Austin. I like examples and short summaries.';
+    ab.oninput=()=>setPref('about',ab.value);field(a,'Anything I should keep in mind?',ab,'Your role, interests or how you like to learn. Used in every chat.');
+    const an=sec('Answers');
+    an.append(el('span','ep-label','Length'),seg([['short','Short'],['balanced','Balanced'],['detailed','Detailed']],prefs.length,v=>setPref('length',v),'Answer length'));
+    an.append(el('span','ep-label','Tone'),seg([['','Default'],['friendly','Friendly'],['professional','Formal'],['direct','Direct']],prefs.tone,v=>setPref('tone',v),'Tone'));
+    const h=sec('Home screen');
+    const city=el('input','field');city.maxLength=80;city.value=prefs.city;city.placeholder='Automatic (where you are)';
+    const cr=el('div','ep-coderow');const cs=el('button','btn','Update');cs.type='button';cr.append(city,cs);
+    const applyCity=async()=>{setPref('city',city.value.trim());cs.textContent='Updating…';await loadWeather();cs.textContent=weatherData&&prefs.city&&weatherData.city?`✓ ${weatherData.city}`:'Update'};
+    cs.onclick=applyCity;city.onkeydown=e=>{if(e.key==='Enter')applyCity()};
+    const l=el('label','ep-field');l.append(el('span',null,'Weather greeting for'),cr,el('small',null,'Type a city, like “Chicago” or “Hyderabad, India”. Leave empty to use where you are.'));h.append(l);
+    const v=sec('Voice');
+    const ra=el('div','ep-item');const rt=el('span');rt.append(el('b',null,'Read answers aloud'),el('small',null,'Speaks each new answer as it arrives'));ra.append(rt,toggle(prefs.read_aloud,x=>setPref('read_aloud',x),'Read answers aloud'));v.append(ra);
+    const vs=el('select','field');vs.setAttribute('aria-label','Voice');
+    const fill=()=>{const vv=voices();vs.textContent='';vs.append(new Option('Default voice',''));vv.forEach(x=>vs.append(new Option(`${x.name} (${x.lang})`,x.name)));vs.value=prefs.voice||''};
+    fill();if('speechSynthesis' in window)speechSynthesis.addEventListener('voiceschanged',fill,{once:true});
+    vs.onchange=()=>setPref('voice',vs.value);field(v,'Voice',vs);
+    const sp=el('input');sp.type='range';sp.min='0.6';sp.max='1.6';sp.step='0.1';sp.value=prefs.rate;sp.className='ep-range';
+    const spl=field(v,`Speed · ${prefs.rate}×`,sp);sp.oninput=()=>{setPref('rate',+sp.value);spl.firstChild.textContent=`Speed · ${sp.value}×`};
+    const test=el('button','btn','▶ Test voice');test.type='button';test.onclick=()=>speakText(`Hi${prefs.name?' '+prefs.name:''}! This is how answers will sound.`);v.append(test);
+    if(juryAvail){const j=sec('Second opinions');const it=el('div','ep-item');const jt=el('span');jt.append(el('b',null,'Show the ⚖️ button'),el('small',null,`Compare answers with ${juryNames.join(' and ')}`));
+      it.append(jt,toggle(prefs.jury,x=>{setPref('jury',x);juryOn=juryAvail&&x},'Second opinions'));j.append(it)}
+    const acc=sec('Account & security');
+    if(!signedIn()){acc.append(el('p','ep-note','Sign in with a passkey to save chats, projects and these settings to your account.'));
+      if(me.enabled){const b=el('button','btn red','Sign in with a passkey');b.type='button';b.onclick=()=>{close();openSignIn()};acc.append(b)}return}
+    acc.append(whoRow());const secBox=el('div','ep-sec');acc.append(secBox);drawSecurity(secBox);
+    const r=el('div','row'),exp=el('button','btn','Download everything'),wipe=el('button','btn','Delete all chats'),gone=el('button','btn','Delete account'),out=el('button','btn','Sign out');[exp,wipe,gone,out].forEach(b=>b.type='button');
+    exp.onclick=async()=>{try{const d=await api('GET','/api/chats/export');download('ask-harsha-export.json',JSON.stringify({...d,settings:prefs},null,2),'application/json')}catch(e){toast(e.message)}};
+    wipe.onclick=async()=>{if(wipe.dataset.sure){try{await api('DELETE','/api/chats');summaries=[];newChat();await loadProjects();wipe.textContent='Deleted'}catch(e){toast(e.message)}}else{wipe.dataset.sure='1';wipe.textContent='Tap again to delete all';wipe.classList.add('red')}};
+    gone.onclick=async()=>{if(gone.dataset.sure){try{await api('DELETE','/api/me');close();afterSignOut();toast('Your account and everything in it were deleted. You may also remove the passkey from your password manager.')}catch(e){toast(e.message)}}else{gone.dataset.sure='1';gone.textContent='Tap again: deletes everything';gone.classList.add('red')}};
+    out.onclick=()=>{close();signOut()};
+    r.style.justifyContent='flex-start';r.append(exp,wipe,gone,out);acc.append(r);
+  }
+  bg.append(dr);document.body.append(bg);
+  go(start||null,arg);
 }
-function newChat(){stopDictation();chatId=null;cur=null;history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;greet(weatherData);renderContinue()}
+function openRecents(){openSidebar()}   // "All chats" links on the home screen
+function seg(options,value,onChange,label){
+  const g=el('div','ep-seg');g.setAttribute('role','radiogroup');g.setAttribute('aria-label',label);
+  options.forEach(([k,t])=>{const b=el('button',k===value?'on':'',t);b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',k===value);
+    b.onclick=()=>{[...g.children].forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-checked',x===b)});onChange(k)};g.append(b)});
+  return g;
+}
+function toggle(on,onChange,label){
+  const b=el('button','ep-toggle'+(on?' on':''));b.type='button';b.setAttribute('role','switch');b.setAttribute('aria-checked',!!on);b.setAttribute('aria-label',label);b.append(el('i'));
+  b.onclick=()=>{const v=!b.classList.contains('on');b.classList.toggle('on',v);b.setAttribute('aria-checked',v);onChange(v)};return b;
+}
+async function drawSecurity(sec){
+  sec.textContent='';sec.append(el('p','ep-note','Loading…'));
+  let d;try{d=await api('GET','/api/account/passkeys')}catch(e){sec.lastChild.textContent=e.message;return}
+  me.user.recovery=d.recovery;sec.textContent='';
+  const rc=el('div','ep-item '+(d.recovery?'ok':'warn')),rt=el('span');
+  rt.append(el('b',null,d.recovery?'✓ Recovery code saved':'! No recovery code'),el('small',null,d.recovery?'Made '+new Date(d.recovery).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' · gets you in if you lose your devices':"If you lose your device, you'd lose these chats"));
+  const rb=el('button','btn'+(d.recovery?'':' red'),d.recovery?'New code':'Make one');rb.type='button';
+  rb.onclick=async()=>{if(d.recovery&&!rb.dataset.sure){rb.dataset.sure='1';rb.textContent='Old code stops working. Tap again';return}
+    rb.disabled=true;try{await makeRecoveryCode();drawSecurity(sec)}catch(e){toast(e.message);rb.disabled=false}};
+  rc.append(rt,rb);sec.append(rc);
+  d.passkeys.forEach(k=>{const it=el('div','ep-item'),t=el('span');
+    const used=k.last_used?'last used '+new Date(k.last_used).toLocaleDateString([],{month:'short',day:'numeric'}):'not used to sign in yet';
+    t.append(el('b',null,'🔑 Passkey · '+k.label),el('small',null,'Made '+new Date(k.created).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' · '+used));it.append(t);
+    if(d.passkeys.length>1){const rm=el('button','btn','Remove');rm.type='button';rm.setAttribute('aria-label','Remove passkey made on '+k.label);
+      rm.onclick=async()=>{if(!rm.dataset.sure){rm.dataset.sure='1';rm.textContent='Tap again';rm.classList.add('red');return}
+        try{await api('DELETE','/api/account/passkeys/'+encodeURIComponent(k.id));drawSecurity(sec)}catch(e){toast(e.message)}};it.append(rm)}
+    sec.append(it)});
+  const add=el('div','ep-item'),at=el('span');at.append(el('b',null,'Add another device'),el('small',null,'A second passkey, like Windows Hello on your laptop, so one lost device never locks you out'));
+  const ab=el('button','btn','+ Add');ab.type='button';ab.onclick=async()=>{ab.disabled=true;try{await addPasskey();drawSecurity(sec)}catch(e){toast(passkeyError(e));ab.disabled=false}};
+  add.append(at,ab);sec.append(add);
+}
+async function signOut(){
+  try{await api('POST','/api/auth/logout')}catch(e){}
+  afterSignOut();toast('Signed out. New chats won’t be saved until you sign in again.');
+}
+function afterSignOut(){
+  me.user=null;summaries=[];projects=[];savedItems=[];savedIds=new Set();
+  prefs={...PREF_DEFAULTS};try{localStorage.removeItem('askh_prefs')}catch(e){}   // a shared device shouldn't keep your settings
+  juryOn=juryAvail;newChat();renderAccount();loadWeather();
+}
+function startInProject(id){newChat();nextProject=id;renderProjChip();q.focus()}
+function renderProjChip(){
+  const box=$('#projchip');if(!box)return;
+  const id=(cur&&cur.project)||nextProject,p=id&&projectById(id);
+  box.textContent='';box.hidden=!p;if(!p)return;
+  const open=el('button','pc-open');open.type='button';open.append(el('span',null,p.icon),el('b',null,p.name),el('small',null,p.instructions?'· following its instructions':'· project'));
+  open.onclick=()=>openSidebar('project',p.id);
+  const x=el('button','pc-x','×');x.type='button';x.setAttribute('aria-label','Take this chat out of the project');
+  x.onclick=async()=>{if(cur&&cur.project){try{await api('PUT','/api/chats/'+encodeURIComponent(cur.id)+'/project',{project:''});p.chats--;cur.project=null;summaries.forEach(s=>{if(s.id===cur.id)s.project=null})}catch(e){toast(e.message);return}}nextProject=null;renderProjChip()};
+  box.append(open,x);
+}
+
+// ---------- Customize: settings kept on this device, and in the account when signed in ----------
+let prefTimer=null;
+function setPref(k,v){
+  prefs[k]=v;try{localStorage.setItem('askh_prefs',JSON.stringify(prefs))}catch(e){}
+  if(k==='name')greet(weatherData);
+  if(signedIn()){clearTimeout(prefTimer);prefTimer=setTimeout(()=>api('PUT','/api/account/prefs',prefs).catch(e=>toast("Settings couldn't be saved: "+e.message)),500)}
+}
+async function syncPrefs(){
+  if(!signedIn())return;
+  try{const d=await api('GET','/api/account/prefs');
+    if(d.prefs){prefs={...PREF_DEFAULTS,...d.prefs};try{localStorage.setItem('askh_prefs',JSON.stringify(prefs))}catch(e){}}
+    else if(JSON.stringify(prefs)!==JSON.stringify(PREF_DEFAULTS))await api('PUT','/api/account/prefs',prefs);   // first sign-in: keep what they set
+  }catch(e){}
+  juryOn=juryAvail&&prefs.jury!==false;
+}
+const chatPrefs=()=>({name:prefs.name,length:prefs.length,tone:prefs.tone,about:prefs.about});
+// Read answers aloud with the device's own voices.
+const voices=()=>('speechSynthesis' in window)?speechSynthesis.getVoices():[];
+function speakText(t){
+  if(!('speechSynthesis' in window)){toast("This browser can't read aloud.");return}
+  try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);const v=voices().find(x=>x.name===prefs.voice);if(v){u.voice=v;u.lang=v.lang}u.rate=prefs.rate||1;speechSynthesis.speak(u)}catch(e){}
+}
+function speakAnswer(answer){if(prefs.read_aloud&&answer)speakText(cleanLine(answer).replace(/https?:\/\/\S+/g,'').slice(0,4000))}
+
+// ---------- ☆ Save on each answer ----------
+function answerKey(question,answer){let h=0;const s=question+'\u0001'+answer;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return 's'+(h>>>0).toString(36)+s.length.toString(36)}
+function addStar(bot,question,data){
+  if(EMBED||!me.enabled||!data.answer)return;
+  const id=answerKey(question,data.answer),row=actionsFor(bot).querySelector('.arow');
+  const b=el('button','fcbtn star');b.type='button';b.dataset.key=id;paintStar(b);
+  b.onclick=async()=>{
+    if(!signedIn()){toast('Sign in to save answers. It takes a few seconds.');openSignIn();return}
+    b.disabled=true;
+    try{if(savedIds.has(id)){await api('DELETE','/api/saved/'+encodeURIComponent(id));savedIds.delete(id);savedItems=savedItems.filter(x=>x.id!==id)}
+      else{const keep={};KEEP.forEach(k=>{if(data[k]!=null)keep[k]=data[k]});
+        await api('POST','/api/saved',{id,kind:'star',chat_id:chatId||'',question,data:keep});savedIds.add(id);savedItems.unshift({id,kind:'star',created:Date.now(),chat_id:chatId,question,data:keep});toast('Saved. Find it in Menu → Saved.')}
+      syncStars()}catch(e){toast(e.message)}finally{b.disabled=false}};
+  row.append(b);
+}
+function paintStar(b){const on=savedIds.has(b.dataset.key);b.textContent=on?'★ Saved':'☆ Save';b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.setAttribute('aria-label',on?'Remove from Saved':'Save this answer')}
+function syncStars(){document.querySelectorAll('.fcbtn.star').forEach(paintStar)}
+function saveCard(id,url,data){
+  if(!signedIn())return;
+  const r=data.receipt||{};
+  const item={id:'card:'+id,kind:'card',chat_id:chatId||'',question:r.question||'',data:{answer:r.answer||data.answer||'',url,receipt_id:id}};
+  api('POST','/api/saved',item).then(()=>{savedIds.add(item.id);savedItems=[{...item,created:Date.now()},...savedItems.filter(x=>x.id!==item.id)]}).catch(()=>{});
+}
+function newChat(){stopDictation();try{speechSynthesis.cancel()}catch(e){}nextProject=null;renderProjChip();chatId=null;cur=null;history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;greet(weatherData);renderContinue()}
 const VERDICT={confirmed:{mark:'✓',cls:'ok',word:'Confirmed'},contradicted:{mark:'✕',cls:'bad',word:'Contradicted'},unverified:{mark:'!',cls:'unk',word:'Unverified'},not_checkable:{mark:'–',cls:'na',word:'Not checkable'}};
 function actionsFor(bot){
   let w=bot.querySelector('.fcwrap');
@@ -1232,8 +1603,8 @@ const payload=()=>files.map(({name,kind,media_type,data})=>({name,kind,media_typ
 function defaultQuestion(){const imgs=files.filter(f=>f.kind==='image').length;return imgs===files.length?(imgs===1?'What is in this photo? Tell me anything useful about it.':'What is in these photos? Tell me anything useful about them.'):(files.length===1?'Summarize this file.':'Summarize these files.')}
 
 // ---------- Second opinions: ask other AI models, then compare ----------
-let juryOn=false,juryNames=[];
-fetch('/api/jury').then(r=>r.json()).then(d=>{juryOn=!!d.enabled;juryNames=(d.jurors||[]).filter(j=>j.ready).map(j=>j.name)}).catch(()=>{});
+let juryOn=false,juryAvail=false,juryNames=[];
+fetch('/api/jury').then(r=>r.json()).then(d=>{juryAvail=!!d.enabled;juryOn=juryAvail&&prefs.jury!==false;juryNames=(d.jurors||[]).filter(j=>j.ready).map(j=>j.name)}).catch(()=>{});
 const AGREE={strong:['Strong agreement','ok'],partial:['Partly agree','unk'],low:['They disagree','bad']};
 function addJury(bot,question,answer){
   const row=actionsFor(bot).querySelector('.arow');
@@ -1291,7 +1662,7 @@ async function shareVerified(btn,data){
   try{
     const res=await fetch('/api/receipts',{method:'POST',headers:headers(),body:JSON.stringify({receipt:data.receipt,signature:data.signature})});
     const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.message||"Couldn't create the link.");
-    btn.dataset.id=d.id;btn.dataset.url=d.url;btn.textContent='✓ Verified link ready';btn.classList.add('ok');openShareSheet(d.id,d.url,data);
+    btn.dataset.id=d.id;btn.dataset.url=d.url;btn.textContent='✓ Verified link ready';btn.classList.add('ok');saveCard(d.id,d.url,data);openShareSheet(d.id,d.url,data);
   }catch(e){btn.textContent='✓ Share verified';toast(e.message)}finally{btn.disabled=false}
 }
 function wrapLines(ctx,text,maxW,maxLines){
@@ -1444,7 +1815,7 @@ function openInbox(){
 }
 
 async function askOnce(bot,text){  // fallback when streaming isn't available
-  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload()})});
+  const res=await fetch('/api/chat',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||''})});
   const data=await res.json().catch(()=>({}));
   if(!res.ok){bot.classList.add('err');bot.textContent=data.message||'Something went wrong. Please try again.';return}
   showFinal(bot,data,text);
@@ -1461,7 +1832,7 @@ async function ask(text){
   const live=el('div','body');bot.append(status,live);
   let streamed='',finished=false;
   try{
-    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload()})});
+    const res=await fetch('/api/chat/stream',{method:'POST',headers:headers(),body:JSON.stringify({question:text,history,attachments:payload(),prefs:chatPrefs(),project:(cur&&cur.project)||nextProject||''})});
     const type=res.headers.get('content-type')||'';
     if(!res.ok||!type.includes('text/event-stream')){
       const data=await res.json().catch(()=>({}));

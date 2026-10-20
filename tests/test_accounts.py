@@ -202,3 +202,81 @@ def test_recovery_api_round_trip():
     signed_out = make(a)
     assert signed_out.post("/api/account/recovery").status_code == 401
     assert signed_out.get("/api/account/passkeys").status_code == 401
+
+
+def test_projects_group_chats_and_feed_the_prompt():
+    from agent import personal
+    a = store()
+    u = user(a)
+    p = a.save_project(u.id, {"name": " Job  hunt ", "icon": "💼", "instructions": "I'm targeting senior PM roles in Austin."})
+    assert p["name"] == "Job hunt" and p["chats"] == 0
+    a.save_chat(u.id, {**chat(1), "project": p["id"]})
+    a.save_chat(u.id, {**chat(2), "project": "made-up"})                 # unknown project: saved as a regular chat
+    assert a.get_chat(u.id, "c1")["project"] == p["id"] and a.get_chat(u.id, "c2")["project"] is None
+    a.save_chat(u.id, chat(1))                                            # no project sent: keeps the one it had
+    assert a.get_chat(u.id, "c1")["project"] == p["id"]
+    a.set_chat_project(u.id, "c2", p["id"])
+    assert a.list_projects(u.id)[0]["chats"] == 2
+    assert {c["project"] for c in a.list_chats(u.id)} == {p["id"]}
+    block = personal.prompt_block({"name": "Harsha", "length": "short", "tone": "direct"}, a.get_project(u.id, p["id"]))
+    assert "Harsha" in block and "senior PM roles" in block and "never change your rules" in block
+    assert personal.prompt_block({}) == "" and personal.prompt_block(None, None) == ""
+    kim = user(a, "Kim")
+    assert a.get_project(kim.id, p["id"]) is None                         # projects are private
+    with pytest.raises(ValueError):
+        a.set_chat_project(kim.id, "c1", p["id"])
+    a.delete_project(u.id, p["id"])
+    assert a.get_chat(u.id, "c1")["project"] is None and a.list_projects(u.id) == []   # chats are kept
+
+
+def test_saved_answers_and_prefs():
+    a = store()
+    u = user(a)
+    a.save_item(u.id, {"id": "c1:1", "kind": "star", "chat_id": "c1", "question": "Dinner?", "data": {"answer": "Fajitas."}})
+    a.save_item(u.id, {"id": "card:abc", "kind": "card", "question": "Shipped?", "data": {"answer": "Yes.", "receipt": {"id": "abc"}}})
+    assert sorted(x["kind"] for x in a.list_saved(u.id)) == ["card", "star"]
+    with pytest.raises(ValueError):
+        a.save_item(u.id, {"id": "x", "data": {}})
+    a.remove_saved(u.id, "c1:1")
+    assert [x["id"] for x in a.list_saved(u.id)] == ["card:abc"]
+    assert a.get_prefs(u.id) is None
+    saved = a.save_prefs(u.id, {"name": "Harsha", "length": "huge", "rate": 9, "evil": "x"})
+    assert saved["length"] == "balanced" and saved["rate"] == 1.6 and "evil" not in saved
+    assert a.get_prefs(u.id)["name"] == "Harsha"
+    a.delete_user(u.id)
+    for table in ("projects", "saved", "prefs"):
+        assert a.db.one(f"SELECT COUNT(*) FROM {table}")[0] == 0
+
+
+def test_project_instructions_reach_the_model():
+    a = store()
+    u = user(a)
+    p = a.save_project(u.id, {"name": "Trip", "instructions": "We travel with a toddler."})
+    from fakes import response, text
+    calls = []
+
+    class Spy:
+        def __init__(self):
+            self.messages = self
+
+        def create(self, **kw):
+            calls.append(kw)
+            return response([text("Here you go.")], "end_turn")
+
+    s = Settings(daily_budget_usd=5.0, rate_limit=50, allowed_origins=[], owner_passcode="open-sesame")
+    app = create_app(client=Spy(), settings=s, notes=MemoryNotesStore(), inbox=inboxmod.MemoryInboxStore(),
+                     receipts=rcpt.ReceiptStore(inboxmod.make_key("k")), accounts=a)
+    c = TestClient(app)
+    c.cookies.set("askh_session", a.start_session(u))
+    assert c.post("/api/chat", json={"question": "Ideas for Saturday?", "project": p["id"],
+                                     "prefs": {"name": "Sam", "tone": "friendly"}}).status_code == 200
+    assert "toddler" in calls[-1]["system"] and "Sam" in calls[-1]["system"]
+    out = TestClient(app)   # signed out: prefs still apply, project instructions don't
+    out.post("/api/chat", json={"question": "Ideas?", "project": p["id"], "prefs": {"name": "Lee"}})
+    assert "Lee" in calls[-1]["system"] and "toddler" not in calls[-1]["system"]
+    assert c.post("/api/projects", json={"name": "Work"}).json()["name"] == "Work"
+    assert len(c.get("/api/projects").json()["projects"]) == 2
+    assert c.post("/api/saved", json={"id": "x1", "question": "q", "data": {"answer": "a"}}).status_code == 200
+    assert c.get("/api/saved").json()["saved"][0]["id"] == "x1"
+    assert c.put("/api/account/prefs", json={"name": "Sam"}).json()["prefs"]["name"] == "Sam"
+    assert out.get("/api/projects").status_code == 401 and out.get("/api/saved").status_code == 401

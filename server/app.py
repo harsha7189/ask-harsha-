@@ -42,7 +42,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct  # noqa: E402
+from agent import accounts as acct, personal  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -134,6 +134,7 @@ class RecoveryCode(BaseModel):
 
 
 class ChatBody(BaseModel):
+    project: str | None = Field(default=None, max_length=40)
     title: str = Field(default="", max_length=200)
     created: int = 0
     updated: int = 0
@@ -200,6 +201,26 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     history: list[Turn] = Field(default_factory=list, max_length=40)
     attachments: list[Attachment] = Field(default_factory=list, max_length=files.MAX_FILES)
+    prefs: dict | None = None        # Customize: name, answer length, tone, about them
+    project: str = Field(default="", max_length=40)   # a project id; its instructions are read from the account
+
+
+class ProjectBody(BaseModel):
+    name: str = Field(default="", max_length=120)
+    icon: str = Field(default="", max_length=16)
+    instructions: str = Field(default="", max_length=8000)
+
+
+class ChatProject(BaseModel):
+    project: str = Field(default="", max_length=40)
+
+
+class SavedItem(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    kind: str = Field(default="star", max_length=10)
+    chat_id: str = Field(default="", max_length=40)
+    question: str = Field(default="", max_length=4000)
+    data: dict
 
 
 FILES_INTRO = "Here are the files I've shared in this chat. Use them to answer my questions."
@@ -521,7 +542,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         if isinstance(user, JSONResponse):
             return user
         if chat_id == "export":
-            return {"exported": datetime.now().isoformat(), "chats": accounts.export(user.id)}
+            return {"exported": datetime.now().isoformat(), "chats": accounts.export(user.id),
+                    "projects": accounts.list_projects(user.id), "saved": accounts.list_saved(user.id)}
         chat = accounts.get_chat(user.id, chat_id)
         return chat if chat else error(404, "not_found", "That chat isn't in your account.")
 
@@ -572,6 +594,97 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             except (ValueError, TypeError):
                 continue
         return {"saved": saved}
+
+    # ---------- Projects, Saved and Customize (signed in) ----------
+    def user_or_401(request: Request):
+        return signed_in(request)
+
+    @app.get("/api/projects")
+    def list_projects(request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"projects": accounts.list_projects(user.id)}
+
+    @app.post("/api/projects")
+    def create_project(req: ProjectBody, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            return accounts.save_project(user.id, req.model_dump())
+        except ValueError as e:
+            return error(400, "project", str(e))
+
+    @app.put("/api/projects/{project_id}")
+    def update_project(project_id: str, req: ProjectBody, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            return accounts.save_project(user.id, req.model_dump(), project_id)
+        except ValueError as e:
+            return error(400, "project", str(e))
+
+    @app.delete("/api/projects/{project_id}")
+    def delete_project(project_id: str, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.delete_project(user.id, project_id)
+        return {"ok": True}
+
+    @app.put("/api/chats/{chat_id}/project")
+    def move_chat(chat_id: str, req: ChatProject, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            accounts.set_chat_project(user.id, chat_id, req.project)
+        except ValueError as e:
+            return error(400, "project", str(e))
+        return {"ok": True}
+
+    @app.get("/api/saved")
+    def list_saved(request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"saved": accounts.list_saved(user.id)}
+
+    @app.post("/api/saved")
+    def save_answer(req: SavedItem, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            return accounts.save_item(user.id, req.model_dump())
+        except ValueError as e:
+            return error(400, "saved", str(e))
+
+    @app.delete("/api/saved/{item_id}")
+    def unsave_answer(item_id: str, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.remove_saved(user.id, item_id)
+        return {"ok": True}
+
+    @app.get("/api/account/prefs")
+    def get_prefs(request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"prefs": accounts.get_prefs(user.id)}
+
+    @app.put("/api/account/prefs")
+    def put_prefs(prefs: dict, request: Request):
+        user = user_or_401(request)
+        if isinstance(user, JSONResponse):
+            return user
+        if len(json.dumps(prefs)) > 8000:
+            return error(400, "prefs", "Those settings are too long.")
+        return {"prefs": accounts.save_prefs(user.id, prefs)}
 
     # ---------- Second opinions (model jury) ----------
     @app.get("/api/jury")
@@ -628,7 +741,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         """Weather where the visitor is, for the home screen. The address is used for the lookup and not kept."""
         if not greet_limiter.allow(client_ip(request)):
             return {"ok": False}
-        return JSONResponse(weather.greeting(client_ip(request)), headers={"Cache-Control": "private, max-age=600"})
+        city = request.query_params.get("city", "")[:80]
+        return JSONResponse(weather.greeting(client_ip(request), city), headers={"Cache-Control": "private, max-age=600"})
 
     # ---------- PM Toolkit ----------
     brief_cache: dict = {}   # (date, topics) -> final payload; one morning brief per topic set per day
@@ -1065,6 +1179,11 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         except files.AttachmentError as e:
             return error(400, "attachment", str(e))
         agent = build_agent(owner, stream)
+        project = None
+        if req.project and accounts is not None:
+            user = current_user(request)
+            project = accounts.get_project(user.id, req.project) if user else None
+        agent.system += personal.prompt_block(req.prefs, project)
         agent.messages = file_turns(prepared.blocks) + clean_history(req.history, settings.max_history_turns)
         agent.attached = prepared.summary
         return agent, owner, question

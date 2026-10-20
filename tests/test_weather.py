@@ -74,3 +74,20 @@ def test_widget_and_portfolio_are_served():
     p = c.get("/portfolio")
     assert p.status_code == 200 and '<script src="/widget.js" defer></script>' in p.text and "Harsha Reddy" in p.text
     assert "x-frame-options" not in {k.lower() for k in c.get("/?embed=1").headers}   # the pop-up can frame the chat
+
+
+def test_a_chosen_city_overrides_the_ip_location():
+    from agent.weather import Weather
+    seen = []
+
+    def fetch(url):
+        seen.append(url)
+        if "geocoding" in url:
+            return {"results": [{"name": "Paris", "admin1": "Texas", "country_code": "US", "latitude": 33.6, "longitude": -95.5},
+                                {"name": "Paris", "admin1": "Île-de-France", "country_code": "FR", "latitude": 48.85, "longitude": 2.35}]}
+        return {"current": {"temperature_2m": 20, "apparent_temperature": 20, "weather_code": 0, "is_day": 1}}
+    w = Weather(fetch)
+    g = w.greeting("127.0.0.1", "Paris, France")
+    assert g["city"] == "Paris" and g["unit"] == "C" and "latitude=48.9" in seen[-1]
+    assert w.greeting("127.0.0.1", "Paris")["unit"] == "F"                 # first match without a hint
+    assert w.greeting("127.0.0.1")["city"] == "Austin"

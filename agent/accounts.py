@@ -27,6 +27,9 @@ from dataclasses import dataclass
 from typing import Any
 
 MAX_CHATS = 300
+MAX_PROJECTS = 50
+MAX_SAVED = 500
+MAX_SAVED_BYTES = 200_000
 MAX_CHAT_BYTES = 1_500_000
 SESSION_DAYS = 90
 CHALLENGE_SECONDS = 300
@@ -43,10 +46,19 @@ SCHEMA = [
     """CREATE INDEX IF NOT EXISTS credentials_user ON credentials (user_id)""",
     """CREATE TABLE IF NOT EXISTS recovery (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
        code_hash TEXT NOT NULL UNIQUE, created BIGINT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS projects (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
+       name TEXT NOT NULL, icon TEXT, instructions TEXT NOT NULL DEFAULT '', created BIGINT NOT NULL, updated BIGINT NOT NULL,
+       PRIMARY KEY (user_id, id))""",
+    """CREATE TABLE IF NOT EXISTS saved (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
+       kind TEXT NOT NULL, created BIGINT NOT NULL, chat_id TEXT, question TEXT NOT NULL, body TEXT NOT NULL,
+       PRIMARY KEY (user_id, id))""",
+    """CREATE TABLE IF NOT EXISTS prefs (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+       body TEXT NOT NULL, updated BIGINT NOT NULL)""",
 ]
 # Columns added after the first release. Each runs once; "already exists" errors are ignored.
 MIGRATIONS = [
     "ALTER TABLE credentials ADD COLUMN label TEXT",
+    "ALTER TABLE chats ADD COLUMN project TEXT",
 ]
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"   # no 0/O, 1/I/L or U, so codes are easy to read and type
 CODE_LENGTH = 20
@@ -310,37 +322,38 @@ class Accounts:
         return User(*row)
 
     def delete_user(self, user_id: str) -> None:
-        for table in ("chats", "sessions", "credentials", "recovery"):
+        for table in ("chats", "projects", "saved", "prefs", "sessions", "credentials", "recovery"):
             self.db.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
         self.db.run("DELETE FROM users WHERE id = %s", (user_id,))
 
     # ---- chats ----
     @staticmethod
-    def _summary(chat_id: str, title: str, created: int, updated: int, body: dict) -> dict:
+    def _summary(chat_id: str, title: str, created: int, updated: int, body: dict, project: str | None = None) -> dict:
         msgs = body.get("messages") or []
         answers = [m.get("data") or {} for m in msgs if m.get("role") == "assistant"]
-        return {"id": chat_id, "title": title, "created": created, "updated": updated, "wx": body.get("wx"),
+        return {"id": chat_id, "title": title, "created": created, "updated": updated, "wx": body.get("wx"), "project": project,
                 "questions": sum(1 for m in msgs if m.get("role") == "user"),
                 "last_answer": (answers[-1].get("answer", "") if answers else "")[:400],
                 "labels": [[a.get("label"), bool(a.get("grounded"))] for a in answers][-20:]}
 
     def list_chats(self, user_id: str, search: str = "") -> list[dict]:
-        rows = self.db.all("SELECT id, title, created, updated, body FROM chats WHERE user_id = %s ORDER BY updated DESC LIMIT %s",
+        rows = self.db.all("SELECT id, title, created, updated, body, project FROM chats WHERE user_id = %s ORDER BY updated DESC LIMIT %s",
                            (user_id, MAX_CHATS))
         out = []
         term = search.strip().lower()
-        for cid, title, created, updated, body in rows:
+        for cid, title, created, updated, body, project in rows:
             if term and term not in title.lower() and term not in body.lower():
                 continue
-            out.append(self._summary(cid, title, created, updated, json.loads(body)))
+            out.append(self._summary(cid, title, created, updated, json.loads(body), project))
         return out
 
     def get_chat(self, user_id: str, chat_id: str) -> dict | None:
-        row = self.db.one("SELECT id, title, created, updated, body FROM chats WHERE user_id = %s AND id = %s", (user_id, chat_id))
+        row = self.db.one("SELECT id, title, created, updated, body, project FROM chats WHERE user_id = %s AND id = %s", (user_id, chat_id))
         if not row:
             return None
         body = json.loads(row[4])
-        return {"id": row[0], "title": row[1], "created": row[2], "updated": row[3], "wx": body.get("wx"), "messages": body.get("messages", [])}
+        return {"id": row[0], "title": row[1], "created": row[2], "updated": row[3], "wx": body.get("wx"), "project": row[5],
+                "messages": body.get("messages", [])}
 
     def save_chat(self, user_id: str, chat: dict) -> dict:
         chat_id = str(chat.get("id", ""))[:40]
@@ -352,13 +365,15 @@ class Accounts:
             raise ValueError("This chat is too long to save. Start a new chat to keep going.")
         created = int(chat.get("created") or now_ms())
         updated = int(chat.get("updated") or now_ms())
-        exists = self.db.one("SELECT 1 FROM chats WHERE user_id = %s AND id = %s", (user_id, chat_id))
+        exists = self.db.one("SELECT project FROM chats WHERE user_id = %s AND id = %s", (user_id, chat_id))
+        # project None means "not sent": keep whatever the chat already had
+        project = exists[0] if exists and chat.get("project") is None else self._project_or_none(user_id, chat.get("project"))
         if exists:
-            self.db.run("UPDATE chats SET title = %s, updated = %s, body = %s WHERE user_id = %s AND id = %s",
-                        (title, updated, body, user_id, chat_id))
+            self.db.run("UPDATE chats SET title = %s, updated = %s, body = %s, project = %s WHERE user_id = %s AND id = %s",
+                        (title, updated, body, project, user_id, chat_id))
         else:
-            self.db.run("INSERT INTO chats (user_id, id, title, created, updated, body) VALUES (%s, %s, %s, %s, %s, %s)",
-                        (user_id, chat_id, title, created, updated, body))
+            self.db.run("INSERT INTO chats (user_id, id, title, created, updated, body, project) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (user_id, chat_id, title, created, updated, body, project))
             count = self.db.one("SELECT COUNT(*) FROM chats WHERE user_id = %s", (user_id,))[0]
             if count > MAX_CHATS:  # keep the newest MAX_CHATS
                 self.db.run("DELETE FROM chats WHERE user_id = %s AND id IN (SELECT id FROM chats WHERE user_id = %s "
@@ -378,6 +393,97 @@ class Accounts:
     def export(self, user_id: str) -> list[dict]:
         rows = self.db.all("SELECT id FROM chats WHERE user_id = %s ORDER BY updated DESC", (user_id,))
         return [c for c in (self.get_chat(user_id, r[0]) for r in rows) if c]
+
+    # ---- projects: folders of chats with their own instructions ----
+    def _project_or_none(self, user_id: str, project) -> str | None:
+        pid = str(project or "")[:40]
+        if not pid:
+            return None
+        return pid if self.db.one("SELECT 1 FROM projects WHERE user_id = %s AND id = %s", (user_id, pid)) else None
+
+    def list_projects(self, user_id: str) -> list[dict]:
+        rows = self.db.all("SELECT p.id, p.name, p.icon, p.instructions, p.created, p.updated, "
+                           "(SELECT COUNT(*) FROM chats c WHERE c.user_id = p.user_id AND c.project = p.id) "
+                           "FROM projects p WHERE p.user_id = %s ORDER BY p.updated DESC", (user_id,))
+        return [{"id": r[0], "name": r[1], "icon": r[2] or "📁", "instructions": r[3], "created": r[4], "updated": r[5], "chats": r[6]}
+                for r in rows]
+
+    def get_project(self, user_id: str, project_id: str) -> dict | None:
+        return next((p for p in self.list_projects(user_id) if p["id"] == project_id), None)
+
+    def save_project(self, user_id: str, data: dict, project_id: str = "") -> dict:
+        from .personal import MAX_INSTRUCTIONS
+        name = " ".join(str(data.get("name", "")).split())[:60]
+        if not name:
+            raise ValueError("Give the project a name.")
+        icon = str(data.get("icon") or "📁")[:8]
+        instructions = str(data.get("instructions") or "").strip()[:MAX_INSTRUCTIONS]
+        now = now_ms()
+        if project_id:
+            if not self._project_or_none(user_id, project_id):
+                raise ValueError("That project doesn't exist.")
+            self.db.run("UPDATE projects SET name = %s, icon = %s, instructions = %s, updated = %s WHERE user_id = %s AND id = %s",
+                        (name, icon, instructions, now, user_id, project_id))
+        else:
+            if self.db.one("SELECT COUNT(*) FROM projects WHERE user_id = %s", (user_id,))[0] >= MAX_PROJECTS:
+                raise ValueError(f"You can have up to {MAX_PROJECTS} projects. Delete one to make room.")
+            project_id = "p" + secrets.token_urlsafe(9)
+            self.db.run("INSERT INTO projects (user_id, id, name, icon, instructions, created, updated) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (user_id, project_id, name, icon, instructions, now, now))
+        return self.get_project(user_id, project_id)
+
+    def delete_project(self, user_id: str, project_id: str) -> None:
+        """Delete a project. Its chats are kept and become regular chats."""
+        self.db.run("UPDATE chats SET project = NULL WHERE user_id = %s AND project = %s", (user_id, project_id))
+        self.db.run("DELETE FROM projects WHERE user_id = %s AND id = %s", (user_id, project_id))
+
+    def set_chat_project(self, user_id: str, chat_id: str, project_id: str) -> None:
+        if project_id and not self._project_or_none(user_id, project_id):
+            raise ValueError("That project doesn't exist.")
+        self.db.run("UPDATE chats SET project = %s WHERE user_id = %s AND id = %s", (project_id or None, user_id, chat_id))
+
+    # ---- saved answers (starred answers and verified share cards) ----
+    def list_saved(self, user_id: str) -> list[dict]:
+        rows = self.db.all("SELECT id, kind, created, chat_id, question, body FROM saved WHERE user_id = %s ORDER BY created DESC", (user_id,))
+        return [{"id": r[0], "kind": r[1], "created": r[2], "chat_id": r[3], "question": r[4], "data": json.loads(r[5])} for r in rows]
+
+    def save_item(self, user_id: str, item: dict) -> dict:
+        item_id = str(item.get("id", ""))[:80]
+        kind = item.get("kind") if item.get("kind") in ("star", "card") else "star"
+        question = str(item.get("question", "")).strip()[:2000]
+        data = item.get("data") if isinstance(item.get("data"), dict) else {}
+        body = json.dumps(data, ensure_ascii=False)
+        if not item_id or not data.get("answer"):
+            raise ValueError("Nothing to save.")
+        if len(body.encode()) > MAX_SAVED_BYTES:
+            raise ValueError("This answer is too long to save.")
+        if self.db.one("SELECT 1 FROM saved WHERE user_id = %s AND id = %s", (user_id, item_id)):
+            self.db.run("UPDATE saved SET kind = %s, question = %s, body = %s WHERE user_id = %s AND id = %s",
+                        (kind, question, body, user_id, item_id))
+        else:
+            if self.db.one("SELECT COUNT(*) FROM saved WHERE user_id = %s", (user_id,))[0] >= MAX_SAVED:
+                raise ValueError(f"You can save up to {MAX_SAVED} answers. Remove some to make room.")
+            self.db.run("INSERT INTO saved (user_id, id, kind, created, chat_id, question, body) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (user_id, item_id, kind, now_ms(), str(item.get("chat_id") or "")[:40] or None, question, body))
+        return {"id": item_id, "kind": kind}
+
+    def remove_saved(self, user_id: str, item_id: str) -> None:
+        self.db.run("DELETE FROM saved WHERE user_id = %s AND id = %s", (user_id, item_id))
+
+    # ---- preferences (Customize) ----
+    def get_prefs(self, user_id: str) -> dict | None:
+        row = self.db.one("SELECT body FROM prefs WHERE user_id = %s", (user_id,))
+        return json.loads(row[0]) if row else None
+
+    def save_prefs(self, user_id: str, prefs: dict) -> dict:
+        from .personal import clean_prefs
+        clean = clean_prefs(prefs)
+        body = json.dumps(clean, ensure_ascii=False)
+        if self.db.one("SELECT 1 FROM prefs WHERE user_id = %s", (user_id,)):
+            self.db.run("UPDATE prefs SET body = %s, updated = %s WHERE user_id = %s", (body, now_ms(), user_id))
+        else:
+            self.db.run("INSERT INTO prefs (user_id, body, updated) VALUES (%s, %s, %s)", (user_id, body, now_ms()))
+        return clean
 
 
 def fix_password(url: str) -> str:

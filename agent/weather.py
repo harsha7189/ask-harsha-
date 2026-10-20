@@ -84,6 +84,31 @@ class Weather:
             return FALLBACK
         return self._cached(self._places, ip, 3600, make)
 
+    def locate_city(self, name: str) -> dict | None:
+        """A place someone typed in Customize ("Chicago", "Hyderabad"), via Open-Meteo's free geocoder."""
+        name = " ".join(name.split())[:80]
+        if not name:
+            return None
+
+        def make():
+            try:
+                d = self.fetch("https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode(
+                    {"name": name.split(",")[0], "count": 5, "language": "en", "format": "json"}))
+                results = d.get("results") or []
+                hint = name.split(",", 1)[1].strip().lower() if "," in name else ""
+                if hint:  # "Austin, TX" or "Paris, France": prefer the result whose region or country matches
+                    results = sorted(results, key=lambda r: not any(hint in str(r.get(k, "")).lower() or
+                                                                    str(r.get(k, "")).lower().startswith(hint)
+                                                                    for k in ("admin1", "country", "country_code")))
+                if results:
+                    r = results[0]
+                    return {"city": r.get("name") or name, "region": r.get("admin1") or "", "country": r.get("country_code") or "",
+                            "lat": float(r["latitude"]), "lon": float(r["longitude"]), "fallback": False}
+            except Exception:
+                pass
+            return None
+        return self._cached(self._places, "city:" + name.lower(), 86400, make)
+
     def current(self, lat: float, lon: float) -> dict | None:
         key = (round(lat, 1), round(lon, 1))
 
@@ -99,8 +124,8 @@ class Weather:
                 return None
         return self._cached(self._weather, key, 900, make)
 
-    def greeting(self, ip: str) -> dict:
-        place = self.locate(ip)
+    def greeting(self, ip: str, city: str = "") -> dict:
+        place = (self.locate_city(city) if city else None) or self.locate(ip)
         now = self.current(place["lat"], place["lon"])
         if now is None:
             return {"ok": False, "city": place["city"]}
