@@ -532,7 +532,7 @@ html.embed .modebar{display:none}
 .ep-back{font-weight:700;font-size:14.5px;padding:8px 10px;border-radius:10px;color:var(--fg)}
 .ep-back:hover{background:var(--raise)}
 .ep-title{flex:1;font-size:17px;padding-left:4px}
-.t-projects{--c:#ff5a6e}.t-saved{--c:#ffc93c}.t-tools{--c:#39d98a}.t-customize{--c:#4da3ff}
+.t-projects{--c:#ff5a6e}.t-saved{--c:#ffc93c}.t-tools{--c:#39d98a}.t-customize{--c:#4da3ff}.t-lab{--c:#c79bff}
 .ep-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 12px 12px}
 .ep-tile{position:relative;display:grid;gap:3px;justify-items:start;text-align:left;padding:12px 12px 11px;border-radius:14px;border:1px solid var(--line);
   background:radial-gradient(90% 120% at 0% 0%,color-mix(in srgb,var(--c) 22%,transparent),transparent 65%),var(--panel);overflow:hidden;transition:border-color .15s,transform .15s}
@@ -1358,12 +1358,14 @@ const SB_ICONS={
   saved:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.4l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   tools:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   customize:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M18 7h2M4 17h3M12 17h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="15.5" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9.5" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  lab:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 3.5h5M10.5 3.5v5.2L5.2 17.6A1.9 1.9 0 0 0 6.8 20.5h10.4a1.9 1.9 0 0 0 1.6-2.9l-5.3-8.9V3.5M7.6 14h8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 const SECTIONS=[
   {id:'projects',name:'Projects',sub:()=>signedIn()?`${projects.length} project${projects.length===1?'':'s'}`:'Group chats by goal'},
   {id:'saved',name:'Saved',sub:()=>signedIn()?`${savedItems.length} answer${savedItems.length===1?'':'s'}`:'Star answers to keep'},
   {id:'tools',name:'Tools',sub:()=>'PM toolkit, Assist & more'},
   {id:'customize',name:'Customize',sub:()=>prefs.name?`Answers for ${prefs.name}`:'Make it yours'},
+  {id:'lab',name:'Discovery Lab',href:'/lab',sub:()=>'Real experiments, tested claims'},
 ];
 const PM_TOOLS=[['morning','☀️','Morning brief','News on your topics, a lesson and a quiz'],['meeting','🗓️','Meeting','Summary, decisions and action items'],
   ['feedback','💬','Customer feedback','Themes, quotes and next steps'],['interview','🎙️','Customer interview','Prepare a guide or analyze a transcript'],
@@ -1440,7 +1442,7 @@ function mountSidebar(){
     const nav=el('nav','sb-nav');nav.setAttribute('aria-label','Sections');
     SECTIONS.forEach(s=>{const b=el('button','sb-item t-'+s.id);b.type='button';const ic=el('span','ic');ic.innerHTML=SB_ICONS[s.id];
       const n=s.id==='projects'&&signedIn()?projects.length:s.id==='saved'&&signedIn()?savedItems.length:'';
-      b.append(ic,el('span','nm',s.name));if(n)b.append(el('small','ct',String(n)));b.onclick=()=>go(s.id);nav.append(b)});
+      b.append(ic,el('span','nm',s.name));if(n)b.append(el('small','ct',String(n)));b.onclick=()=>{if(s.href)location.href=s.href;else go(s.id)};nav.append(b)});
     view.append(nav);
     const rec=el('section','sb-recents');view.append(rec);
     if(!me.enabled){rec.append(el('p','ep-note','Saving chats isn’t switched on for this site yet.'))}
