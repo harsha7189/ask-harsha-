@@ -44,6 +44,27 @@ header{flex:0 0 auto;padding:calc(12px + env(safe-area-inset-top,0px)) var(--gr)
 @media (max-width:420px){header{gap:10px}.mark{width:36px;height:36px;font-size:23px}}
 .hbtn:hover{color:var(--fg)}
 a.hbtn{text-decoration:none}
+.chats-btn{border:1px solid var(--line);border-radius:999px;padding:6px 11px 6px 8px;color:var(--fg);font-weight:600}
+.chats-btn:hover{border-color:var(--muted)}
+.chats-btn svg{width:17px;height:17px}
+.chats-btn.nudge{animation:nudge 1.6s ease 2}
+@keyframes nudge{30%{box-shadow:0 0 0 6px color-mix(in srgb,var(--red) 35%,transparent);border-color:var(--red)}}
+/* home: continue where you left off */
+.cont{display:grid;gap:8px;margin-top:10px}
+.cont-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.cont-h b{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.cont-h button{font-size:13px;color:var(--fg);font-weight:600;padding:4px 0}
+.cont-h button:hover{color:var(--red-hot)}
+.cont-row{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1*var(--gr)) 0 calc(-1*var(--gl));padding:2px var(--gr) 6px var(--gl);scroll-snap-type:x proximity;scroll-padding-inline:var(--gl) var(--gr)}
+.cont-row::-webkit-scrollbar{display:none}
+.cc{flex:0 0 min(230px,64vw);scroll-snap-align:start;text-align:left;display:grid;gap:6px;align-content:start;padding:12px 14px 0;border-radius:14px;background:var(--panel);border:1px solid var(--line);overflow:hidden;min-height:118px}
+.cc:hover{border-color:var(--muted)}
+.cc .cc-top{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.cc b{font-size:15px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cc span.cc-sub{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cc .cc-bar{align-self:end;height:3px;margin:4px -14px 0;background:var(--raise)}
+.cc .cc-bar i{display:block;height:100%;background:var(--red)}
+.cc.all{flex-basis:120px;place-items:center;align-content:center;text-align:center;font-weight:600;font-size:14px;background:transparent;border-style:dashed;padding-bottom:12px}
 .assist-card{display:grid;gap:2px;margin-top:6px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);border-left:3px solid var(--red);background:var(--panel);color:var(--fg);text-decoration:none}
 .assist-card b{font-size:15px}
 .assist-card span{font-size:13.5px;color:var(--muted)}
@@ -256,7 +277,8 @@ textarea.listening{border-color:var(--fg)}
 .ep-top{display:flex;align-items:center;justify-content:space-between;padding:0 12px 10px 16px}
 .ep-brand{display:flex;align-items:center;gap:10px}
 .ep-h{width:30px;height:30px;border-radius:6px;background:var(--red);display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:20px}
-.ep-brand b{font-size:15px}
+.ep-brand b{font-size:17px;display:block;line-height:1.2}
+.ep-brand small{font-size:12px;color:var(--muted)}
 .ep-x{width:40px;height:40px;border-radius:10px;font-size:22px;color:var(--muted)}
 .ep-x:hover{color:var(--fg);background:var(--raise)}
 .ep-reel{position:relative;margin:0 12px;border-radius:16px;padding:16px 16px 12px;background:radial-gradient(120% 90% at 0% 0%,color-mix(in srgb,var(--red) 38%,transparent),transparent 60%),linear-gradient(160deg,#1c0507,#0b0b0b 70%);border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));overflow:hidden;display:grid;gap:4px;min-height:208px;align-content:start}
@@ -355,7 +377,7 @@ textarea.listening{border-color:var(--fg)}
   <a class="hbtn" id="toolkit" href="/tools" aria-label="PM Toolkit" title="PM Toolkit"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></a>
   <a class="hbtn" id="assist" href="/assist" aria-label="Assist mode: speak or type and it talks for you" title="Assist mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
   <button class="hbtn" id="memory" hidden aria-label="Manage memory">Memory</button>
-  <button class="hbtn" id="recents" aria-label="Previously on Ask Harsha: your past chats" title="Previously on…"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 8.6v5l4-2.5z" fill="currentColor"/><path d="M8 20.5h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  <button class="hbtn chats-btn" id="recents" aria-label="Your chats: past conversations" title="Your chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v3.7h3.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Chats</span></button>
   <button class="hbtn" id="reset" hidden aria-label="New chat" title="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.5 4.5l2 2L13 13l-2.7.7.7-2.7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
   <button class="hbtn" id="lock" aria-label="Owner sign-in"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
 </header>
@@ -367,6 +389,7 @@ textarea.listening{border-color:var(--fg)}
       <h2 id="hello-h"></h2>
       <p id="hello-p"></p>
       <div class="chips" id="chips"></div>
+      <section class="cont" id="cont" hidden aria-label="Continue where you left off"></section>
       <p class="owner-tip" id="owner-tip" hidden>Owner tip: say "remember that …" to teach it something, or "forget …" to remove it. What you teach it is visible to visitors.</p>
     </section>
   </div>
@@ -440,6 +463,23 @@ function greet(w){
   if(passcode)chips=["Remember that …",...chips];
   chips.forEach(s=>{const b=el('button','chip',s);b.type='button';b.onclick=()=>{if(s.includes('…')){q.value=s.replace('…','');q.focus();grow()}else ask(s)};box.append(b)});
   $('#owner-tip').hidden=!passcode;
+  renderContinue();
+}
+function renderContinue(){
+  const box=$('#cont');if(!box)return;box.textContent='';
+  const recent=(typeof chats!=='undefined'?[...chats]:[]).sort((a,b)=>b.updated-a.updated).slice(0,5);
+  if(EMBED||!recent.length){box.hidden=true;return}
+  const h=el('div','cont-h');h.append(el('b',null,'Continue where you left off'));
+  const all=el('button',null,`All chats (${chats.length}) ›`);all.type='button';all.onclick=openRecents;h.append(all);
+  const row=el('div','cont-row');
+  recent.forEach(c=>{
+    const b=el('button','cc');b.type='button';
+    const top=el('div','cc-top');top.append(el('span',null,`${c.wx?c.wx.icon+' ':''}${new Date(c.updated).toLocaleDateString([],{weekday:'short'})}`),el('span',null,`${Math.ceil(c.messages.length/2)} Q`));
+    const bar=el('span','cc-bar');const fill=el('i');fill.style.width=Math.min(100,25*Math.ceil(c.messages.length/2))+'%';bar.append(fill);
+    b.append(top,el('b',null,c.title),el('span','cc-sub',highlight(c)),bar);b.onclick=()=>openChat(c.id);row.append(b);
+  });
+  const more=el('button','cc all','See all your chats ›');more.type='button';more.onclick=openRecents;row.append(more);
+  box.append(h,row);box.hidden=false;
 }
 let weatherData=null;
 async function loadWeather(){
@@ -664,6 +704,7 @@ function recordTurn(question,names,data){
   const keep={};KEEP.forEach(k=>{if(data[k]!=null)keep[k]=data[k]});
   c.messages.push({role:'user',content:question,files:names&&names.length?names:undefined},{role:'assistant',data:keep});
   c.messages=c.messages.slice(-200);c.updated=Date.now();saveChats();
+  try{if(!localStorage.getItem('askh_chats_hint')){localStorage.setItem('askh_chats_hint','1');const cb=$('#recents');cb.classList.add('nudge');toast('Saved. Your chats are under “Chats” at the top.')}}catch(e){}
 }
 function openChat(id){
   const c=chats.find(x=>x.id===id);if(!c||busy)return;
@@ -715,7 +756,7 @@ function openRecents(){
   function esc(e){if(e.key==='Escape')close()}
   document.addEventListener('keydown',esc);bg.onclick=e=>{if(e.target===bg)close()};
 
-  const top=el('div','ep-top');const brand=el('div','ep-brand');brand.append(el('span','ep-h','H'),el('b',null,'Ask Harsha'));
+  const top=el('div','ep-top');const brand=el('div','ep-brand');const bt=el('div');bt.append(el('b',null,'Your chats'),el('small',null,`${chats.length} saved on this device`));brand.append(el('span','ep-h','H'),bt);
   const x=el('button','ep-x','×');x.type='button';x.setAttribute('aria-label','Close');x.onclick=close;top.append(brand,x);dr.append(top);
 
   // the recap reel
@@ -740,13 +781,13 @@ function openRecents(){
     if(matchMedia('(prefers-reduced-motion: reduce)').matches){show(recent.length-1);finish()}
     else{step();timer=setInterval(step,2100)}
   }else{
-    reel.classList.add('empty');reel.append(el('div','ep-prev','Coming soon'),el('div','ep-show','Episode 1'),el('p','ep-note',saving.get()?'Your first episode starts when you ask something.':'Saving chats is off, so there are no episodes yet.'));
+    reel.classList.add('empty');reel.append(el('div','ep-prev','Coming soon'),el('div','ep-show','Episode 1'),el('p','ep-note',saving.get()?'Your chats will appear here after you ask something.':'Saving chats is off, so nothing is saved here.'));
   }
   dr.append(reel);
 
   const tools=el('div','ep-tools');
-  const nb=el('button','ep-new','+ New episode');nb.type='button';nb.onclick=()=>{close();newChat();q.focus()};
-  const search=el('input','ep-search');search.type='search';search.placeholder='Find an episode';search.setAttribute('aria-label','Search your chats');
+  const nb=el('button','ep-new','+ New chat');nb.type='button';nb.onclick=()=>{close();newChat();q.focus()};
+  const search=el('input','ep-search');search.type='search';search.placeholder='Search your chats';search.setAttribute('aria-label','Search your chats');
   tools.append(nb,search);dr.append(tools);
   const list=el('div','ep-list');dr.append(list);
 
@@ -755,13 +796,13 @@ function openRecents(){
   const draw=()=>{
     list.textContent='';const term=search.value.trim().toLowerCase();
     const hits=chats.filter(c=>!term||c.title.toLowerCase().includes(term)||c.messages.some(m=>(m.content||m.data&&m.data.answer||'').toLowerCase().includes(term)));
-    if(chats.length&&!hits.length){list.append(el('p','ep-note','No episodes match.'));return}
+    if(chats.length&&!hits.length){list.append(el('p','ep-note','No chats match.'));return}
     const seasons=new Map();
     hits.forEach(c=>{const w=weekStart(c.created||c.updated);if(!seasons.has(w))seasons.set(w,[]);seasons.get(w).push(c)});
     [...seasons.keys()].sort((a,b)=>b-a).forEach(w=>{
       const n=Math.round((w-weekStart(first))/(7*DAY))+1;
       const label=w===thisWeek?'This week':w===thisWeek-7*DAY?'Last week':'Week of '+new Date(w).toLocaleDateString([],{month:'short',day:'numeric'});
-      const sec=el('section','ep-season');const h=el('h4');h.append(el('b',null,`Season ${n}`),` · ${label}`);sec.append(h);
+      const sec=el('section','ep-season');const h=el('h4');h.append(el('b',null,label),` · Season ${n}`);sec.append(h);
       const eps=seasons.get(w).sort((a,b)=>(a.created||a.updated)-(b.created||b.updated));
       eps.map((c,k)=>[c,k+1]).reverse().forEach(([c,num])=>{
         const row=el('div','ep-row'+(c.id===chatId?' current':''));
@@ -795,7 +836,7 @@ function openRecents(){
 
   bg.append(dr);document.body.append(bg);x.focus();
 }
-function newChat(){stopDictation();chatId=null;history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;greet(weatherData)}
+function newChat(){stopDictation();chatId=null;history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;greet(weatherData);renderContinue()}
 const VERDICT={confirmed:{mark:'✓',cls:'ok',word:'Confirmed'},contradicted:{mark:'✕',cls:'bad',word:'Contradicted'},unverified:{mark:'!',cls:'unk',word:'Unverified'},not_checkable:{mark:'–',cls:'na',word:'Not checkable'}};
 function actionsFor(bot){
   let w=bot.querySelector('.fcwrap');

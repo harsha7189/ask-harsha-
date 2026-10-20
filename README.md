@@ -102,7 +102,12 @@ Optional attributes: `data-label`, `data-greeting` (`""` turns off the greeting 
 
 ## Chat history: "Previously on…"
 
-Every conversation is saved in the visitor's own browser (never on the server). The play-screen icon opens **Previously on…**, a drawer styled like a streaming show:
+Every conversation is saved in the visitor's own browser (never on the server), and it's easy to find:
+
+- **Continue where you left off**: the home screen shows your latest chats as cards, with "All chats" next to the heading.
+- A labeled **Chats** button (history icon) in the header opens **Your chats**, a drawer styled like a streaming show. After the first saved chat, a one-time note points to it.
+
+Inside the drawer:
 
 - **The recap.** It opens with a short reel, "Previously on Ask Harsha", flying in one line from each of your latest chats with its day and weather. Skip or replay it; tap a line to jump into that chat. With reduced motion turned on, it shows the latest line without animating.
 - **Seasons and episodes.** Chats are grouped into seasons, one per week counted from your first chat ("Season 3 · This week"), and numbered as episodes. Each shows the weather of the day it started, its first answer line, and how it was sourced: ✓ verified (cited and checked against Harsha's record), web, or file.
