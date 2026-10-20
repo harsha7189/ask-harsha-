@@ -454,6 +454,25 @@ html.embed .side,html.embed .side-bg{display:none!important}
 .sb-who small{font-size:12px}
 .side .ep-av{width:32px;height:32px;font-size:14px}
 .side .ep-top{padding:2px 8px 10px 8px}
+/* files the agent made */
+.files{display:grid;gap:8px;margin-top:10px}
+.filecard{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+.fic{width:40px;height:40px;flex:0 0 auto;border-radius:10px;display:grid;place-items:center;font-size:20px;background:var(--raise)}
+.fic.code{font:700 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--good)}
+.ftx{flex:1;min-width:0;display:grid}
+.ftx b{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ftx small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fbtns{display:flex;gap:6px;flex:0 0 auto}
+.fbtns .btn{padding:7px 12px;font-size:13px}
+@media (max-width:420px){.filecard{flex-wrap:wrap}.fbtns{width:100%;justify-content:flex-end}}
+.sheet.fileprev{width:min(900px,100%)}
+.fcode{margin:0;max-height:60vh;overflow:auto;padding:12px 14px;border-radius:12px;background:var(--bg);border:1px solid var(--line);font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;tab-size:4}
+.fframe{width:100%;height:60vh;border:1px solid var(--line);border-radius:12px;background:#fff}
+.ftable{max-height:55vh;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.ftable table{border-collapse:collapse;font-size:13px;min-width:100%}
+.ftable th,.ftable td{padding:6px 10px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;white-space:nowrap}
+.ftable th{position:sticky;top:0;background:var(--raise);font-weight:600}
+.fsheet{margin:6px 0 0;font-size:13px}
 /* memory */
 .memline{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
 .memline .mi{font-size:13px}
@@ -793,14 +812,14 @@ function renderExtras(box,data){
       if(st.query)li.append(el('span','sq',`“${st.query}”`));
       if(st.error)li.append(el('span','se',st.error));
       else if(st.found&&st.found.length){const f=el('span','sf');st.found.forEach(id=>{const b=el('button','cite'+(id.startsWith('N')?' note':''),id);b.type='button';b.onclick=()=>openSource(id);f.append(b)});li.append(f)}
-      else if(st.kind!=='web_search'&&st.kind!=='suggest_asking_harsha')li.append(el('span','sn','nothing found'));
+      else if(!['web_search','suggest_asking_harsha','create_file'].includes(st.kind))li.append(el('span','sn','nothing found'));
       ol.append(li)});
     const fin=el('li');fin.append(el('span','sk','Wrote the answer'));if(label!=='general'&&label!=='none'&&label!=='web'&&label!=='file')fin.append(el('span','sn','then the grounding check verified every citation'));ol.append(fin);
     d.append(ol);x.append(d);
   }
   box.append(x);
 }
-const STEP_LABEL={suggest_asking_harsha:'Offered to ask the real Harsha',web_search:'Searched the web',search_facts:"Searched Harsha's career facts",get_topic:"Opened a topic in Harsha's record",list_topics:"Listed the topics in Harsha's record",search_notes:"Searched Harsha's memory",remember_note:'Saved to memory',forget_note:'Removed from memory'};
+const STEP_LABEL={create_file:'Made a file',suggest_asking_harsha:'Offered to ask the real Harsha',web_search:'Searched the web',search_facts:"Searched Harsha's career facts",get_topic:"Opened a topic in Harsha's record",list_topics:"Listed the topics in Harsha's record",search_notes:"Searched Harsha's memory",remember_note:'Saved to memory',forget_note:'Removed from memory'};
 
 function sheet(build,opts){
   const sticky=!!(opts&&opts.sticky);  // sticky: only its own buttons close it (used for the recovery code)
@@ -913,18 +932,70 @@ async function readSSE(res,onEvent){
 function showFinal(bot,data,text){
   if(passcode&&!data.owner){passcode='';store.set('');setOwner(false)}  // passcode was changed on the server
   renderBot(bot,data,text,true);speakAnswer(data.answer);
-  history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer});
+  history.push({role:'user',content:text+(pendingNames.length?`\n[Attached: ${pendingNames.join(', ')}]`:'')},{role:'assistant',content:data.answer+filesNote(data.files)});
   recordTurn(text,pendingNames,data);
   if(data.summarized&&cur){   // older turns were folded into the chat's summary; keep only the recent ones word for word
     history=history.slice(data.summarized);cur.summary=data.summary;cur.summary_upto=(cur.summary_upto||0)+data.summarized;persist()}
   history=history.slice(-40);
   pendingNames=[];if(files.length){files.forEach(f=>{f.sent=true});renderTray()}
 }
+// ---------- files the agent made: a card per file, with Download and Preview ----------
+// The answer carries each file's spec; Download asks the server to build the file from it, so files never expire.
+const FILE_ICON={xlsx:'📊',csv:'📊',tsv:'📊',pdf:'📕',docx:'📘',html:'🌐',htm:'🌐',md:'📝',txt:'📝',json:'🧾',ics:'📅',svg:'🖼️'};
+const FILE_WORD={xlsx:'Excel spreadsheet',csv:'CSV',tsv:'TSV',pdf:'PDF',docx:'Word document',html:'Web page',htm:'Web page',md:'Markdown',txt:'Text',json:'JSON',py:'Python',js:'JavaScript',ts:'TypeScript',sql:'SQL',css:'CSS',sh:'Shell script',ics:'Calendar',svg:'SVG image'};
+function fileSize(n){return n<1024?`${n} B`:n<1048576?`${(n/1024).toFixed(n<10240?1:0)} KB`:`${(n/1048576).toFixed(1)} MB`}
+function filesNote(fs){   // so a follow-up like "add a column" knows what the file holds
+  if(!fs||!fs.length)return'';
+  return fs.map(f=>{const j=JSON.stringify(f.spec||{});return `\n\n[File I made: ${f.filename}]\n${j.length>6000?j.slice(0,6000)+'…(cut)':j}`}).join('');
+}
+async function fileBlob(f){
+  const res=await fetch('/api/files/build',{method:'POST',headers:headers(),body:JSON.stringify({spec:f.spec})});
+  if(!res.ok){const d=await res.json().catch(()=>({}));throw new Error(d.message||"That file couldn't be made.")}
+  return res.blob();
+}
+function renderFiles(bot,fs){
+  const box=el('div','files');
+  fs.forEach(f=>{
+    const c=el('div','filecard');const ic=el('span','fic',FILE_ICON[f.kind]||'</>');if(!FILE_ICON[f.kind])ic.classList.add('code');
+    const meta=f.sheets?f.sheets.map(s=>`${s.rows} row${s.rows===1?'':'s'} × ${s.cols} col${s.cols===1?'':'s'}`).join(' · '):`${f.lines} line${f.lines===1?'':'s'}`;
+    const t=el('div','ftx');t.append(el('b',null,f.filename),el('small',null,`${FILE_WORD[f.kind]||f.kind.toUpperCase()} · ${meta} · ${fileSize(f.size)}`));
+    const r=el('div','fbtns');
+    const dl=el('button','btn red','Download');dl.type='button';
+    dl.onclick=async()=>{dl.disabled=true;dl.textContent='Preparing…';try{download(f.filename,await fileBlob(f),null)}catch(e){toast(e.message)}finally{dl.disabled=false;dl.textContent='Download'}};
+    if(f.kind!=='docx'){const pv=el('button','btn','Preview');pv.type='button';pv.onclick=()=>previewFile(f,pv);r.append(pv)}
+    r.append(dl);c.append(ic,t,r);box.append(c);
+  });
+  bot.append(box);
+}
+async function previewFile(f,btn){
+  if(f.kind==='pdf'){   // the browser's own PDF viewer
+    btn.disabled=true;try{const u=URL.createObjectURL(await fileBlob(f));const w=window.open(u,'_blank','noopener');if(!w)location.href=u;setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(e){toast(e.message)}finally{btn.disabled=false}return}
+  sheet((s,close)=>{
+    s.classList.add('fileprev');
+    s.append(el('h3',null,f.filename));
+    const sp=f.spec||{};
+    if(sp.sheets){   // spreadsheet: a table per sheet
+      sp.sheets.forEach(sh=>{if(sp.sheets.length>1)s.append(el('h4','fsheet',sh.name));
+        const wrap=el('div','ftable');const tb=el('table');
+        sh.rows.slice(0,200).forEach((row,i)=>{const tr=el('tr');row.forEach(v=>tr.append(el(i===0?'th':'td',null,v==null?'':String(v))));tb.append(tr)});
+        wrap.append(tb);s.append(wrap);if(sh.rows.length>200)s.append(el('small',null,`Showing the first 200 of ${sh.rows.length} rows.`))});
+      s.append(el('small','ep-note','Formulas show as written (=SUM…); Excel calculates them when you open the file.'));
+    }else if(f.kind==='html'||f.kind==='htm'||f.kind==='svg'){   // sandboxed: its scripts can't reach this page
+      const fr=el('iframe','fframe');fr.setAttribute('sandbox','allow-scripts allow-forms allow-popups');fr.setAttribute('referrerpolicy','no-referrer');fr.title='Preview of '+f.filename;fr.srcdoc=sp.content||'';s.append(fr);
+    }else{
+      const pre=el('pre','fcode');pre.textContent=sp.content||'';s.append(pre);
+    }
+    const r=el('div','row'),cp=el('button','btn','Copy'),dl=el('button','btn red','Download'),cl=el('button','btn','Close');[cp,dl,cl].forEach(b=>b.type='button');
+    cp.onclick=async()=>{try{await navigator.clipboard.writeText(sp.content!=null?sp.content:(sp.sheets||[]).map(sh=>sh.rows.map(r=>r.join('\t')).join('\n')).join('\n\n'));cp.textContent='Copied ✓'}catch(e){toast('Copy didn’t work here.')}};
+    dl.onclick=async()=>{dl.disabled=true;try{download(f.filename,await fileBlob(f),null)}catch(e){toast(e.message)}finally{dl.disabled=false}};
+    cl.onclick=close;r.append(cp,cl,dl);s.append(r);
+  });
+}
 function renderBot(bot,data,text,live){
   Object.entries(data.sources||{}).forEach(([id,v])=>{cache[id]=v});
   (data.citations||[]).forEach(c=>{cache[c.id]={text:c.text,kind:c.kind}});
   (data.memory_changes||[]).forEach(c=>{if(c.action==='added')cache[c.id]={text:c.text,kind:'note'}});
-  bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);renderExtras(bot,data);
+  bot.textContent='';const body=el('div','body');bot.append(body);renderAnswer(body,data.answer);if(data.files&&data.files.length)renderFiles(bot,data.files);renderExtras(bot,data);
   if(data.label!=='none'&&data.label!=='file'&&data.answer)addFactCheck(bot,data.answer);
   addStar(bot,text,data);
   if(juryOn&&['general','web'].includes(data.label)&&data.answer)addJury(bot,text,data.answer);
@@ -938,7 +1009,7 @@ function renderBot(bot,data,text,live){
 // and shown under "Chats". The current chat is always kept in memory, so signing in mid-chat saves it too.
 let me={enabled:false,user:null},summaries=[],chatId=null,cur=null;
 const LEGACY=(()=>{try{const d=JSON.parse(localStorage.getItem('askh_chats')||'{}');return Array.isArray(d.chats)?d.chats:[]}catch(e){return[]}})();  // chats saved on this device before accounts existed
-const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature','timing'];
+const KEEP=['answer','label','grounded','check','citations','web_sources','sources','trace','kind','receipt','signature','timing','files'];
 const signedIn=()=>!!(me&&me.user);
 async function api(method,url,body){
   const res=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
@@ -988,7 +1059,7 @@ async function openChat(id){
   for(const m of c.messages){
     if(m.role==='user'){lastQ=m.content;const ub=bubble('user');if(m.files&&m.files.length){hadFiles=true;const fl=el('div','ufiles');m.files.forEach(n=>fl.append(el('span','ficon',n)));ub.append(fl,el('div','utext',m.content))}else ub.textContent=m.content;
       history.push({role:'user',content:m.content+(m.files&&m.files.length?`\n[Attached: ${m.files.join(', ')}]`:'')})}
-    else{const bot=bubble('bot');renderBot(bot,m.data||{},lastQ,false);history.push({role:'assistant',content:(m.data||{}).answer||''})}
+    else{const bot=bubble('bot');renderBot(bot,m.data||{},lastQ,false);history.push({role:'assistant',content:((m.data||{}).answer||'')+filesNote((m.data||{}).files)})}
   }
   history=history.slice(c.summary_upto||0).slice(-40);   // the chat's summary stands in for anything older
   if(hadFiles)toast("Files from this chat aren't kept. Attach them again to ask more about them.");
@@ -997,7 +1068,7 @@ async function openChat(id){
 function chatMarkdown(c){
   return `# ${c.title}\n\n`+c.messages.map(m=>m.role==='user'?`**You:** ${m.content}${m.files?` _(attached: ${m.files.join(', ')})_`:''}`:`**Ask Harsha:** ${(m.data||{}).answer||''}`).join('\n\n')+'\n';
 }
-function download(name,text,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=el('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}
+function download(name,text,type){const b=text instanceof Blob?text:new Blob([text],{type});const u=URL.createObjectURL(b);const a=el('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}
 async function loadSummaries(){if(!signedIn()){summaries=[];return}try{summaries=(await api('GET','/api/chats')).chats||[]}catch(e){summaries=[]}}
 
 // ---------- passkeys ----------

@@ -120,6 +120,8 @@ class Agent:
                     block = _get(ev, "content_block")
                     if _get(block, "type") == "server_tool_use" and _get(block, "name") == "web_search":
                         self.on_event("web_search_start", {})
+                    elif _get(block, "type") == "tool_use":
+                        self.on_event("tool_start", {"name": _get(block, "name")})   # e.g. "Writing your file" while it's written
             return s.get_final_message()
 
     def ask(self, question: str) -> Reply:
@@ -209,7 +211,7 @@ class Agent:
                 reply.tool_calls.append({"name": name, "input": args, "is_error": is_error})
                 reply.steps_log.append({
                     "kind": name,
-                    "query": str(args.get("query") or args.get("topic") or args.get("text") or args.get("id") or "")[:200] if isinstance(args, dict) else "",
+                    "query": str(args.get("query") or args.get("topic") or args.get("text") or args.get("id") or args.get("filename") or "")[:200] if isinstance(args, dict) else "",
                     "found": sorted(self.tools.retrieved - before),
                     "error": output[:200] if is_error else None,
                 })

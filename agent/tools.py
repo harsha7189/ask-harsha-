@@ -35,6 +35,8 @@ class ToolRegistry:
         self.changes: list[dict] = []
         # Set by suggest_asking_harsha when the model offers to hand the question to Harsha.
         self.offer: dict | None = None
+        # Files made by create_file during the current turn: [{filename, kind, size, ..., spec}]
+        self.files: list[dict] = []
         self._tools: dict[str, Tool] = {}
         for tool in self._build():
             self._tools[tool.name] = tool
@@ -127,6 +129,7 @@ class ToolRegistry:
         self.retrieved.clear()
         self.changes.clear()
         self.offer = None
+        self.files = []
 
 
 def add_notes_tools(registry: ToolRegistry, index, store, owner: bool) -> None:
@@ -186,6 +189,28 @@ def add_notes_tools(registry: ToolRegistry, index, store, owner: bool) -> None:
         input_schema={"type": "object", "properties": {"id": {"type": "string", "description": "Note ID like N003."}}, "required": ["id"]},
         run=forget,
     ))
+
+
+def add_file_tool(registry: ToolRegistry, max_files: int = 5) -> None:
+    """Let the model make downloadable files (Excel, CSV, PDF, Word, HTML, code). See agent/makefiles.py."""
+    from . import makefiles
+
+    def make(args: dict) -> dict:
+        if len(registry.files) >= max_files:
+            raise ToolError(f"That's {max_files} files in one answer, the most allowed. Finish the answer.")
+        try:
+            spec = makefiles.check(args)
+            built = makefiles.build(spec)
+        except makefiles.FileError as e:
+            raise ToolError(str(e)) from e
+        info = makefiles.summary(spec, built)
+        registry.files.append({**info, "spec": spec})
+        return {"ok": True, "file": info,
+                "note": "The person now sees a card with Download (and Preview where it fits). In your reply, say in a sentence "
+                        "or two what's in the file and how to use it. Don't paste the file's contents."}
+
+    t = makefiles.TOOL_SPEC
+    registry.add(Tool(name=t["name"], description=t["description"], input_schema=t["input_schema"], run=make))
 
 
 def add_ask_harsha_tool(registry: ToolRegistry) -> None:

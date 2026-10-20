@@ -48,7 +48,8 @@ from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
 from agent.notes import FileNotesStore, GitHubNotesStore, NotesIndex, NotesStore, NotesUnavailable  # noqa: E402
 from agent.prompts import build_general_prompt  # noqa: E402
-from agent.tools import add_ask_harsha_tool, add_notes_tools  # noqa: E402
+from agent.tools import add_ask_harsha_tool, add_file_tool, add_notes_tools  # noqa: E402
+from agent import makefiles  # noqa: E402
 from cli import load_dotenv  # noqa: E402
 from server.guard import DailyBudget, RateLimiter  # noqa: E402
 
@@ -221,6 +222,10 @@ class MemoryEdit(BaseModel):
 
 class ChatProject(BaseModel):
     project: str = Field(default="", max_length=40)
+
+
+class FileBuild(BaseModel):
+    spec: dict
 
 
 class RemoteCommand(BaseModel):
@@ -733,6 +738,28 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         if len(json.dumps(prefs)) > 8000:
             return error(400, "prefs", "Those settings are too long.")
         return {"prefs": accounts.save_prefs(user.id, prefs)}
+
+    # ---------- Files the agent made ----------
+    files_limiter = RateLimiter(60, 600)
+
+    @app.post("/api/files/build")
+    def build_file(req: FileBuild, request: Request):
+        """Turn a file spec (from an answer) into the file. Nothing is stored; the spec travels with the chat."""
+        if owner_status(request) != "owner" and not files_limiter.allow(client_ip(request)):
+            return error(429, "rate_limited", "That's a lot of downloads at once. Try again in a few minutes.")
+        if len(json.dumps(req.spec)) > 1_200_000:
+            return error(400, "file", "That file is too large.")
+        try:
+            built = makefiles.build(req.spec)
+        except makefiles.FileError as e:
+            return error(400, "file", str(e))
+        except Exception as e:
+            log.error(json.dumps({"event": "file_error", "type": type(e).__name__, "detail": str(e)[:200]}))
+            return error(500, "file", "That file couldn't be made. Ask the agent to try again.")
+        from urllib.parse import quote
+        return Response(built.data, media_type=built.mime, headers={
+            "Content-Disposition": f"attachment; filename=\"{built.filename}\"; filename*=UTF-8''{quote(built.filename)}",
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     # ---------- Talk to the sidebar ----------
     remote_limiter = RateLimiter(40, 600)
@@ -1282,7 +1309,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     def build_agent(owner: bool, stream: bool = False, channel: str = "web") -> Agent:
         today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
         agent = Agent(
-            get_client(), kb=kb, model=settings.model, max_steps=8, max_tokens=1600,
+            get_client(), kb=kb, model=settings.model, max_steps=8, max_tokens=8000 if channel == "web" else 1600,
             system=build_general_prompt(today, owner=owner, web=settings.web_search) + (MCP_NOTE if channel == "mcp" else ""),
             server_tools=[WEB_SEARCH_TOOL] if settings.web_search else [],
             lookup=_Lookup(kb, store), strict_grounding=False, stream=stream,
@@ -1290,6 +1317,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         add_notes_tools(agent.tools, index, store, owner=owner)
         if inbox.enabled and channel == "web":  # the "Ask the real Harsha" pop-up only exists in the app
             add_ask_harsha_tool(agent.tools)
+        if channel == "web":   # files need the app's Download button
+            add_file_tool(agent.tools)
         return agent
 
     def finish(agent: Agent, reply, owner: bool, question: str, event: str = "answer") -> dict:
@@ -1322,6 +1351,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "web_sources": reply.web_sources[:8],
             "memory_changes": reply.memory_changes,
             "ask_harsha": agent.tools.offer,
+            "files": agent.tools.files,
             "owner": owner,
             "retrieved": sorted(agent.tools.retrieved),
             "sources": {i: {"text": lookup[i].text, "kind": "note" if i.startswith("N") else "fact"} for i in agent.tools.retrieved if i in lookup},
@@ -1393,6 +1423,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         "remember_note": "Saving to memory",
         "forget_note": "Removing from memory",
         "suggest_asking_harsha": "Flagging this for Harsha",
+        "create_file": "Making your file",
     }
 
     def sse(kind: str, data: dict) -> str:
@@ -1443,6 +1474,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                 q.put(("status", {"label": "Searching the web"}))
             elif kind == "tool_call":
                 q.put(("status", {"label": STATUS.get(data["name"], "Working")}))
+            elif kind == "tool_start" and data.get("name") == "create_file":
+                q.put(("status", {"label": "Writing your file"}))
 
         agent.on_event = on_event
 
