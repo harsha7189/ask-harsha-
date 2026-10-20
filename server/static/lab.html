@@ -120,6 +120,32 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
 .sig.ok{color:var(--good)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;max-width:min(520px,calc(100vw - 32px));z-index:30}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+/* Solve mode */
+textarea.mono{font-family:var(--f-mono);font-size:13px;min-height:90px}
+.card>*,details>*{min-width:0;max-width:100%}
+.tabs{display:flex;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:4px;justify-self:start}
+.tabs button{padding:7px 16px;border-radius:999px;font-size:14px;font-weight:600;color:var(--muted)}
+.tabs button.on{background:var(--raise);color:var(--fg)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{padding:7px 12px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:var(--bg)}
+.seg button.on{border-color:var(--fg);background:var(--raise)}
+.seal{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted)}
+.seal code{font-family:var(--f-mono);font-size:12px;color:var(--fg);word-break:break-all}
+.lbwrap{overflow-x:auto}
+table.lb{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+table.lb th{text-align:left;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 6px;font-weight:700}
+table.lb td{padding:7px 6px;border-top:1px solid var(--line)}
+table.lb tr.win td{color:var(--good);font-weight:700}
+table.lb td.bad{color:var(--bad)}
+.journal{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.journal li{padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:13.5px}
+.journal li b{font-family:var(--f-mono);font-size:12.5px}
+.journal li small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.journal li.won{border-color:color-mix(in srgb,var(--good) 50%,var(--line))}
+.journal li.failed{border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}
+.result{font-size:17px;font-weight:700;margin:0}
+.result.verified{color:var(--good)}.result.failed_hidden,.result.no_solution{color:var(--warn)}
+pre.code{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:var(--f-mono);font-size:12.5px;overflow-x:auto;max-height:360px}
 </style>
 </head>
 <body>
@@ -133,6 +159,20 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
     <p class="lead">Ask a question you'd like investigated. The lab states testable hypotheses, writes and runs Python in a sealed sandbox, then tries hard to break its own results. Every label comes from code that actually ran.</p>
     <div class="legend"><span class="pill l-proven">Proven</span><span class="pill l-evidence">Experimental evidence</span><span class="pill l-hypothesis">Hypothesis</span><span class="pill l-disproven">Disproven</span></div>
     <p class="fine"><b>Proven</b>: an exact symbolic identity, or every case checked. <b>Experimental evidence</b>: holds on the cases tested, not proven for all. <b>Hypothesis</b>: untested or the evidence conflicts. <b>Disproven</b>: code found a counterexample.</p>
+  </section>
+  <div class="tabs" role="tablist"><button type="button" id="tab-inv" class="on" role="tab">Investigate</button><button type="button" id="tab-solve" role="tab">Solve</button></div>
+  <section class="card ask" id="solvecard" hidden>
+    <h2>Solve a problem</h2>
+    <p class="fine">Give it a problem where “better” can be measured by code: faster, more correct, beats a baseline. It frames the goal, seals hidden tests it never shows the solver, tries several approaches, learns from what fails, and checks the winner on the sealed tests.</p>
+    <textarea id="sp" maxlength="6000" placeholder="e.g. Write the fastest Python function to merge overlapping intervals. It must be correct for empty input, duplicates and negative numbers." aria-label="The problem"></textarea>
+    <div class="chips" id="sexamples"></div>
+    <details><summary>Add starting code or your own tests (optional)</summary>
+      <textarea id="scode" class="mono" placeholder="Your current code: the baseline to beat" style="margin-top:8px"></textarea>
+      <textarea id="stests" class="mono" placeholder="Your tests: they must pass" style="margin-top:8px"></textarea>
+    </details>
+    <div class="seg" id="sbudget"><button type="button" data-b="quick">Quick · 2 rounds</button><button type="button" data-b="standard" class="on">Standard · 3 rounds</button><button type="button" data-b="thorough">Thorough · 4 rounds</button></div>
+    <div class="row"><button class="btn red" id="sgo" type="button">Solve</button><span class="fine" id="squota"></span></div>
+    <p class="fine">Takes 5 to 20 minutes and uses one of today’s lab runs. Code goes to Anthropic’s sandbox (kept up to 30 days); don’t paste anything private.</p>
   </section>
   <section class="card ask" id="askcard">
     <h2>Investigate</h2>
@@ -152,6 +192,9 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
   <section class="card" id="notebook" hidden></section>
   <section class="card" id="challenge" hidden></section>
   <section class="card" id="reportcard" hidden></section>
+  <section class="card" id="sealcard" hidden></section>
+  <section class="card" id="lbcard" hidden></section>
+  <section class="card" id="solvereport" hidden></section>
   <section class="card" id="histcard" hidden></section>
 </main>
 <script>
@@ -177,6 +220,7 @@ async function loadStatus(){
   if(!status.allowed){gate.hidden=false;gate.textContent=status.accounts?'Sign in on the chat page first (Menu → Sign in). Each investigation runs real code, so the lab is for accounts.':"The lab needs accounts, which aren't set up on this server.";go.disabled=true}
   else{gate.hidden=true;go.disabled=false}
   $('#quota').textContent=status.owner?'Owner: no daily limit':status.signed_in?`${Math.max(0,status.daily-status.used_today)} of ${status.daily} left today`:'';
+  $('#squota').textContent=$('#quota').textContent;$('#sgo').disabled=!status.allowed;
   $('#histbtn').hidden=!status.signed_in;
 }
 async function readSSE(res,onEvent){
@@ -191,7 +235,7 @@ const STAGES=[['discover','Discover','what to test'],['experiment','Experiment',
 function drawSteps(active,done){const s=$('#steps');s.textContent='';STAGES.forEach(([id,name,sub],i)=>{const d=el('div','step'+(id===active?' on':'')+(done.includes(id)?' done':''));d.append(el('b',null,name),el('span',null,sub));s.append(d)})}
 let clockT=null,t0=0;
 function startClock(){t0=Date.now();clearInterval(clockT);clockT=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);$('#clock').textContent=`· ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`},1000)}
-function resetView(){['plancard','board','charts','notebook','challenge','reportcard'].forEach(id=>{const e=$('#'+id);e.hidden=true;e.textContent=''})}
+function resetView(){['plancard','board','charts','notebook','challenge','reportcard','sealcard','lbcard','solvereport'].forEach(id=>{const e=$('#'+id);e.hidden=true;e.textContent=''})}
 async function investigate(){
   const question=$('#q').value.trim();if(question.length<3){toast('Type a question first.');return}
   const go=$('#go');go.disabled=true;resetView();current={runs:[],charts:[]};
@@ -308,11 +352,85 @@ $('#histbtn').onclick=async()=>{
   if(!runs.length){list.append(el('p','fine','Nothing yet. Your investigations are saved here.'));return}
   runs.forEach(r=>{const b=el('button','hist');b.type='button';const t=el('span','t');t.append(el('b',null,r.title),el('small',null,new Date(r.created).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+(r.continues?' · continued':'')));
     const dots=el('span','dots');(r.labels||[]).forEach(l=>{const i=el('i',l);i.title=LABEL[l]||l;dots.append(i)});b.append(t,dots);
+    if(r.mode==='solve'){dots.textContent='';dots.append(el('span','pill',{verified:'Solved',failed_hidden:'Sealed tests failed',no_solution:'No solution',unmeasurable:'Not measurable'}[r.status]||'Solve'))}
     b.onclick=async()=>{try{const d=await api('GET','/api/lab/runs/'+encodeURIComponent(r.id));resetView();$('#progress').hidden=true;c.hidden=true;
-      current=d;d.runs.forEach(drawRun);d.charts.forEach(drawChart);showFinal(d,[]);$('#progress').hidden=true;window.scrollTo({top:0,behavior:'smooth'})}catch(e){toast(e.message)}};
+      current=d;d.runs.forEach(drawRun);if(d.mode==='solve'){setMode('solve');showSolve(d)}else{setMode('inv');d.charts.forEach(drawChart);showFinal(d,[])}$('#progress').hidden=true;window.scrollTo({top:0,behavior:'smooth'})}catch(e){toast(e.message)}};
     list.append(b)});
 };
 const pre=new URLSearchParams(location.search).get('q');if(pre)$('#q').value=pre;
+// ---------- Solve mode ----------
+function setMode(m){$('#tab-inv').classList.toggle('on',m==='inv');$('#tab-solve').classList.toggle('on',m==='solve');$('#askcard').hidden=m!=='inv';$('#solvecard').hidden=m!=='solve';$('#intro').hidden=m!=='inv'}
+$('#tab-inv').onclick=()=>setMode('inv');$('#tab-solve').onclick=()=>setMode('solve');
+let sbudget='standard';$('#sbudget').querySelectorAll('button').forEach(b=>b.onclick=()=>{sbudget=b.dataset.b;$('#sbudget').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))});
+['Write the fastest Python function to merge overlapping intervals; it must handle empty input, duplicates and negatives.',
+ 'Find a faster way to count primes below n than a basic sieve, for n up to 10 million.',
+ 'Write a function that returns the longest palindromic substring, faster than the O(n²) expand-around-center approach on 20,000-character strings.'].forEach(t=>{const b=el('button','chip',t);b.type='button';b.onclick=()=>{$('#sp').value=t;$('#sp').focus()};$('#sexamples').append(b)});
+const SSTAGES=[['frame','Frame','is it measurable?'],['seal','Seal','hidden tests'],['round','Rounds','try, measure, learn'],['verify','Verify','sealed tests']];
+function drawSSteps(active,done){const s=$('#steps');s.textContent='';SSTAGES.forEach(([id,name,sub])=>{const d=el('div','step'+(id===active?' on':'')+(done.includes(id)?' done':''));d.append(el('b',null,name),el('span',null,sub));s.append(d)})}
+async function solveRun(){
+  const problem=$('#sp').value.trim();if(problem.length<10){toast('Describe the problem first.');return}
+  const go=$('#sgo');go.disabled=true;resetView();current={runs:[]};
+  $('#progress').hidden=false;$('#live').hidden=false;$('#live .spin').hidden=false;drawSSteps('frame',[]);$('#livetext').textContent='Starting…';startClock();
+  const done=[];let finished=false;
+  try{
+    const res=await fetch('/api/lab/solve',{method:'POST',headers:headers(),credentials:'same-origin',body:JSON.stringify({problem,starting_code:$('#scode').value,tests:$('#stests').value,budget:sbudget})});
+    if(!res.ok||!(res.headers.get('content-type')||'').includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||"Couldn't start.")}
+    await readSSE(res,(k,d)=>{
+      if(k==='stage'){const i=SSTAGES.findIndex(s=>s[0]===d.stage);SSTAGES.slice(0,i).forEach(s=>{if(!done.includes(s[0]))done.push(s[0])});drawSSteps(d.stage,done);$('#livetext').textContent=d.label}
+      else if(k==='status')$('#livetext').textContent=d.label+'…';
+      else if(k==='lessons')drawLessons(d.lessons);
+      else if(k==='frame')drawFrame(d);
+      else if(k==='sealed')drawSeal(d);
+      else if(k==='run'){current.runs.push(d);drawRun(d)}
+      else if(k==='round')drawBoardSolve(d.leaderboard,d.journal,current.frame,`After round ${d.round}`);
+      else if(k==='final'){finished=true;current=d;SSTAGES.forEach(s=>{if(!done.includes(s[0]))done.push(s[0])});drawSSteps('',done);$('#live').hidden=true;showSolve(d)}
+      else if(k==='error')throw new Error(d.message);
+    });
+    if(!finished)throw new Error('The connection dropped before the run finished.');
+  }catch(e){$('#livetext').textContent=e.message;$('#live .spin').hidden=true;toast(e.message)}
+  finally{clearInterval(clockT);go.disabled=false;loadStatus()}
+}
+$('#sgo').onclick=solveRun;
+function drawLessons(ls){const c=$('#plancard');c.hidden=false;const d=el('details');d.append(el('summary',null,`Using ${ls.length} lesson${ls.length===1?'':'s'} from your earlier experiments`));const ul=el('ul','journal');
+  ls.forEach(l=>{const li=el('li',l.outcome);li.append(el('b',null,l.approach),` (${l.outcome}): ${l.lesson}`);ul.append(li)});d.append(ul);c.append(d)}
+function drawFrame(f){
+  current.frame=f;const c=$('#plancard');c.hidden=false;
+  c.prepend(el('h2',null,'The goal'),el('p','summary',f.problem||''));
+  if(f.measurable===false){c.append(el('p','warnline',f.why_not||'This can’t be measured by code.'));return}
+  const m=f.metric;c.append(el('p','fine',`Correct on every test, then ${m.direction==='min'?'lowest':'highest'} ${m.name}${m.unit?` (${m.unit})`:''}: ${m.how}`),el('p','fine','Every approach defines: '+f.entry));
+  const ul=el('ul','journal');f.approaches.forEach(a=>{const li=el('li');li.append(el('b',null,a.name),': '+a.idea);ul.append(li)});c.append(el('b',null,'Approaches to try'),ul);
+}
+function drawSeal(x){const c=$('#sealcard');c.hidden=false;c.textContent='';c.append(el('h2',null,'Sealed hidden tests'));
+  const r=el('div','seal');r.append(el('span',null,'🔒'));const t=el('div');t.append('Written by a separate step and never shown to the solver. Fingerprint, fixed before solving began: ',el('code',null,x.sha256));r.append(t);c.append(r)}
+function drawBoardSolve(board,journal,frame,title){
+  const c=$('#lbcard');c.hidden=false;c.textContent='';c.append(el('h2',null,title));
+  const m=(frame&&frame.metric)||{name:'score',unit:''};const w=el('div','lbwrap'),tb=el('table','lb');const hd=el('tr');['Approach','Round','Tests',m.name+(m.unit?` (${m.unit})`:'')].forEach(h=>hd.append(el('th',null,h)));tb.append(hd);
+  board.forEach((b,i)=>{const tr=el('tr',i===0&&b.correct?'win':'');tr.append(el('td',null,b.approach),el('td',null,String(b.round)),el('td',b.correct?'':'bad',`${b.passed}/${b.total}`),el('td',null,b.metric==null?'–':String(+b.metric.toPrecision(4))));tb.append(tr)});
+  w.append(tb);c.append(w,el('p','fine','Scores come only from benchmark output that actually ran in the sandbox.'));
+  if(journal&&journal.length){const d=el('details');d.open=true;d.append(el('summary',null,`Experiment journal (${journal.length})`));const ul=el('ul','journal');
+    journal.slice().reverse().forEach(e=>{const li=el('li',e.correct?'':'failed');li.append(el('b',null,`R${e.round} ${e.approach}`),` ${e.result}`);if(e.lesson&&e.lesson!=='No lesson recorded.')li.append(el('small',null,'Lesson: '+e.lesson));ul.append(li)});d.append(ul);c.append(d)}
+}
+function showSolve(d){
+  current=d;if(!$('#plancard').childNodes.length&&d.frame)drawFrame(d.frame);
+  const rc=$('#solvereport');rc.textContent='';rc.hidden=false;
+  if(!d.measurable){rc.append(el('h2',null,'Not a fit for Solve mode'),el('p','summary',d.frame.why_not||'This can’t be measured by code.'));const b=el('button','btn','Investigate it instead');b.type='button';b.onclick=()=>{setMode('inv');$('#q').value=d.problem;window.scrollTo({top:0,behavior:'smooth'})};rc.append(b);return}
+  if(d.seal)drawSeal(d.seal);drawBoardSolve(d.leaderboard,d.journal,d.frame,'Leaderboard');
+  rc.append(el('h2',null,'Result'),el('p','result '+d.status,{verified:'✓ Verified solution',failed_hidden:'Passed its own tests, failed the sealed ones',no_solution:'No correct solution found'}[d.status]||d.status));
+  const w=d.winner,m=d.frame.metric;
+  if(w){rc.append(el('p','summary',`${w.approach}: ${m.name} ${+w.metric.toPrecision(4)}${m.unit?' '+m.unit:''}, passed ${w.hidden.passed}/${w.hidden.total} sealed tests in a fresh sandbox.`));const pre=el('pre','code');pre.textContent=w.source||'';rc.append(pre)}
+  (d.finalists||[]).filter(f=>f!==w&&(!w||f.approach!==w.approach)).forEach(f=>rc.append(el('p','fine',`${f.approach}: `+(f.hidden?`${f.hidden.passed}/${f.hidden.total} sealed tests`+(f.hidden.failures.length?` (e.g. ${f.hidden.failures[0]})`:''):f.note||'not verified'))));
+  rc.append(el('p','fine',[d.stop_reason,`${d.runs.length} sandbox actions`,d.seconds?(d.seconds<90?`${Math.round(d.seconds)}s`:`${Math.round(d.seconds/60)} min`):'',d.lessons_saved?`${d.lessons_saved} lessons saved for next time`:''].filter(Boolean).join(' · ')));
+  if(d.hidden_tests){const det=el('details');det.append(el('summary',null,'Reveal the sealed tests'));const pre=el('pre','code');pre.textContent=d.hidden_tests;const chk=el('button','btn','Check the fingerprint');chk.type='button';const out=el('p','sig');
+    chk.onclick=async()=>{try{const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(d.hidden_tests));const hex=[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');const ok=hex===d.seal.sha256;out.textContent=ok?'✓ Same fingerprint as before solving began: these are the tests that were sealed.':'✕ The fingerprint doesn’t match.';out.classList.toggle('ok',ok)}catch(e){out.textContent='Your browser couldn’t compute it here.'}};
+    det.append(pre,chk,out);rc.append(det)}
+  const r=el('div','row');const pdf=el('button','btn red','Report (PDF)'),md=el('button','btn','Report (.md)'),py=el('button','btn','Code + tests (.py)'),sigb=el('button','btn','Check signature');[pdf,md,py,sigb].forEach(b=>b.type='button');
+  const slug=(d.title||'solve').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40).replace(/^-|-$/g,'')||'solve';
+  pdf.onclick=()=>buildFile({filename:`${slug}.pdf`,title:d.title,content:d.report_md});md.onclick=()=>buildFile({filename:`${slug}.md`,content:d.report_md});
+  py.onclick=()=>buildFile({filename:'solve-check.py',content:d.script||'# no solution'});py.disabled=!w;
+  const sig=el('p','sig','');sigb.hidden=!d.signature;sigb.onclick=async()=>{try{const x=await api('POST','/api/proof/verify',{receipt:d.receipt,signature:d.signature});sig.textContent=(x.valid?'✓ Signature valid. ':'✕ ')+(x.valid?d.receipt.scope:x.meaning);sig.classList.toggle('ok',x.valid)}catch(e){toast(e.message)}};
+  r.append(pdf,md,py,sigb);rc.append(r,sig);
+}
+if(new URLSearchParams(location.search).get('mode')==='solve')setMode('solve');
 loadStatus();
 })();
 </script>

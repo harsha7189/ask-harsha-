@@ -43,7 +43,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, interview as iv, lab, memory, personal, proof, remote, telemetry as tele  # noqa: E402
+from agent import accounts as acct, interview as iv, lab, memory, personal, proof, remote, solve as solver, telemetry as tele  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -264,6 +264,13 @@ class ChatProject(BaseModel):
 class LabRequest(BaseModel):
     question: str = Field(min_length=3, max_length=3000)
     continue_id: str = Field(default="", max_length=40)   # continue an earlier investigation (and its sandbox)
+
+
+class SolveRequest(BaseModel):
+    problem: str = Field(min_length=10, max_length=6000)
+    starting_code: str = Field(default="", max_length=40_000)
+    tests: str = Field(default="", max_length=40_000)
+    budget: Literal["quick", "standard", "thorough"] = "standard"
 
 
 class LabReproduce(BaseModel):
@@ -1036,6 +1043,81 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
         return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
 
+    @app.post("/api/lab/solve")
+    def lab_solve(req: SolveRequest, request: Request):
+        """Solve mode: competing approaches scored by code over rounds, a failure journal, sealed hidden tests."""
+        user, owner, denied = lab_access(request)
+        if denied:
+            return denied
+        if user and not owner and accounts.labs_since(user.id, day_start_ms()) >= LAB_DAILY:
+            return error(429, "lab_quota", f"You've used today's {LAB_DAILY} lab runs. More tomorrow.")
+        lessons = solver.relevant(accounts.lessons(user.id), req.problem) if user else []
+        q: queue.Queue = queue.Queue()
+        today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+        run_id = "S" + secrets.token_urlsafe(8)
+
+        def work():
+            started = time.monotonic()
+            if lessons:
+                q.put(("lessons", {"lessons": lessons}))
+            try:
+                rec = solver.solve(get_client(), settings.model, settings.assist_model, today, req.problem.strip(), lambda k, d: q.put((k, d)),
+                                   budget=req.budget, starting_code=req.starting_code, tests=req.tests, lessons=lessons)
+            except lab.LabError as e:
+                q.put(("error", {"message": str(e)}))
+                return
+            except Exception as e:
+                upstream_failed(e)
+                q.put(("error", {"message": "The run stopped unexpectedly. Please try again in a minute."}))
+                return
+            u = rec["usage"]
+            cost = budget.add(u["input_tokens"], u["output_tokens"])
+            rec.update({"id": run_id, "created": int(time.time() * 1000), "seconds": round(time.monotonic() - started, 1),
+                        "title": (rec["frame"].get("problem") or req.problem)[:120], "cost_usd": round(cost, 4)})
+            if not rec["measurable"]:
+                rec["status"] = "unmeasurable"
+            rec["report_md"] = solver.report_markdown(rec)
+            rec["script"] = solver.script(rec) if rec["measurable"] else ""
+            if signer is not None and rec["measurable"]:
+                w = rec.get("winner") or {}
+                r = {"v": 1, "type": "solve", "id": run_id, "issued": proof.now_iso(), "key": signer.fingerprint, "model": settings.model,
+                     "problem": rec["frame"]["problem"][:600], "metric": rec["frame"]["metric"], "status": rec["status"],
+                     "winner": {"approach": w.get("approach"), "metric": w.get("metric"), "hidden": w.get("hidden")} if w else None,
+                     "sealed_tests_sha256": rec["seal"]["sha256"], "approaches_tried": len(rec["journal"]), "rounds": len(rec["rounds"]),
+                     "scope": "This signature proves Ask Harsha issued this record unaltered. Scores come from code that ran in the sandbox; "
+                              "the sealed tests' fingerprint was fixed before solving began. Passing tests isn't proof of correctness for every input."}
+                rec["receipt"], rec["signature"] = r, signer.sign(r)
+            if user:
+                try:
+                    accounts.save_lab(user.id, rec)
+                    rec["saved"] = True
+                    if rec["measurable"]:
+                        rec["lessons_saved"] = accounts.add_lessons(user.id, solver.lessons_from(rec))
+                except Exception as e:
+                    log.error(json.dumps({"event": "solve_save_error", "detail": str(e)[:200]}))
+            telemetry.add("solve", {"status": rec["status"], "rounds": len(rec.get("rounds", [])), "approaches": len(rec.get("journal", [])),
+                                    "seconds": rec["seconds"], "cost_usd": rec["cost_usd"], "lessons_used": len(lessons)})
+            log.info(json.dumps({"event": "solve", "owner": owner, "status": rec["status"], "rounds": len(rec.get("rounds", [])),
+                                 "seconds": rec["seconds"], "cost_usd": rec["cost_usd"]}))
+            q.put(("final", rec))
+
+        return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    @app.get("/api/lab/lessons")
+    def lab_lessons(request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return {"lessons": accounts.lessons(user.id, 200)}
+
+    @app.delete("/api/lab/lessons")
+    def lab_lessons_clear(request: Request):
+        user = signed_in(request)
+        if isinstance(user, JSONResponse):
+            return user
+        accounts.clear_lessons(user.id)
+        return {"lessons": []}
+
     @app.get("/api/lab/runs")
     def lab_list(request: Request):
         user = signed_in(request)
@@ -1089,7 +1171,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     @app.post("/api/proof/verify")
     def proof_verify(req: ProofCheck):
         """Check a proof report's signature. Valid means Ask Harsha issued it and it wasn't changed afterwards."""
-        valid = signer is not None and req.receipt.get("type") in ("proof", "lab", "interview") and signer.verify(req.receipt, req.signature)
+        valid = signer is not None and req.receipt.get("type") in ("proof", "lab", "interview", "solve") and signer.verify(req.receipt, req.signature)
         return {"valid": valid, "fingerprint": signer.fingerprint if signer else "",
                 "meaning": "Ask Harsha issued this report and it hasn't been altered. It records what was checked; it isn't proof of events outside Ask Harsha."
                 if valid else "The signature doesn't match. The report was changed, or it wasn't issued by this Ask Harsha."}

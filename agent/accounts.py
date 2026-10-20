@@ -58,6 +58,8 @@ SCHEMA = [
        title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS interviews (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        public_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
+    """CREATE TABLE IF NOT EXISTS experiments (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
+       created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, created BIGINT NOT NULL, challenge TEXT NOT NULL, data TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, body TEXT NOT NULL, updated BIGINT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS metrics (id TEXT PRIMARY KEY, kind TEXT NOT NULL, ts BIGINT NOT NULL, body TEXT NOT NULL)""",
@@ -371,7 +373,7 @@ class Accounts:
         return User(*row)
 
     def delete_user(self, user_id: str) -> None:
-        for table in ("chats", "projects", "saved", "prefs", "memories", "lab_runs", "interviews", "sessions", "credentials", "recovery"):
+        for table in ("chats", "projects", "saved", "prefs", "memories", "lab_runs", "interviews", "experiments", "sessions", "credentials", "recovery"):
             self.db.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
         self.db.run("DELETE FROM users WHERE id = %s", (user_id,))
 
@@ -599,12 +601,38 @@ class Accounts:
             except json.JSONDecodeError:
                 continue
             out.append({"id": rid, "title": title, "created": created, "labels": [v.get("label") for v in d.get("verdicts", [])],
-                        "continues": d.get("continues")})
+                        "continues": d.get("continues"), "mode": d.get("mode", "investigate"), "status": d.get("status")})
         return out
 
     def get_lab(self, user_id: str, run_id: str) -> dict | None:
         row = self.db.one("SELECT body FROM lab_runs WHERE user_id = %s AND id = %s", (user_id, run_id))
         return json.loads(row[0]) if row else None
+
+    # ---- the experiment journal: what worked and what failed in earlier Solve runs, offered to the next problem ----
+    def add_lessons(self, user_id: str, lessons: list[dict]) -> int:
+        n = 0
+        for l in lessons[:40]:
+            self.db.run("INSERT INTO experiments (user_id, id, created, body) VALUES (%s, %s, %s, %s)",
+                        (user_id, "X" + secrets.token_hex(6), now_ms() + n, json.dumps(l, ensure_ascii=False)[:4000]))
+            n += 1
+        count = self.db.one("SELECT COUNT(*) FROM experiments WHERE user_id = %s", (user_id,))[0]
+        if count > 600:   # keep the newest
+            self.db.run("DELETE FROM experiments WHERE user_id = %s AND id IN (SELECT id FROM experiments WHERE user_id = %s "
+                        "ORDER BY created ASC LIMIT %s)", (user_id, user_id, count - 600))
+        return n
+
+    def lessons(self, user_id: str, limit: int = 400) -> list[dict]:
+        rows = self.db.all("SELECT body, created FROM experiments WHERE user_id = %s ORDER BY created DESC LIMIT %s", (user_id, limit))
+        out = []
+        for body, created in rows:
+            try:
+                out.append({**json.loads(body), "created": created})
+            except json.JSONDecodeError:
+                continue
+        return out
+
+    def clear_lessons(self, user_id: str) -> None:
+        self.db.run("DELETE FROM experiments WHERE user_id = %s", (user_id,))
 
     def delete_lab(self, user_id: str, run_id: str) -> None:
         self.db.run("DELETE FROM lab_runs WHERE user_id = %s AND id = %s", (user_id, run_id))
