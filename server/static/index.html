@@ -245,6 +245,68 @@ textarea.listening{border-color:var(--fg)}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .sheet{width:min(560px,100%);max-height:85vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px 18px 0 0;padding:18px var(--gr) calc(22px + env(safe-area-inset-bottom,0px)) var(--gl);display:grid;gap:12px;animation:up .2s ease}
 @keyframes up{from{transform:translateY(30px)}to{transform:none}}
+.ep-bg{position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.55);animation:fade .2s ease}
+.ep-bg.out{animation:fadeout .22s ease forwards}
+@keyframes fadeout{to{opacity:0}}
+.ep-drawer{position:absolute;top:0;bottom:0;left:0;width:min(420px,92vw);background:var(--bg);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;padding:calc(12px + env(safe-area-inset-top,0px)) 0 calc(16px + env(safe-area-inset-bottom,0px)) env(safe-area-inset-left,0px);animation:slidein .28s cubic-bezier(.2,.8,.2,1)}
+.ep-drawer.out{animation:slideout .22s ease forwards}
+.ep-drawer>*{flex-shrink:0}
+@keyframes slidein{from{transform:translateX(-100%)}to{transform:none}}
+@keyframes slideout{to{transform:translateX(-100%)}}
+.ep-top{display:flex;align-items:center;justify-content:space-between;padding:0 12px 10px 16px}
+.ep-brand{display:flex;align-items:center;gap:10px}
+.ep-h{width:30px;height:30px;border-radius:6px;background:var(--red);display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:20px}
+.ep-brand b{font-size:15px}
+.ep-x{width:40px;height:40px;border-radius:10px;font-size:22px;color:var(--muted)}
+.ep-x:hover{color:var(--fg);background:var(--raise)}
+.ep-reel{position:relative;margin:0 12px;border-radius:16px;padding:16px 16px 12px;background:radial-gradient(120% 90% at 0% 0%,color-mix(in srgb,var(--red) 38%,transparent),transparent 60%),linear-gradient(160deg,#1c0507,#0b0b0b 70%);border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));overflow:hidden;display:grid;gap:4px;min-height:208px;align-content:start}
+.ep-reel::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px)}
+.ep-prev{font-size:11px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;color:var(--muted)}
+.ep-show{font-family:var(--f-display);font-weight:900;font-size:34px;line-height:.9;text-transform:uppercase;color:var(--red-hot);letter-spacing:.01em}
+.ep-stage{display:grid;gap:8px;text-align:left;min-height:112px;align-content:center;padding:6px 0 6px;margin-top:10px}
+.ep-line{font-size:17px;line-height:1.32;font-weight:600;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;quotes:"\201C" "\201D";animation:lineIn .5s ease both}
+.ep-from{font-size:12.5px;color:var(--muted);animation:lineIn .5s .15s ease both}
+@keyframes lineIn{from{opacity:0;transform:translateY(10px);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+.ep-ctrl{display:flex;align-items:center;gap:10px}
+.ep-segs{flex:1;display:flex;gap:4px}
+.ep-segs span{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.18);overflow:hidden}
+.ep-segs span i{display:block;height:100%;width:0;background:var(--fg)}
+.ep-segs span.done i{width:100%}
+.ep-segs span.on i{animation:segfill 2.1s linear forwards}
+@keyframes segfill{to{width:100%}}
+.ep-skip{font-size:12.5px;font-weight:600;color:var(--fg);padding:6px 8px;border-radius:8px;white-space:nowrap}
+.ep-skip:hover{background:rgba(255,255,255,.08)}
+.ep-reel.empty{min-height:0}
+.ep-note{color:var(--muted);font-size:14px;margin:6px 0 0}
+.ep-tools{display:flex;gap:8px;padding:14px 12px 6px}
+.ep-new{flex:0 0 auto;background:var(--red);border-radius:999px;padding:0 16px;height:42px;font-weight:700;font-size:14px}
+.ep-new:hover{background:var(--red-hot)}
+.ep-search{flex:1;min-width:0;height:42px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font:inherit;font-size:15px;padding:0 14px}
+.ep-search:focus{outline:none;border-color:var(--muted)}
+.ep-list{display:grid;gap:6px;padding:4px 8px}
+.ep-season h4{margin:14px 8px 6px;font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.ep-season h4 b{color:var(--fg)}
+.ep-row{border-radius:12px}
+.ep-row.current{background:var(--raise)}
+.ep-line-row{display:flex;align-items:stretch}
+.ep-open{flex:1;min-width:0;display:grid;grid-template-columns:30px 22px minmax(0,1fr) auto;gap:8px;align-items:center;text-align:left;padding:9px 6px 9px 8px;border-radius:12px}
+.ep-open:hover{background:var(--raise)}
+.ep-num{font-family:var(--f-display);font-weight:800;font-size:17px;color:var(--muted)}
+.ep-wx{font-size:16px;text-align:center}
+.ep-tx{display:grid;min-width:0}
+.ep-tx b{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-tx span{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-meta{display:grid;justify-items:end;gap:2px}
+.ep-meta small{font-size:11px;color:var(--muted);white-space:nowrap}
+.ep-badge{font-style:normal;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap}
+.ep-badge.ok{color:var(--good);background:color-mix(in srgb,var(--good) 15%,transparent)}
+.ep-badge.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 15%,transparent)}
+.ep-badge.plain{color:var(--muted);background:var(--raise)}
+.ep-more{width:40px;flex:0 0 auto;color:var(--muted);font-size:18px;border-radius:12px}
+.ep-more:hover{color:var(--fg);background:var(--raise)}
+.ep-foot{margin-top:auto;display:grid;gap:8px;border-top:1px solid var(--line);padding:14px 16px 0}
+.ep-foot small{color:var(--muted);font-size:12.5px}
+.ep-foot .row{justify-content:flex-start}
 .sheet.recents{max-height:88vh;align-content:start}
 .rtop{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .rtop .btn{padding:7px 14px;font-size:14px}
@@ -293,7 +355,7 @@ textarea.listening{border-color:var(--fg)}
   <a class="hbtn" id="toolkit" href="/tools" aria-label="PM Toolkit" title="PM Toolkit"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></a>
   <a class="hbtn" id="assist" href="/assist" aria-label="Assist mode: speak or type and it talks for you" title="Assist mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
   <button class="hbtn" id="memory" hidden aria-label="Manage memory">Memory</button>
-  <button class="hbtn" id="recents" aria-label="Recent chats" title="Recent chats"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <button class="hbtn" id="recents" aria-label="Previously on Ask Harsha: your past chats" title="Previously on…"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 8.6v5l4-2.5z" fill="currentColor"/><path d="M8 20.5h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   <button class="hbtn" id="reset" hidden aria-label="New chat" title="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.5 4.5l2 2L13 13l-2.7.7.7-2.7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
   <button class="hbtn" id="lock" aria-label="Owner sign-in"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
 </header>
@@ -596,7 +658,9 @@ const KEEP=['answer','label','grounded','check','citations','web_sources','sourc
 function recordTurn(question,names,data){
   if(!saving.get()||!data.answer)return;
   let c=chats.find(x=>x.id===chatId);
-  if(!c){c={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:question.replace(/\s+/g,' ').slice(0,70),created:Date.now(),updated:Date.now(),messages:[]};chats.unshift(c);chatId=c.id}
+  if(!c){c={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:question.replace(/\s+/g,' ').slice(0,70),created:Date.now(),updated:Date.now(),messages:[]};
+    if(weatherData&&weatherData.ok){const k=WX[weatherData.condition]||WX.cloudy;c.wx={icon:weatherData.condition==='sunny'&&!weatherData.is_day?WX.clear.icon:k.icon,temp:weatherData.temp,unit:weatherData.unit}}
+    chats.unshift(c);chatId=c.id}
   const keep={};KEEP.forEach(k=>{if(data[k]!=null)keep[k]=data[k]});
   c.messages.push({role:'user',content:question,files:names&&names.length?names:undefined},{role:'assistant',data:keep});
   c.messages=c.messages.slice(-200);c.updated=Date.now();saveChats();
@@ -624,46 +688,112 @@ function whenGroup(t){
   if(t>=start)return'Today';if(t>=start-864e5)return'Yesterday';if(t>=start-6*864e5)return'Previous 7 days';if(t>=start-29*864e5)return'Previous 30 days';
   return d.toLocaleDateString([],{month:'long',year:'numeric'});
 }
+// ---------- "Previously on…": past chats as a show ----------
+// A drawer from the left. It opens with a short recap of your latest chats, then lists every chat as an episode,
+// grouped into seasons (one season per week, counted from your first chat). Each episode carries the weather of
+// the day it started and a badge for how its answers were sourced.
+const DAY=864e5;
+function weekStart(t){const d=new Date(t);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getTime()}  // Monday
+function cleanLine(t){return (t||'').replace(/\[(F\d{2,3}|N\d{3,4})\]/g,'').replace(/[*#>`]/g,'').replace(/\s+/g,' ').replace(/\s+([.,;:!?])/g,'$1').trim()}
+function highlight(c){
+  const last=[...c.messages].reverse().find(m=>m.role==='assistant');if(!last)return'';
+  const t=cleanLine(last.data.answer);const m=t.match(/^.{20,140}?[.!?](\s|$)/);return (m?m[0]:t.slice(0,120)+(t.length>120?'…':'')).trim();
+}
+function badge(c){
+  const ds=c.messages.filter(m=>m.role==='assistant').map(m=>m.data);
+  if(ds.some(d=>['record','memory','mixed'].includes(d.label)&&d.grounded))return['✓ verified','ok'];
+  if(ds.some(d=>['record','memory','mixed'].includes(d.label)))return['! check','warn'];
+  if(ds.some(d=>d.label==='web'))return['web','plain'];
+  if(ds.some(d=>d.label==='file'))return['file','plain'];
+  return null;
+}
 function openRecents(){
-  sheet((s,close)=>{
-    s.classList.add('recents');
-    const top=el('div','rtop');top.append(el('h3',null,'Recent chats'));
-    const nb=el('button','btn red','+ New chat');nb.type='button';nb.onclick=()=>{close();newChat()};top.append(nb);s.append(top);
-    const search=el('input','field');search.type='search';search.dataset.nofocus='1';search.placeholder='Search your chats';search.setAttribute('aria-label','Search your chats');s.append(search);
-    const list=el('div','rlist');s.append(list);
-    const draw=()=>{
-      list.textContent='';const term=search.value.trim().toLowerCase();
-      const hits=chats.filter(c=>!term||c.title.toLowerCase().includes(term)||c.messages.some(m=>(m.content||m.data&&m.data.answer||'').toLowerCase().includes(term)));
-      if(!chats.length){list.append(el('p','rempty',saving.get()?'No chats yet. Your conversations will show up here.':'Saving chats is off.'));return}
-      if(!hits.length){list.append(el('p','rempty','No chats match.'));return}
-      let group='';
-      hits.forEach(c=>{
-        const g=whenGroup(c.updated);if(g!==group){group=g;list.append(el('div','rgroup',g))}
-        const row=el('div','rrow'+(c.id===chatId?' current':''));
-        const open=el('button','ropen');open.type='button';
-        const last=[...c.messages].reverse().find(m=>m.role==='assistant');
-        open.append(el('b',null,c.title),el('span',null,last?last.data.answer.replace(/\[(F\d{2,3}|N\d{3,4})\]/g,'').replace(/\s+/g,' ').slice(0,90):''));
-        open.onclick=()=>{close();openChat(c.id)};
-        const more=el('button','rmore','⋯');more.type='button';more.setAttribute('aria-label',`Options for ${c.title}`);
+  if(document.querySelector('.ep-drawer'))return;
+  const bg=el('div','ep-bg'),dr=el('aside','ep-drawer');dr.setAttribute('role','dialog');dr.setAttribute('aria-label','Previously on Ask Harsha');
+  let timer=null;
+  const close=()=>{clearInterval(timer);dr.classList.add('out');bg.classList.add('out');setTimeout(()=>{bg.remove();document.removeEventListener('keydown',esc)},220);$('#recents').focus()};
+  function esc(e){if(e.key==='Escape')close()}
+  document.addEventListener('keydown',esc);bg.onclick=e=>{if(e.target===bg)close()};
+
+  const top=el('div','ep-top');const brand=el('div','ep-brand');brand.append(el('span','ep-h','H'),el('b',null,'Ask Harsha'));
+  const x=el('button','ep-x','×');x.type='button';x.setAttribute('aria-label','Close');x.onclick=close;top.append(brand,x);dr.append(top);
+
+  // the recap reel
+  const recent=[...chats].sort((a,b)=>b.updated-a.updated).filter(c=>highlight(c)).slice(0,4).reverse();
+  const reel=el('section','ep-reel');
+  if(recent.length){
+    reel.append(el('div','ep-prev','Previously on'),el('div','ep-show',"Ask Harsha"));
+    const stage=el('button','ep-stage');stage.type='button';const segs=el('div','ep-segs');
+    recent.forEach(()=>{const g=el('span');g.append(el('i'));segs.append(g)});
+    const ctrl=el('div','ep-ctrl'),skip=el('button','ep-skip','Skip ▸');skip.type='button';ctrl.append(segs,skip);
+    reel.append(stage,ctrl);
+    let i=-1,done=false;
+    const show=k=>{const c=recent[k];stage.textContent='';stage.onclick=()=>{close();openChat(c.id)};
+      const when=new Date(c.updated).toLocaleDateString([],{weekday:'long'});
+      stage.append(el('q','ep-line',highlight(c)),el('span','ep-from',`${c.wx?c.wx.icon+' ':''}${when} · ${c.title}`));
+      stage.setAttribute('aria-label',`${c.title}: open this chat`);
+      [...segs.children].forEach((g,j)=>{g.className=j<k?'done':j===k?'on':''})};
+    const finish=()=>{if(done)return;done=true;clearInterval(timer);[...segs.children].forEach(g=>g.className='done');reel.classList.add('ended');
+      skip.textContent='↺ Replay';skip.onclick=()=>{done=false;reel.classList.remove('ended');i=-1;step();timer=setInterval(step,2100);skip.textContent='Skip ▸';skip.onclick=finish}};
+    const step=()=>{i++;if(i>=recent.length){finish();show(recent.length-1);return}show(i)};
+    skip.onclick=finish;
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){show(recent.length-1);finish()}
+    else{step();timer=setInterval(step,2100)}
+  }else{
+    reel.classList.add('empty');reel.append(el('div','ep-prev','Coming soon'),el('div','ep-show','Episode 1'),el('p','ep-note',saving.get()?'Your first episode starts when you ask something.':'Saving chats is off, so there are no episodes yet.'));
+  }
+  dr.append(reel);
+
+  const tools=el('div','ep-tools');
+  const nb=el('button','ep-new','+ New episode');nb.type='button';nb.onclick=()=>{close();newChat();q.focus()};
+  const search=el('input','ep-search');search.type='search';search.placeholder='Find an episode';search.setAttribute('aria-label','Search your chats');
+  tools.append(nb,search);dr.append(tools);
+  const list=el('div','ep-list');dr.append(list);
+
+  const first=chats.length?Math.min(...chats.map(c=>c.created||c.updated)):Date.now();
+  const thisWeek=weekStart(Date.now());
+  const draw=()=>{
+    list.textContent='';const term=search.value.trim().toLowerCase();
+    const hits=chats.filter(c=>!term||c.title.toLowerCase().includes(term)||c.messages.some(m=>(m.content||m.data&&m.data.answer||'').toLowerCase().includes(term)));
+    if(chats.length&&!hits.length){list.append(el('p','ep-note','No episodes match.'));return}
+    const seasons=new Map();
+    hits.forEach(c=>{const w=weekStart(c.created||c.updated);if(!seasons.has(w))seasons.set(w,[]);seasons.get(w).push(c)});
+    [...seasons.keys()].sort((a,b)=>b-a).forEach(w=>{
+      const n=Math.round((w-weekStart(first))/(7*DAY))+1;
+      const label=w===thisWeek?'This week':w===thisWeek-7*DAY?'Last week':'Week of '+new Date(w).toLocaleDateString([],{month:'short',day:'numeric'});
+      const sec=el('section','ep-season');const h=el('h4');h.append(el('b',null,`Season ${n}`),` · ${label}`);sec.append(h);
+      const eps=seasons.get(w).sort((a,b)=>(a.created||a.updated)-(b.created||b.updated));
+      eps.map((c,k)=>[c,k+1]).reverse().forEach(([c,num])=>{
+        const row=el('div','ep-row'+(c.id===chatId?' current':''));
+        const open=el('button','ep-open');open.type='button';
+        const n=el('span','ep-num',`E${num}`),wx=el('span','ep-wx',c.wx?c.wx.icon:'·');wx.title=c.wx?`${c.wx.temp}°${c.wx.unit}`:'';
+        const tx=el('span','ep-tx');tx.append(el('b',null,c.title),el('span',null,highlight(c)));
+        const meta=el('span','ep-meta');const bd=badge(c);if(bd)meta.append(el('i','ep-badge '+bd[1],bd[0]));
+        open.append(n,wx,tx,meta);open.title=`${new Date(c.updated).toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})} · ${Math.ceil(c.messages.length/2)} question${c.messages.length>2?'s':''}`;open.onclick=()=>{close();openChat(c.id)};
+        const more=el('button','ep-more','⋯');more.type='button';more.setAttribute('aria-label',`Options for ${c.title}`);
         const acts=el('div','racts');acts.hidden=true;
         const rn=el('button','btn','Rename'),dl=el('button','btn','Download'),del=el('button','btn','Delete');[rn,dl,del].forEach(b=>b.type='button');
         rn.onclick=()=>{const inp=el('input','field');inp.value=c.title;inp.maxLength=80;acts.textContent='';const ok=el('button','btn red','Save');ok.type='button';
           ok.onclick=()=>{const v=inp.value.trim();if(v){c.title=v;saveChats()}draw()};inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};acts.append(inp,ok);inp.focus()};
         dl.onclick=()=>download(`${c.title.replace(/[^\w\- ]+/g,'').slice(0,40)||'chat'}.md`,chatMarkdown(c),'text/markdown');
-        del.onclick=()=>{if(del.dataset.sure){chats=chats.filter(x=>x.id!==c.id);saveChats();if(chatId===c.id)newChat();draw()}else{del.dataset.sure='1';del.textContent='Tap again to delete';del.classList.add('red')}};
+        del.onclick=()=>{if(del.dataset.sure){chats=chats.filter(y=>y.id!==c.id);saveChats();if(chatId===c.id)newChat();draw()}else{del.dataset.sure='1';del.textContent='Tap again to delete';del.classList.add('red')}};
         acts.append(rn,dl,del);more.onclick=()=>{acts.hidden=!acts.hidden};
-        const line=el('div','rline');line.append(open,more);row.append(line,acts);list.append(row);
+        const line=el('div','ep-line-row');line.append(open,more);row.append(line,acts);sec.append(row);
       });
-    };
-    search.oninput=draw;draw();
-    const foot=el('div','rfoot');
-    const lb=el('label','rtoggle'),cb=el('input');cb.type='checkbox';cb.checked=saving.get();cb.onchange=()=>{saving.set(cb.checked);draw()};
-    lb.append(cb,'Save chats on this device');foot.append(lb,el('small',null,"Chats are kept in this browser only, never on the server. Clearing your browser data removes them."));
-    const r=el('div','row'),exp=el('button','btn','Download all'),wipe=el('button','btn','Delete all'),done=el('button','btn','Close');[exp,wipe,done].forEach(b=>b.type='button');
-    exp.onclick=()=>download('ask-harsha-chats.json',JSON.stringify({exported:new Date().toISOString(),chats},null,2),'application/json');
-    wipe.onclick=()=>{if(wipe.dataset.sure){chats=[];saveChats();newChat();draw();wipe.textContent='Deleted'}else{wipe.dataset.sure='1';wipe.textContent='Tap again to delete all';wipe.classList.add('red')}};
-    done.onclick=close;r.append(exp,wipe,done);foot.append(r);s.append(foot);
-  });
+      list.append(sec);
+    });
+  };
+  search.oninput=draw;draw();
+
+  const foot=el('div','ep-foot');
+  const lb=el('label','rtoggle'),cb=el('input');cb.type='checkbox';cb.checked=saving.get();cb.onchange=()=>{saving.set(cb.checked);draw()};
+  lb.append(cb,'Save chats on this device');
+  const r=el('div','row'),exp=el('button','btn','Download all'),wipe=el('button','btn','Delete all');[exp,wipe].forEach(b=>b.type='button');
+  exp.onclick=()=>download('ask-harsha-chats.json',JSON.stringify({exported:new Date().toISOString(),chats},null,2),'application/json');
+  wipe.onclick=()=>{if(wipe.dataset.sure){chats=[];saveChats();newChat();draw();wipe.textContent='Deleted'}else{wipe.dataset.sure='1';wipe.textContent='Tap again to delete all';wipe.classList.add('red')}};
+  r.append(exp,wipe);foot.append(lb,el('small',null,'Chats stay in this browser only, never on the server.'),r);dr.append(foot);
+
+  bg.append(dr);document.body.append(bg);x.focus();
 }
 function newChat(){stopDictation();chatId=null;history=[];files=[];renderTray();thread.querySelectorAll('.msg').forEach(m=>m.remove());hello.hidden=false;resetBtn.hidden=true;greet(weatherData)}
 const VERDICT={confirmed:{mark:'✓',cls:'ok',word:'Confirmed'},contradicted:{mark:'✕',cls:'bad',word:'Contradicted'},unverified:{mark:'!',cls:'unk',word:'Unverified'},not_checkable:{mark:'–',cls:'na',word:'Not checkable'}};

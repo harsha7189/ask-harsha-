@@ -100,9 +100,15 @@ Optional attributes: `data-label`, `data-greeting` (`""` turns off the greeting 
 
 `/portfolio` serves Harsha's streaming-style portfolio with the pop-up built in, so one link gives visitors both.
 
-## Chat history and Recents
+## Chat history: "Previously on…"
 
-Every conversation is saved in the visitor's own browser (never on the server) and listed under **Recents** (the clock icon): grouped by Today, Yesterday, Previous 7 days and so on, searchable by title and content. Tap a chat to reopen it and keep going (the agent gets the earlier turns as context); each chat can be renamed, downloaded as Markdown or deleted, and everything can be downloaded as JSON or deleted at once. Saving can be turned off. Up to 100 chats are kept, oldest dropped first when storage fills; attached files aren't kept, only their names. The Memory screen moved into the owner menu to keep the header to icons.
+Every conversation is saved in the visitor's own browser (never on the server). The play-screen icon opens **Previously on…**, a drawer styled like a streaming show:
+
+- **The recap.** It opens with a short reel, "Previously on Ask Harsha", flying in one line from each of your latest chats with its day and weather. Skip or replay it; tap a line to jump into that chat. With reduced motion turned on, it shows the latest line without animating.
+- **Seasons and episodes.** Chats are grouped into seasons, one per week counted from your first chat ("Season 3 · This week"), and numbered as episodes. Each shows the weather of the day it started, its first answer line, and how it was sourced: ✓ verified (cited and checked against Harsha's record), web, or file.
+- **+ New episode**, search across titles and answers, and ⋯ on each episode to rename, download as Markdown or delete. Download all, delete all, or turn saving off at the bottom.
+
+Up to 100 chats are kept, oldest dropped first when storage fills; attached files aren't kept, only their names. The Memory screen lives in the owner menu to keep the header to icons.
 
 ## Second opinions (model jury)
 
