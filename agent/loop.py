@@ -45,6 +45,28 @@ class Reply:
     cache_write_tokens: int = 0
     seconds: float = 0.0
     timing: dict = field(default_factory=dict)   # where the time went: first words, each model call, tools
+    fallback: str = ""            # the backup model's name, if the main one was unavailable for this answer
+
+
+RETRY_PAUSE = 1.5
+RETRY_STATUS = {408, 409, 429, 500, 502, 503, 504, 529}
+
+
+def retryable(e: Exception) -> bool:
+    """Worth retrying: the model was busy, rate limited or unreachable. Not: a bad request or a bad key."""
+    status = getattr(e, "status_code", None) or getattr(getattr(e, "response", None), "status_code", None)
+    if status is not None:
+        return status in RETRY_STATUS
+    name = type(e).__name__
+    return any(w in name for w in ("Overloaded", "RateLimit", "Connection", "Timeout", "InternalServer", "ServiceUnavailable"))
+
+
+def strip_thinking(message: dict) -> dict:
+    content = message.get("content")
+    if not isinstance(content, list):
+        return message
+    kept = [b for b in content if _get(b, "type") not in ("thinking", "redacted_thinking")]
+    return {**message, "content": kept or [{"type": "text", "text": "(continued)"}]}
 
 
 def _get(block: Any, key: str, default=None):
@@ -71,6 +93,7 @@ class Agent:
         record_tools: bool = True,
         speed: str = "chat",
         container: str | None = None,
+        fallback_model: str | None = None,
     ):
         self.client = client
         self.kb = kb or KnowledgeBase.load()
@@ -90,6 +113,8 @@ class Agent:
         self.stream = stream            # stream text deltas through on_event("text", ...)
         self.speed = speed              # how hard the model thinks: chat | deep | helper (see agent/speed.py)
         self.container_id = container   # code execution sandbox to reuse across calls (files carry over)
+        self.fallback_model = fallback_model   # used for a call when the main model is overloaded or unreachable
+        self.used_fallback = ""
         self._first_text: float | None = None
         self.messages: list[dict] = []  # full conversation, kept across turns
 
@@ -106,7 +131,34 @@ class Agent:
         self.messages = []
 
     def _call(self, kwargs: dict):
-        """One model call. With streaming on, forward text as it arrives and return the final message."""
+        """One model call, resilient to a busy or unreachable model.
+
+        A transient failure (overloaded, rate limited, 5xx, connection or timeout) is retried once after a short pause.
+        If it fails again and a backup model is set, the call is made with the backup model instead, and the reply says
+        so. Anything else (a bad request, an auth error) is raised straight away.
+        """
+        try:
+            return self._call_once(kwargs)
+        except Exception as e:
+            if not retryable(e):
+                raise
+            first = e
+        time.sleep(RETRY_PAUSE)
+        self.on_event("text_reset", {})   # anything streamed by the failed attempt isn't part of the answer
+        try:
+            return self._call_once(kwargs)
+        except Exception as e:
+            if not retryable(e) or not self.fallback_model or self.fallback_model == kwargs.get("model"):
+                raise
+        self.on_event("text_reset", {})
+        self.on_event("fallback", {"model": self.fallback_model, "reason": type(first).__name__})
+        backup = {k: v for k, v in kwargs.items() if k not in ("output_config", "thinking")}
+        backup.update(model=self.fallback_model, **speed.params(self.fallback_model, self.speed))
+        backup["messages"] = [strip_thinking(m) for m in kwargs["messages"]]   # thinking blocks belong to the model that wrote them
+        self.used_fallback = self.fallback_model
+        return self._call_once(backup)
+
+    def _call_once(self, kwargs: dict):
         if not self.stream:
             return self.client.messages.create(**kwargs)
         with self.client.messages.stream(**kwargs) as s:
@@ -142,6 +194,7 @@ class Agent:
         self._first_text = None
         model_s, tools_s, calls = 0.0, 0.0, []
         self.tools.reset_turn()
+        self.used_fallback = ""
         self.messages.append({"role": "user", "content": question})
         reply = Reply(text="", stop_reason="", steps=0)
         text_parts: list[str] = []   # answer text since the last client-tool round
@@ -244,6 +297,7 @@ class Agent:
                 self.messages.append({"role": "assistant", "content": [{"type": "text", "text": reply.text}]})
 
         reply.memory_changes = list(self.tools.changes)
+        reply.fallback = self.used_fallback
         reply.report = grounding.check(reply.text, set(self.tools.retrieved), self.lookup or self.kb, strict=self.strict_grounding)
         reply.seconds = round(time.monotonic() - start, 2)
         reply.timing = {"total_s": reply.seconds, "model_s": round(model_s, 2), "tools_s": round(tools_s, 2), "calls_s": calls,

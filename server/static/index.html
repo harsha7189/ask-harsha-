@@ -223,6 +223,13 @@ html.embed .fine{display:none}
 .te-table td{padding:7px 4px;border-top:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
 .te-table td:first-child{text-align:left}
 .te-table td small{display:block;color:var(--muted);font-size:11px}
+.hl-box{display:grid;gap:6px;margin-bottom:6px}
+.hl-box h4{margin:10px 0 2px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.hl-checks{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.hl-checks li{display:grid;grid-template-columns:22px auto;column-gap:8px;font-size:13px}
+.hl-checks li i{font-style:normal;font-weight:700;grid-row:span 2;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--raise);font-size:11px}
+.hl-checks li.ok i{color:var(--good)}.hl-checks li.bad i{color:var(--red-hot)}.hl-checks li.skip i{color:var(--muted)}
+.hl-checks li span{color:var(--muted);font-size:12px}
 .ep-hint{display:block;margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.45}
 .tr-orig{white-space:pre-wrap;font-size:13px;color:var(--muted);border:1px dashed var(--line);border-radius:10px;padding:8px 10px;margin:6px 0 0}
 .askh{margin-top:12px;border-radius:14px;padding:12px 14px;background:linear-gradient(135deg,color-mix(in srgb,var(--red) 20%,var(--panel)),var(--panel));border:1px solid color-mix(in srgb,var(--red) 55%,var(--line));display:grid;gap:8px;white-space:normal;animation:askpop .35s cubic-bezier(.2,.9,.3,1.3)}
@@ -896,6 +903,7 @@ function renderExtras(box,data){
     else{v.classList.add('plain');v.append('From general knowledge')}
     x.append(v);
   }
+  if(data.fallback){const f=el('div','verdict warn');f.append(el('i'),'The main model was busy, so a backup model wrote this answer');x.append(f)}
   const steps=data.trace||[];
   const tm=data.timing&&data.timing.total_s?` · ${(data.timing.total_s+(data.timing.prep_s||0)).toFixed(1)}s`:'';   // how long it took
   if(!steps.length&&label!=='none'){
@@ -945,10 +953,12 @@ function openLock(){
       ev.onclick=()=>{close();openEvals()};
       const te=el('button','tool');te.type='button';te.append(el('b',null,'Trust evaluation'),el('span',null,'Plain model vs Ask Harsha with the trust check: hallucinations, false verifications, admitted doubt, corrections, speed and cost. About $1 and 10 minutes.'));
       te.onclick=()=>{close();openTrustEval()};
+      const hb=el('button','tool');hb.type='button';hb.append(el('b',null,'Health & history'),el('span',null,'Run the health check, see speed and cost over time, and every evaluation run so far.'));
+      hb.onclick=()=>{close();openHealth()};
       const ib=el('button','tool');ib.type='button';ib.append(el('b',null,inboxCount?`Inbox · ${inboxCount} waiting`:'Inbox'),el('span',null,'Questions visitors sent to the real you. Answer once, and optionally teach the agent.'));
       ib.onclick=()=>{close();openInbox()};
       const mb=el('button','tool');mb.type='button';mb.append(el('b',null,'Memory'),el('span',null,'Everything you have taught the agent. Remove any note.'));
-      mb.onclick=()=>{close();openMemory()};tools.append(ib,mb,ev,te);s.append(tools);
+      mb.onclick=()=>{close();openMemory()};tools.append(ib,mb,hb,ev,te);s.append(tools);
       const r=el('div','row'),out=el('button','btn','Sign out'),ok=el('button','btn red primary','Done');
       out.type=ok.type='button';out.onclick=()=>{passcode='';store.set('');setOwner(false);close()};ok.onclick=close;r.append(out,ok);s.append(r);
     });return;
@@ -1005,6 +1015,37 @@ function teTable(sum){
   TE_ROWS.forEach(([k,label,hint])=>{const b=sum.baseline[k],e=sum.engine[k];if(b===undefined&&e===undefined)return;const tr=el('tr');const th=el('td');th.append(el('b',null,label));if(hint)th.append(el('small',null,hint));
     tr.append(th,el('td',null,b===undefined?'n/a':fmt(k,b)),el('td',null,fmt(k,e)));tb.append(tr)});
   return tb;
+}
+// ---------- owner: health check, performance and evaluation history ----------
+function openHealth(){
+  sheet(async (s,close)=>{
+    s.append(el('h3',null,'Health & history'));
+    const hbox=el('div','hl-box'),perf=el('div','hl-box'),hist=el('div','hl-box');
+    const r=el('div','row'),run=el('button','btn red','Run health check'),c=el('button','btn','Close');run.type=c.type='button';c.onclick=close;r.append(c,run);
+    s.append(hbox,perf,hist,r);
+    const drawHealth=h=>{hbox.textContent='';hbox.append(el('h4',null,'Health check'));
+      if(!h||!h.checks){hbox.append(el('p','tr-meta','Not run yet. It sends a few real requests through each part: about 3¢.'));return}
+      hbox.append(el('p','tr-meta',`${h.ok?'✓ All good':'✕ '+h.failing.join(', ')+' failing'} · ${new Date(h.ran_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} · ${h.seconds}s`));
+      const ul=el('ul','hl-checks');h.checks.forEach(x=>{const li=el('li',x.ok===true?'ok':x.ok===false?'bad':'skip');li.append(el('i',null,x.ok===true?'✓':x.ok===false?'✕':'–'),el('b',null,x.name),el('span',null,x.detail));ul.append(li)});hbox.append(ul)};
+    run.onclick=async()=>{run.disabled=true;run.textContent='Checking… (about 30s)';try{const res=await fetch('/api/owner/health',{method:'POST',headers:headers()});const d=await res.json();if(!res.ok)throw new Error(d.message);drawHealth(d)}catch(e){toast(e.message||'The health check couldn’t run.')}finally{run.disabled=false;run.textContent='Run health check'}};
+    perf.append(el('p','tr-meta','Loading…'));
+    try{
+      const [st,h]=await Promise.all([fetch('/api/health/status').then(x=>x.json()),fetch('/api/owner/history',{headers:headers()}).then(x=>x.json())]);
+      const last=h.health&&h.health.length?h.health[h.health.length-1]:null;
+      drawHealth(st.status==='unknown'?null:{ok:st.status==='ok',failing:st.failing||[],checks:(st.checks||[]).map(c=>({...c,detail:''})),ran_at:st.ran_at,seconds:last?last.seconds:0});
+      const p=h.performance||{},p7=h.performance_7d||{};perf.textContent='';perf.append(el('h4',null,`Speed and cost · last ${h.days} days`));
+      if(!p.answers)perf.append(el('p','tr-meta','No answers recorded yet.'+(h.durable?'':' (No database, so this resets when the server restarts.)')));
+      else{const tb=el('table','te-table');const hd=el('tr');['','Last 7 days',`Last ${h.days} days`].forEach(x=>hd.append(el('th',null,x)));tb.append(hd);
+        const f=(k,v)=>v==null?'–':k.includes('cost')?'$'+v.toFixed(4):k.includes('share')?Math.round(v*100)+'%':typeof v==='number'&&k.includes('seconds')||k.includes('words')?v.toFixed(1)+'s':String(v);
+        [['answers','Answers'],['p50_first_words','First words (typical)'],['p90_first_words','First words (slowest 10%)'],['p50_seconds','Full answer (typical)'],['p90_seconds','Full answer (slowest 10%)'],['p50_trust_seconds','Trust check (typical)'],['avg_cost_usd','Cost per answer'],['cache_hit_share','Answers using the prompt cache'],['fallbacks','Backup model used']].forEach(([k,l])=>{const tr=el('tr');tr.append(el('td',null,l),el('td',null,f(k,p7[k])),el('td',null,f(k,p[k])));tb.append(tr)});perf.append(tb)}
+      hist.append(el('h4',null,'Trust evaluations'));
+      if(!(h.trust_evals||[]).length)hist.append(el('p','tr-meta','None yet. Run one from Trust evaluation.'));
+      else{const tb=el('table','te-table');const hd=el('tr');['Date','Hallucinations (plain → Ask Harsha)','Errors fixed','False “verified”'].forEach(x=>hd.append(el('th',null,x)));tb.append(hd);
+        const pc=v=>v==null?'–':Math.round(v*100)+'%';
+        h.trust_evals.slice().reverse().forEach(e=>{const tr=el('tr');tr.append(el('td',null,new Date(e.ts).toLocaleDateString([],{month:'short',day:'numeric'})),el('td',null,`${pc(e.baseline.hallucination_rate)} → ${pc(e.engine.hallucination_rate)}`),el('td',null,pc(e.engine.correction_success_rate)),el('td',null,pc(e.engine.false_verification_rate)));tb.append(tr)});hist.append(tb)}
+      if((h.evals||[]).length){hist.append(el('h4',null,'Record evals'));const ul=el('ul','tr-list');h.evals.slice().reverse().slice(0,10).forEach(e=>ul.append(el('li',null,`${new Date(e.ts).toLocaleDateString([],{month:'short',day:'numeric'})}: ${e.passed} of ${e.total} passed · $${(e.cost_usd||0).toFixed(2)}`)));hist.append(ul)}
+    }catch(e){perf.textContent='Couldn’t load the history.'}
+  });
 }
 function openTrustEval(){
   sheet(async (s,close)=>{

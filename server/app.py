@@ -43,7 +43,7 @@ from agent.evals import load_cases, score as score_case  # noqa: E402
 from agent.kb import KnowledgeBase  # noqa: E402
 from agent.weather import Weather  # noqa: E402
 from agent.jury import Jury  # noqa: E402
-from agent import accounts as acct, interview as iv, lab, memory, personal, proof, remote  # noqa: E402
+from agent import accounts as acct, interview as iv, lab, memory, personal, proof, remote, telemetry as tele  # noqa: E402
 from agent.loop import DEFAULT_MODEL, WEB_SEARCH_TOOL, Agent  # noqa: E402
 
 FACTCHECK_SEARCH_TOOL = {**WEB_SEARCH_TOOL, "max_uses": 5}
@@ -110,6 +110,10 @@ class Settings:
     # Assist mode is someone's voice, so it gets a fast model and a looser per-visitor limit.
     assist_model: str = field(default_factory=lambda: os.environ.get("ASSIST_MODEL", "claude-haiku-5-5"))
     assist_rate_limit: int = field(default_factory=lambda: int(_env_float("ASSIST_RATE_LIMIT_PER_WINDOW", 60)))
+    # The backup model answers when the main one is overloaded or unreachable ("off" turns it off).
+    fallback_model: str = field(default_factory=lambda: os.environ.get("FALLBACK_MODEL", ""))
+    # Run the health check once a day on the server (needs it awake, e.g. an uptime ping). Off unless HEALTH_DAILY=1.
+    health_daily: bool = field(default_factory=lambda: os.environ.get("HEALTH_DAILY", "0") == "1")
 
 
 class Turn(BaseModel):
@@ -383,6 +387,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             accounts = None
     else:
         accounts = accounts or None
+    telemetry = tele.Telemetry(accounts.db if accounts is not None else None)   # performance history, stats, eval results
+    backup_model = "" if settings.fallback_model.lower() == "off" else (settings.fallback_model or settings.assist_model)
     auth_limiter = RateLimiter(30, 600)
     jury = jury or Jury(os.environ.get("OPENAI_API_KEY", ""), os.environ.get("OPENAI_MODEL", ""),
                         os.environ.get("GEMINI_API_KEY", ""), os.environ.get("GEMINI_MODEL", ""))
@@ -1075,8 +1081,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     # ---------- Proof Mode ----------
     from concurrent.futures import ThreadPoolExecutor
     proof_pool = ThreadPoolExecutor(max_workers=4)
-    proof_stats = proof.Stats()
-    trust_stats = trust.Stats()
+    proof_stats = tele.Scoreboard(telemetry, "proof", proof.Stats().summary)
+    trust_stats = tele.Scoreboard(telemetry, "trust", trust.Stats().summary)
     trust_limiter = RateLimiter(10, 3600)     # on-demand deep checks: 10 an hour per visitor
     skeptic_model = os.environ.get("TRUST_SKEPTIC_MODEL", "").strip() or settings.assist_model
 
@@ -1454,6 +1460,125 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
     def healthz():
         return {"ok": True}
 
+    # ---------- Health check: a few real requests through the real pieces ----------
+    HEALTH_TOKEN = os.environ.get("HEALTH_TOKEN", "")
+
+    def run_health(full: bool = True) -> dict:
+        """Database, signing, the model, Harsha's record, the trust check and (full) the code sandbox, each with a real request."""
+        started, checks = time.monotonic(), []
+
+        def check(name, fn):
+            t0 = time.monotonic()
+            try:
+                ok, detail = fn()
+            except Exception as e:
+                ok, detail = False, f"{type(e).__name__}: {str(e)[:200]}"
+            checks.append({"name": name, "ok": ok, "detail": str(detail)[:300], "seconds": round(time.monotonic() - t0, 2)})
+
+        def database():
+            if not telemetry.durable:
+                return None, "No database configured (DATABASE_URL), so chats and stats aren't saved."
+            stamp = str(time.time())
+            telemetry.put("health:ping", stamp)
+            return telemetry.get("health:ping") == stamp, "Wrote and read back a row."
+
+        def signing():
+            if signer is None:
+                return None, "No SIGNING_KEY, so answers aren't signed."
+            r = {"type": "health", "at": stamp_now()}
+            return signer.verify(r, signer.sign(r)), "Signed and verified a test record."
+
+        def chat():
+            a = build_agent(owner=False)
+            r = a.ask("What is 12 × 12? Reply with just the number.")
+            finish(a, r, False, "health check", event="health_case")
+            return "144" in r.text, f"Answered “{r.text[:60]}” in {r.seconds:.1f}s" + (f" using the backup model {r.fallback}" if r.fallback else "")
+
+        def record():
+            a = build_agent(owner=False)
+            r = a.ask("In one sentence, what is Harsha Reddy's current job title? Cite his record.")
+            finish(a, r, False, "health check", event="health_case")
+            return bool(r.report and r.report.cited and r.report.ok), f"Cited {', '.join(r.report.cited) or 'nothing'}; grounding {'passed' if r.report.ok else 'failed'}"
+
+        def trust_check():
+            today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %-d, %Y")
+            rep = trust.run(get_client(), settings.model, settings.assist_model, today, "What is 23 × 47?", "23 × 47 = 1,071.", level="light")
+            budget.add(rep.usage.input_tokens + rep.usage.helper_input, rep.usage.output_tokens + rep.usage.helper_output)
+            return rep.corrected and rep.fix_verified and "1,081" in rep.answer, f"Planted 1,071; after the check: “{rep.answer[:60]}”"
+
+        def sandbox():
+            a = Agent(get_client(), kb=kb, model=settings.model, max_steps=4, max_tokens=800, record_tools=False, strict_grounding=False,
+                      system="Run the code you're asked to run with the code execution tool, then say what it printed.",
+                      server_tools=[lab.CODE_TOOL], speed="helper")
+            a.cache_system = False
+            r = a.ask("Run this Python and tell me what it prints: print(6 * 7)")
+            budget.add(r.input_tokens, r.output_tokens)
+            runs = lab.runs_from(a.messages, "health")
+            ran = any(x["kind"] == "bash" and x["status"] == "ok" and "42" in (x.get("stdout") or "") for x in runs)
+            return ran, f"{len(runs)} sandbox action(s); printed 42: {'yes' if ran else 'no'}"
+
+        check("database", database)
+        check("signing", signing)
+        check("chat", chat)
+        check("record", record)
+        check("trust check", trust_check)
+        if full:
+            check("sandbox", sandbox)
+        failing = [c["name"] for c in checks if c["ok"] is False]
+        result = {"ok": not failing, "failing": failing, "checks": checks, "full": full, "ran_at": stamp_now(),
+                  "seconds": round(time.monotonic() - started, 1)}
+        telemetry.put("health:last", result)
+        telemetry.add("health", {"ok": result["ok"], "failing": failing, "seconds": result["seconds"], "full": full})
+        log.info(json.dumps({"event": "health", "ok": result["ok"], "failing": failing, "seconds": result["seconds"]}))
+        return result
+
+    def stamp_now() -> str:
+        return datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
+
+    health_lock = threading.Lock()
+
+    @app.post("/api/owner/health")
+    def health_run(request: Request, full: bool = True):
+        token_ok = bool(HEALTH_TOKEN) and secrets.compare_digest(request.headers.get("X-Health-Token", ""), HEALTH_TOKEN)
+        if not token_ok:
+            denied = require_owner(request)
+            if denied:
+                return denied
+        if not health_lock.acquire(blocking=False):
+            return error(409, "busy", "A health check is already running.")
+        try:
+            return run_health(full)
+        finally:
+            health_lock.release()
+
+    @app.get("/api/health/status")
+    def health_status():
+        """Public and cheap (no model calls): the last health check's result. Point an uptime monitor's keyword alert at "failing"."""
+        last = telemetry.get("health:last")
+        if not last:
+            return {"status": "unknown", "message": "No health check has run yet."}
+        age_h = (datetime.now(ZoneInfo("UTC")) - datetime.fromisoformat(last["ran_at"])).total_seconds() / 3600
+        status = "ok" if last["ok"] else "failing"
+        if settings.health_daily and age_h > 36:
+            status = "stale"
+        return {"status": status, "ran_at": last["ran_at"], "hours_ago": round(age_h, 1), "failing": last["failing"],
+                "checks": [{"name": c["name"], "ok": c["ok"]} for c in last["checks"]]}
+
+    def daily_health():
+        """Once a day after 8am (server time zone), even with several servers: the first to claim the date runs it."""
+        while True:
+            time.sleep(600)
+            try:
+                now = datetime.now(ZoneInfo(settings.timezone))
+                if now.hour >= 8 and not budget.exhausted() and telemetry.claim("health:last_date", now.date().isoformat()):
+                    with health_lock:
+                        run_health(full=True)
+            except Exception as e:
+                log.error(json.dumps({"event": "health_error", "type": type(e).__name__, "detail": str(e)[:200]}))
+
+    if settings.health_daily:
+        threading.Thread(target=daily_health, daemon=True, name="daily-health").start()
+
     @app.get("/")
     def index_page():
         return FileResponse(STATIC / "index.html")
@@ -1689,7 +1814,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             get_client(), kb=kb, model=settings.model, max_steps=8, max_tokens=8000 if channel == "web" else 1600,
             system=build_general_prompt(today, owner=owner, web=settings.web_search) + (MCP_NOTE if channel == "mcp" else ""),
             server_tools=[WEB_SEARCH_TOOL] if settings.web_search else [],
-            lookup=_Lookup(kb, store), strict_grounding=False, stream=stream,
+            lookup=_Lookup(kb, store), strict_grounding=False, stream=stream, fallback_model=backup_model or None,
         )
         add_notes_tools(agent.tools, index, store, owner=owner)
         if inbox.enabled and channel == "web":  # the "Ask the real Harsha" pop-up only exists in the app
@@ -1716,6 +1841,12 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                        "model_calls_s": timing.get("calls_s")})
         if trust_out:
             record.update({"trust_level": trust_out["level"], "trust_status": trust_out["status"], "trust_s": trust_out["seconds"]})
+        if reply.fallback:
+            record["fallback"] = reply.fallback
+        telemetry.add("answer" if event == "answer" else event, {   # timings and costs only, never the question or answer
+            k: record.get(k) for k in ("label", "kind", "grounded", "steps", "web_searches", "tokens_in", "tokens_out", "cost_usd",
+                                       "cache_read", "cache_write", "seconds", "first_text_s", "prep_s", "model_calls_s",
+                                       "trust_level", "trust_status", "trust_s", "fallback", "owner")} | {"label": label})
         if settings.log_questions or event == "eval_case":  # eval questions are our own test cases
             record["question"] = question[:200]
         log.info(json.dumps(record))
@@ -1737,6 +1868,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
             "steps": reply.steps,
             "timing": timing,
             "cost_usd": round(cost, 5),
+            **({"fallback": reply.fallback} if reply.fallback else {}),
             **({"summary": agent.ctx["summary"], "summarized": agent.ctx["summarized"]}
                if getattr(agent, "ctx", None) and agent.ctx.get("summarized") else {}),
             **({"trust": trust_out} if trust_out else {}),
@@ -1968,6 +2100,8 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                 q.put(("status", {"label": STATUS.get(data["name"], "Working")}))
             elif kind == "tool_start" and data.get("name") == "create_file":
                 q.put(("status", {"label": "Writing your file"}))
+            elif kind == "fallback":
+                q.put(("status", {"label": "The main model is busy, so the backup is answering"}))
 
         agent.on_event = on_event
 
@@ -2086,7 +2220,6 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         return trust_stats.summary()
 
     eval_lock = threading.Lock()
-    trust_eval_last: dict = {}
     BASELINE_PROMPT = "You are a helpful assistant. Today's date is {today}."
 
     @app.post("/api/owner/trust-eval")
@@ -2158,8 +2291,9 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                            "skeptic_model": skeptic_model, "web_search": settings.web_search, "ran_at": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
                            "total_cost_usd": round(sum((r.get("baseline") or {}).get("cost_usd", 0) + (r.get("engine") or {}).get("cost_usd", 0)
                                                        + (r.get("check") or {}).get("cost_usd", 0) for r in rows), 4)}
-                trust_eval_last.clear()
-                trust_eval_last.update({"summary": summary, "rows": rows})
+                telemetry.put("trust_eval:last", {"summary": summary, "rows": rows})
+                telemetry.add("trust_eval", {"baseline": summary["baseline"], "engine": summary["engine"], "seconds": summary["seconds"],
+                                             "model": summary["model"], "cost_usd": summary["total_cost_usd"], "cases": len(rows)})
                 log.info(json.dumps({"event": "trust_eval", "baseline": summary["baseline"], "engine": summary["engine"], "cost_usd": summary["total_cost_usd"]}))
                 q.put(("summary", summary))
             finally:
@@ -2173,7 +2307,20 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         denied = require_owner(request)
         if denied:
             return denied
-        return trust_eval_last or {"summary": None, "rows": []}
+        return telemetry.get("trust_eval:last") or {"summary": None, "rows": []}
+
+    @app.get("/api/owner/history")
+    def owner_history(request: Request, days: float = 30):
+        """Evaluation runs and health checks over time, plus answer speed, so changes can be compared with the past."""
+        denied = require_owner(request)
+        if denied:
+            return denied
+        days = max(1.0, min(days, 120.0))
+        answers = telemetry.recent("answer", days)
+        return {"days": days, "durable": telemetry.durable,
+                "trust_evals": telemetry.recent("trust_eval", days, 50), "evals": telemetry.recent("eval", days, 50),
+                "health": telemetry.recent("health", days, 60), "tunes": telemetry.recent("tune", days, 20),
+                "performance": tele.performance(answers), "performance_7d": tele.performance([a for a in answers if a["ts"] >= tele.now_ms() - 7 * 86_400_000])}
 
     @app.post("/api/owner/evals")
     def run_evals(request: Request):
@@ -2215,6 +2362,7 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
                 summary = {"passed": passed, "total": len(rows), "cost_usd": round(cost, 4),
                            "seconds": round(time.monotonic() - started, 1), "model": settings.model}
                 log.info(json.dumps({"event": "eval_run", **summary, "failed": [r["id"] for r in rows if not r["pass"]]}))
+                telemetry.add("eval", {**summary, "failed": [r["id"] for r in rows if not r["pass"]]})
                 q.put(("summary", summary))
             finally:
                 eval_lock.release()

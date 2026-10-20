@@ -711,13 +711,14 @@ class Stats:
         self.runs.append(row)
         del self.runs[:-2000]
 
-    def summary(self) -> dict:
-        n = len(self.runs)
-        by = {lvl: [r for r in self.runs if r["level"] == lvl] for lvl in ("light", "cited", "deep")}
-        tot = lambda k: sum(r.get(k, 0) for r in self.runs)
+    def summary(self, runs: list[dict] | None = None) -> dict:
+        runs = self.runs if runs is None else runs
+        n = len(runs)
+        by = {lvl: [r for r in runs if r["level"] == lvl] for lvl in ("light", "cited", "deep")}
+        tot = lambda k: sum(r.get(k, 0) for r in runs)
         return {"answers": n, "levels": {k: len(v) for k, v in by.items()},
                 "claims": tot("claims"), "verified": tot("verified"), "partial": tot("partial"),
-                "contradicted_found": tot("contradicted_found"), "corrected": sum(1 for r in self.runs if r.get("corrected")),
-                "fix_verified": sum(1 for r in self.runs if r.get("fix_verified")), "uncertain": tot("uncertain"),
+                "contradicted_found": tot("contradicted_found"), "corrected": sum(1 for r in runs if r.get("corrected")),
+                "fix_verified": sum(1 for r in runs if r.get("fix_verified")), "uncertain": tot("uncertain"),
                 "avg_added_s": {k: round(sum(r["seconds"] for r in v) / len(v), 2) if v else 0 for k, v in by.items()},
                 "cost_usd": round(tot("cost_usd"), 4)}

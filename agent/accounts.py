@@ -58,6 +58,10 @@ SCHEMA = [
        title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS interviews (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        public_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
+    """CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, created BIGINT NOT NULL, challenge TEXT NOT NULL, data TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, body TEXT NOT NULL, updated BIGINT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS metrics (id TEXT PRIMARY KEY, kind TEXT NOT NULL, ts BIGINT NOT NULL, body TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS metrics_kind_ts ON metrics (kind, ts)",
     """CREATE TABLE IF NOT EXISTS memories (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        text TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY (user_id, id))""",
 ]
@@ -142,6 +146,7 @@ class Database:
             self.kind = "postgres"
             # prepare_threshold=None: works through Supabase's connection pooler
             self.conn = psycopg.connect(url, autocommit=True, prepare_threshold=None)
+            self._dsn = url
         else:
             self.kind = "sqlite"
             self.conn = sqlite3.connect(url.removeprefix("sqlite:///") or ":memory:", check_same_thread=False)
@@ -158,28 +163,45 @@ class Database:
         return sql if self.kind == "postgres" else sql.replace("%s", "?")
 
     def run(self, sql: str, args: tuple = ()) -> None:
-        with self.lock:
-            self._reconnect_if_closed()
-            cur = self.conn.cursor()
-            cur.execute(self._sql(sql), args)
-            if self.kind == "sqlite":
-                self.conn.commit()
+        self._do(sql, args, fetch=False)
 
     def all(self, sql: str, args: tuple = ()) -> list[tuple]:
-        with self.lock:
-            self._reconnect_if_closed()
-            cur = self.conn.cursor()
-            cur.execute(self._sql(sql), args)
-            return list(cur.fetchall())
+        return self._do(sql, args, fetch=True)
+
+    def _do(self, sql: str, args: tuple, fetch: bool):
+        """Run one statement. If the Postgres connection dropped (pooler restart, network blip), reconnect and try once more."""
+        for attempt in (1, 2):
+            with self.lock:
+                try:
+                    self._reconnect_if_closed()
+                    cur = self.conn.cursor()
+                    cur.execute(self._sql(sql), args)
+                    if self.kind == "sqlite":
+                        self.conn.commit()
+                    return list(cur.fetchall()) if fetch else None
+                except Exception as e:
+                    if attempt == 2 or self.kind != "postgres" or not _connection_error(e):
+                        raise
+                    try:
+                        self.conn.close()
+                    except Exception:
+                        pass
 
     def one(self, sql: str, args: tuple = ()) -> tuple | None:
         rows = self.all(sql, args)
         return rows[0] if rows else None
 
     def _reconnect_if_closed(self) -> None:
+        # Reconnect with the original URL: psycopg's conn.info.dsn leaves out the password, so it can't be used here.
         if self.kind == "postgres" and self.conn.closed:
             import psycopg
-            self.conn = psycopg.connect(self.conn.info.dsn, autocommit=True, prepare_threshold=None)
+            self.conn = psycopg.connect(self._dsn, autocommit=True, prepare_threshold=None)
+
+
+def _connection_error(e: Exception) -> bool:
+    """A dropped or broken connection (worth one reconnect), not a bad query."""
+    name = type(e).__name__
+    return name in ("OperationalError", "InterfaceError", "AdminShutdown", "ConnectionTimeout") or "connection" in str(e).lower()
 
 
 @dataclass
@@ -196,22 +218,24 @@ class Accounts:
         self._challenges: dict[str, tuple[float, bytes, dict]] = {}
         self._lock = threading.Lock()
 
-    # ---- one-time challenges for passkey ceremonies (kept in memory for 5 minutes) ----
+    # ---- one-time challenges for passkey ceremonies (in the database, so restarts and multiple servers are fine) ----
     def _remember(self, challenge: bytes, data: dict) -> str:
         cid = secrets.token_urlsafe(16)
-        now = time.monotonic()
-        with self._lock:
-            for k in [k for k, (t, _, _) in self._challenges.items() if now - t > CHALLENGE_SECONDS]:
-                del self._challenges[k]
-            self._challenges[cid] = (now, challenge, data)
+        now = now_ms()
+        self.db.run("DELETE FROM challenges WHERE created < %s", (now - CHALLENGE_SECONDS * 1000,))
+        self.db.run("INSERT INTO challenges (id, created, challenge, data) VALUES (%s, %s, %s, %s)",
+                    (cid, now, b64u(challenge), json.dumps(data)))
         return cid
 
     def _take(self, cid: str) -> tuple[bytes, dict]:
+        """Use a challenge once: it's deleted as it's read, and it expires after CHALLENGE_SECONDS."""
         with self._lock:
-            item = self._challenges.pop(cid, None)
-        if not item or time.monotonic() - item[0] > CHALLENGE_SECONDS:
+            row = self.db.one("SELECT created, challenge, data FROM challenges WHERE id = %s", (str(cid)[:64],))
+            if row:
+                self.db.run("DELETE FROM challenges WHERE id = %s", (str(cid)[:64],))
+        if not row or now_ms() - int(row[0]) > CHALLENGE_SECONDS * 1000:
             raise ValueError("That sign-in took too long or was already used. Please try again.")
-        return item[1], item[2]
+        return unb64u(row[1]), json.loads(row[2])
 
     # ---- passkey registration (create an account) ----
     def registration_options(self, rp_id: str, nickname: str, this_device: bool = True) -> tuple[str, str]:
