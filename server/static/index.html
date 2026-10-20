@@ -60,6 +60,10 @@ main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-
 .hello .wx .wi{font-size:22px;line-height:1}
 .hello .wx small{color:var(--muted);font-weight:500;font-size:13px}
 .hello .owner-tip{font-size:12.5px}
+/* embed: inside a website's chat pop-up, the pop-up has its own title bar */
+html.embed header{display:none}
+html.embed .hello h2{font-size:clamp(34px,10vw,48px)}
+html.embed .fine{display:none}
 .chip.link{text-decoration:none;color:var(--fg);border-color:color-mix(in srgb,var(--red) 55%,var(--line))}
 .chips{display:flex;flex-wrap:wrap;gap:8px;padding-top:4px}
 .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-size:14px;text-align:left}
@@ -340,8 +344,19 @@ const WX={
 };
 const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 function partOfDay(h){return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night'}
+const PARAMS=new URLSearchParams(location.search),EMBED=PARAMS.has('embed');
+if(EMBED)document.documentElement.classList.add('embed');
+const EMBED_CHIPS=["What does Harsha do at IBM?","Has Harsha shipped anything with AI?","What are his strongest results?","How can I contact Harsha?"];
 function greet(w){
   const now=new Date(),part=partOfDay(now.getHours()),day=DAYS[now.getDay()];
+  if(EMBED){  // on Harsha's portfolio, visitors came to learn about his work
+    const h=$('#hello-h');h.textContent='';h.append("Hi, I'm Harsha's ",el('span',null,'AI agent'));
+    $('#wx').hidden=true;$('#owner-tip').hidden=true;
+    $('#hello-p').textContent="Ask about his work, or anything else. Answers about Harsha come only from his verified record, with sources you can tap.";
+    const box=$('#chips');box.textContent='';
+    EMBED_CHIPS.forEach(c=>{const b=el('button','chip',c);b.type='button';b.onclick=()=>ask(c);box.append(b)});
+    return;
+  }
   const h=$('#hello-h'),p=$('#hello-p'),wx=$('#wx');h.textContent='';
   let chips=[],kind=null;
   if(w&&w.ok){
@@ -1071,7 +1086,8 @@ $('#recents').addEventListener('click',openRecents);
 lockBtn.addEventListener('click',openLock);
 memBtn.addEventListener('click',openMemory);
 
-passcode=store.get();setOwner(!!passcode);checkTickets();loadWeather();
+passcode=store.get();setOwner(!!passcode);checkTickets();if(!EMBED)loadWeather();
+{const preset=(PARAMS.get('q')||'').trim().slice(0,500);if(preset){window.history.replaceState(null,'',location.pathname+(EMBED?'?embed=1':''));setTimeout(()=>ask(preset),50)}}
 if(passcode){fetch('/api/owner/check',{method:'POST',headers:{'X-Owner-Passcode':passcode}}).then(r=>{if(!r.ok){passcode='';store.set('');setOwner(false)}}).catch(()=>{})}
 })();
 </script>

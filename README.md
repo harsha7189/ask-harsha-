@@ -88,6 +88,18 @@ Answers stream word by word over Server-Sent Events (`POST /api/chat/stream`), w
 
 In owner mode, the lock menu has **Run evals**: the server asks every case in `evals/cases.json` as a visitor would, scores each answer with the shared rules in `agent/evals.py`, and streams PASS/FAIL results to the page with the reasons, the answer, time and cost. The cases cover career facts with required citations, ownership boundaries, honest declines (unknown claims, salary, prompt injection, people management), general knowledge, the current date, web search, and a visitor trying to plant a false memory. Each run is logged as one `eval_run` line, so scores can be compared over time.
 
+## Chat pop-up for any website
+
+One line adds a floating **Ask my AI** button to any site; tapping it opens the agent in a panel (full screen on phones):
+
+```html
+<script src="https://ask-harsha.onrender.com/widget.js" defer></script>
+```
+
+Optional attributes: `data-label`, `data-greeting` (`""` turns off the greeting bubble) and `data-side="left"`. The widget lives in a shadow root so the host page's CSS can't break it, wakes the server when the page loads so the first answer isn't slowed by a cold start, loads the chat only when opened, and exposes `window.AskHarsha.open("question")`. Inside the pop-up the chat runs in embed mode (`/?embed=1`): no app header, and starter questions about Harsha's work instead of the weather greeting. `/?q=…` opens the chat and asks a question straight away.
+
+`/portfolio` serves Harsha's streaming-style portfolio with the pop-up built in, so one link gives visitors both.
+
 ## Chat history and Recents
 
 Every conversation is saved in the visitor's own browser (never on the server) and listed under **Recents** (the clock icon): grouped by Today, Yesterday, Previous 7 days and so on, searchable by title and content. Tap a chat to reopen it and keep going (the agent gets the earlier turns as context); each chat can be renamed, downloaded as Markdown or deleted, and everything can be downloaded as JSON or deleted at once. Saving can be turned off. Up to 100 chats are kept, oldest dropped first when storage fills; attached files aren't kept, only their names. The Memory screen moved into the owner menu to keep the header to icons.

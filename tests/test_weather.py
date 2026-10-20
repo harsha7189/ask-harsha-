@@ -63,3 +63,14 @@ def test_greeting_endpoint():
     c = TestClient(app)
     d = c.get("/api/greeting", headers={"x-forwarded-for": "8.8.8.8"}).json()
     assert d["condition"] == "snow" and d["unit"] == "F" and d["temp"] == 28
+
+
+def test_widget_and_portfolio_are_served():
+    s = Settings(daily_budget_usd=5.0, rate_limit=50, allowed_origins=[], owner_passcode="open-sesame")
+    c = TestClient(create_app(client=FakeClient([]), settings=s, notes=MemoryNotesStore(), inbox=inboxmod.MemoryInboxStore(),
+                              receipts=rcpt.ReceiptStore(inboxmod.make_key("k"))))
+    w = c.get("/widget.js")
+    assert w.status_code == 200 and w.headers["content-type"].startswith("text/javascript") and "attachShadow" in w.text
+    p = c.get("/portfolio")
+    assert p.status_code == 200 and '<script src="/widget.js" defer></script>' in p.text and "Harsha Reddy" in p.text
+    assert "x-frame-options" not in {k.lower() for k in c.get("/?embed=1").headers}   # the pop-up can frame the chat

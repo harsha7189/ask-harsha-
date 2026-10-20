@@ -330,6 +330,18 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
 
         return StreamingResponse(stream_events(q, work), media_type="text/event-stream", headers=SSE_HEADERS)
 
+    # ---------- Website pop-up and hosted portfolio ----------
+    @app.get("/widget.js")
+    def widget_js():
+        """One <script> tag adds the chat pop-up to any website."""
+        return FileResponse(STATIC / "widget.js", media_type="text/javascript; charset=utf-8",
+                            headers={"Cache-Control": "public, max-age=3600"})
+
+    @app.get("/portfolio")
+    def portfolio_page():
+        """Harsha's portfolio with the chat pop-up built in."""
+        return FileResponse(STATIC / "portfolio.html", headers={"Cache-Control": "no-cache"})
+
     # ---------- Home screen greeting ----------
     @app.get("/api/greeting")
     def greeting(request: Request):
