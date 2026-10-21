@@ -213,10 +213,10 @@ async function openApp(id){
   d.append(acts);
 }
 async function dl(url,name){try{const res=await fetch(url,{headers:headers()});if(!res.ok)throw new Error('That file isn’t ready.');const b=await res.blob();const u=URL.createObjectURL(b),x=el('a');x.href=u;x.download=(res.headers.get('content-disposition')||'').split('filename="')[1]?.replace('"','')||name;document.body.append(x);x.click();x.remove();setTimeout(()=>URL.revokeObjectURL(u),3000)}catch(e){toast(e.message)}}
-$('#runnow').onclick=async()=>{const b=$('#runnow');b.disabled=true;$('#live').hidden=false;$('#livetext').textContent='Starting…';
+$('#runnow').onclick=async()=>{const b=$('#runnow');let done=false;b.disabled=true;$('#live').hidden=false;$('#live').querySelector('.spin').hidden=false;$('#livetext').textContent='Starting…';
   try{const res=await fetch('/api/jobs/run',{method:'POST',headers:headers()});const type=res.headers.get('content-type')||'';if(!res.ok||!type.includes('text/event-stream')){const d=await res.json().catch(()=>({}));throw new Error(d.message||'Couldn’t start.')}
-    await readSSE(res,(k,d)=>{if(k==='status')$('#livetext').textContent=d.label+'…';else if(k==='final'){$('#livetext').textContent=d.ok?`Done: ${d.jobs_seen} jobs read, ${d.screened_in} fit, ${d.ready} ready, ${d.needs_you} need you.`:d.message;filter='ready';loadApps()}else if(k==='error')throw new Error(d.message)})}
-  catch(e){$('#livetext').textContent=e.message}finally{b.disabled=false;setTimeout(()=>{$('#live').hidden=true},8000)}};
+    await readSSE(res,(k,d)=>{if(k==='status')$('#livetext').textContent=d.label+'…';else if(k==='final'){$('#livetext').textContent=d.ok?`Done: ${d.jobs_seen} jobs read · ${d.screened_in} passed screening · ${d.not_qualified||0} not a strong match · ${d.ready} ready · ${d.needs_you} need you${d.unblocked?` · ${d.unblocked} unblocked`:''}.${d.stopped?' '+d.stopped:''}${(d.errors||[]).length?` (${d.errors.length} problem(s): ${d.errors[0]})`:''}`:d.message;filter='ready';done=true;api('GET','/api/jobs/profile').then(p=>{prof=p;load()}).catch(()=>{})}else if(k==='error')throw new Error(d.message)})}
+  catch(e){$('#livetext').textContent=e.message}finally{b.disabled=false;if(!done)$('#livetext').textContent+=' The connection ended before the run finished (the server may have restarted). Tap Run now again.';$('#live').querySelector('.spin').hidden=true}};
 
 // ---------- morning report ----------
 const OUT=[['recruiter_reply','Recruiter replied'],['interview','Interview'],['offer','Offer'],['rejected','Rejected']];

@@ -148,6 +148,8 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
     for rank, (score, j, s) in enumerate(candidates):
         app = {"key": j.key, "job": j.to_dict(), "screen": s, "priority": score, "status": "found", "force": True}
         if rank >= pool or not budget_ok():
+            if not budget_ok():
+                summary["stopped"] = "Today's budget is used up; the rest wait for the next run."
             store.save_app(profile["user_id"], app)
             continue
         emit("status", {"label": f"Researching {j.title} at {j.company} ({rank + 1} of {min(pool, len(candidates))})"})

@@ -360,3 +360,17 @@ def test_waiting_on_a_question_gets_retried_with_the_new_sheet():
     assert res["unblocked"] == 1
     a = store.app_bodies(u.id, "ready")[0]
     assert a["answers"][0]["value"] == "Yes"
+
+
+def test_small_format_problems_are_repaired_not_blocking():
+    b = base()
+    cv = tailored()
+    cv["experience"][0]["bullets"][1]["text"] = "Owned the TTL requirement for three releases of Redis caching, cutting AI-agent latency 40%"
+    cv["experience"][0]["bullets"][2]["text"] = "Cut case resolution time 11→4 minutes and reduced escalations 40% with triage rules"
+    cv["experience"][1]["bullets"] = cv["experience"][1]["bullets"][:2]
+    cv = {**cv, "experience": [{**e, "company": b["experience"][i]["company"]} for i, e in enumerate(cv["experience"])]}
+    replaced = []
+    assert rs.repair_format(b, cv, RULES, replaced)
+    ibm = cv["experience"][0]["bullets"]
+    assert "3 releases" in ibm[1]["text"] and ibm[2].get("original") and len(cv["experience"][1]["bullets"]) == 4
+    assert all(rs.metric_count(x["text"]) <= 1 for x in ibm)

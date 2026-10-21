@@ -628,6 +628,38 @@ def page_count(pdf: bytes) -> int:
 
 
 # ---------------------------------------------------------------- the whole tailoring step with its two checks
+WORD_NUM = {"two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+            "eleven": "11", "twelve": "12", "fifteen": "15", "twenty": "20", "thirty": "30", "forty": "40", "fifty": "50"}
+
+
+def repair_format(base: dict, cv: dict, rules: dict, replaced: list) -> bool:
+    """Numerals for numbers, one metric per bullet (else his original bullet), and the right bullet count per job."""
+    changed = False
+    counts = rules.get("bullets_per_job") or DEFAULT_RULES["bullets_per_job"]
+    for i, e in enumerate(cv["experience"]):
+        for j, b in enumerate(e["bullets"]):
+            t = NUMBER_WORDS.sub(lambda m: WORD_NUM.get(m.group(1).lower(), m.group(1)), b["text"])
+            if t != b["text"]:
+                b["text"], changed = t, True
+            if rules.get("one_metric_per_bullet", True) and metric_count(b["text"]) > 1 and not b.get("original"):
+                _restore(base, cv, (i, j), f"{e['company']} bullet {j + 1}: replaced with your original bullet (more than one metric)", replaced)
+                changed = True
+        want = counts[i] if i < len(counts) else 3
+        if len(e["bullets"]) > want:
+            del e["bullets"][want:]
+            changed = True
+        srcs = sources_for(base, e["id"])
+        real = [k for k in srcs if not k.startswith("N")]        # his résumé bullets, not raw notes
+        while len(e["bullets"]) < want:
+            used = {squash(b["text"]) for b in e["bullets"]}
+            k = next((k for k in real if squash(srcs[k]) not in used), None)
+            if not k:
+                break
+            e["bullets"].append({"text": srcs[k], "sources": [k], "covers": [], "original": True})
+            changed = True
+    return changed
+
+
 def _restore(base: dict, cv: dict, where: tuple, used_note: str, replaced: list) -> None:
     """Put one of his own bullets back in place of a bullet that went too far."""
     x, y = where
@@ -680,17 +712,19 @@ def tailor_and_check(client, model: str, helper: str, base: dict, brief: dict, j
     defend = cr.defensibility(client, helper, base, cv, notes, job, usage)
     for c in defend["overreach"]:
         _restore(base, cv, c["bullet"], f"{c['where']}: replaced with your original bullet (goes beyond what you can back up: “{c['evidence'][:100]}”)", replaced)
+    # small format rules are repaired here instead of blocking the application
+    fixed_format = repair_format(base, cv, rules, replaced)
     if replaced:
         truth = check_truth(client, helper, base, cv, rules, usage, judge=False)
     full = full_cv(base, cv)
     pdf, docx = render_pdf(full), render_docx(full)
     pages = page_count(pdf)
-    fit_final = check_fit(client, helper, base, cv, brief, rules, usage, pages) if replaced else fit
+    fit_final = check_fit(client, helper, base, cv, brief, rules, usage, pages) if (replaced or fixed_format) else fit
     style_final = cr.style_check(cv, brief)
     if recruiter is None or revised_after_review or replaced:
         recruiter = cr.recruiter_review(client, helper, full, brief, job, usage)
     ats = cr.ats_check(full, pdf, docx)
-    blocking_fit = [i for i in fit_final.issues if i["rule"] != "must_have"]
+    blocking_fit = [i for i in fit_final.issues if i["rule"] == "one_page"]
     if not truth.passed or not ats["passed"] or blocking_fit:
         status = "needs_you"
     else:
