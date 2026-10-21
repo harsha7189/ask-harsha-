@@ -1920,6 +1920,7 @@ function mountSidebar(){
     if(juryAvail){row('⚖️','Second opinions',`Ask ${juryNames.join(' and ')} the same question and compare`,toggle(prefs.jury,v=>{setPref('jury',v);juryOn=juryAvail&&v},'Second opinions'))}
     const labA=el('a','btn','Open');labA.href='/lab';
     row('🔬','Discovery Lab','Investigate a question: hypotheses, real experiments, then a try at breaking them',labA);
+    if(passcode){const jp=el('a','btn','Open');jp.href='/jobs';row('🧭','Job Pilot','Owner only: finds product roles nightly, researches each one, tailors and checks your résumé, prepares applications',jp)}
     const ckA=el('a','btn','Open');ckA.href='/check';
     row('🔎','Check any AI','Paste an answer from ChatGPT, Gemini or any AI: every claim checked, mistakes corrected',ckA);
     const ivA=el('a','btn','Open');ivA.href='/interview';

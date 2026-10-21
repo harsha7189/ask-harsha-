@@ -2609,6 +2609,15 @@ def create_app(client=None, kb: KnowledgeBase | None = None, settings: Settings 
         start_worker(work, q)  # started now, so the lock is always released even if the page goes away
         return StreamingResponse(stream_events(q), media_type="text/event-stream", headers=SSE_HEADERS)
 
+    # ---------- Job Pilot (owner only): find, research, tailor, check, and hand ready applications to the laptop runner ----------
+    from cryptography.fernet import Fernet
+    from server import jobs_routes
+    jp_key = inboxmod.make_key(os.environ.get("INBOX_KEY", ""), settings.owner_passcode)
+    jobs_routes.install(app, accounts=accounts, telemetry=telemetry, budget=budget, get_client=get_client, settings=settings,
+                        require_owner=require_owner, current_user=current_user, error=error, stream_events=stream_events,
+                        start_worker=start_worker, sse_headers=SSE_HEADERS, upstream_failed=upstream_failed, log=log,
+                        fernet=Fernet(jp_key) if jp_key else None, static_dir=STATIC, web_search=settings.web_search)
+
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     return app
 

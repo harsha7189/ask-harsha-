@@ -58,6 +58,13 @@ SCHEMA = [
        title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS interviews (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        public_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
+    """CREATE TABLE IF NOT EXISTS job_profiles (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, body TEXT NOT NULL,
+       sheet TEXT, runner_hash TEXT, updated BIGINT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS job_apps (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL, key TEXT NOT NULL,
+       status TEXT NOT NULL, company TEXT, title TEXT, created BIGINT NOT NULL, updated BIGINT NOT NULL, body TEXT NOT NULL,
+       PRIMARY KEY (user_id, id), UNIQUE (user_id, key))""",
+    """CREATE TABLE IF NOT EXISTS job_companies (ats TEXT NOT NULL, board TEXT NOT NULL, company TEXT, job_id TEXT, url TEXT,
+       added BIGINT NOT NULL, checked BIGINT, failures INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (ats, board))""",
     """CREATE TABLE IF NOT EXISTS experiments (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, id TEXT NOT NULL,
        created BIGINT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (user_id, id))""",
     """CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, created BIGINT NOT NULL, challenge TEXT NOT NULL, data TEXT NOT NULL)""",
@@ -373,7 +380,8 @@ class Accounts:
         return User(*row)
 
     def delete_user(self, user_id: str) -> None:
-        for table in ("chats", "projects", "saved", "prefs", "memories", "lab_runs", "interviews", "experiments", "sessions", "credentials", "recovery"):
+        for table in ("chats", "projects", "saved", "prefs", "memories", "lab_runs", "interviews", "experiments", "job_apps", "job_profiles",
+                      "sessions", "credentials", "recovery"):
             self.db.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
         self.db.run("DELETE FROM users WHERE id = %s", (user_id,))
 
@@ -607,6 +615,125 @@ class Accounts:
     def get_lab(self, user_id: str, run_id: str) -> dict | None:
         row = self.db.one("SELECT body FROM lab_runs WHERE user_id = %s AND id = %s", (user_id, run_id))
         return json.loads(row[0]) if row else None
+
+    # ---- Job Pilot: profile (résumé, rules, encrypted answer sheet), applications, and the shared company registry ----
+    def job_profile(self, user_id: str) -> dict | None:
+        row = self.db.one("SELECT body, sheet, runner_hash FROM job_profiles WHERE user_id = %s", (user_id,))
+        if not row:
+            return None
+        return {**json.loads(row[0]), "user_id": user_id, "sheet_enc": row[1], "runner_hash": row[2]}
+
+    def save_job_profile(self, user_id: str, body: dict, sheet_enc: str | None = None, runner_hash: str | None = None) -> None:
+        clean = {k: v for k, v in body.items() if k not in ("user_id", "sheet_enc", "runner_hash", "sheet")}
+        cur = self.db.one("SELECT sheet, runner_hash FROM job_profiles WHERE user_id = %s", (user_id,))
+        sheet_enc = sheet_enc if sheet_enc is not None else (cur[0] if cur else None)
+        runner_hash = runner_hash if runner_hash is not None else (cur[1] if cur else None)
+        if cur:
+            self.db.run("UPDATE job_profiles SET body = %s, sheet = %s, runner_hash = %s, updated = %s WHERE user_id = %s",
+                        (json.dumps(clean), sheet_enc, runner_hash, now_ms(), user_id))
+        else:
+            self.db.run("INSERT INTO job_profiles (user_id, body, sheet, runner_hash, updated) VALUES (%s, %s, %s, %s, %s)",
+                        (user_id, json.dumps(clean), sheet_enc, runner_hash, now_ms()))
+
+    def job_profile_by_runner(self, runner_hash: str) -> dict | None:
+        row = self.db.one("SELECT user_id FROM job_profiles WHERE runner_hash = %s", (runner_hash,))
+        return self.job_profile(row[0]) if row else None
+
+    def job_profiles_enabled(self) -> list[str]:
+        out = []
+        for uid, body in self.db.all("SELECT user_id, body FROM job_profiles", ()):
+            try:
+                if json.loads(body).get("enabled"):
+                    out.append(uid)
+            except json.JSONDecodeError:
+                continue
+        return out
+
+    KEEP_STATES = ("ready", "needs_you", "filled", "submitted", "applying")
+
+    def save_app(self, user_id: str, app: dict) -> str:
+        """Insert or update an application by its job key. A prepared or applied one is never knocked back to found/skipped."""
+        files = app.pop("files", None)
+        if files:
+            app["files_b64"] = {k: base64.b64encode(v).decode() for k, v in files.items()}
+        row = self.db.one("SELECT id, status, body FROM job_apps WHERE user_id = %s AND key = %s", (user_id, app["key"]))
+        job = app.get("job") or {}
+        if row:
+            if row[1] in self.KEEP_STATES and app.get("status") in ("found", "skipped") and not app.get("force"):
+                return row[0]
+            merged = {**json.loads(row[2]), **{k: v for k, v in app.items() if k != "force"}}
+            self.db.run("UPDATE job_apps SET status = %s, body = %s, updated = %s WHERE user_id = %s AND id = %s",
+                        (merged["status"], json.dumps(merged), now_ms(), user_id, row[0]))
+            return row[0]
+        aid = "J" + secrets.token_urlsafe(8)
+        app = {k: v for k, v in app.items() if k != "force"}
+        app["id"] = aid
+        self.db.run("INSERT INTO job_apps (user_id, id, key, status, company, title, created, updated, body) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (user_id, aid, app["key"], app.get("status", "found"), str(job.get("company", ""))[:200], str(job.get("title", ""))[:200],
+                     now_ms(), now_ms(), json.dumps(app)))
+        return aid
+
+    def apps(self, user_id: str, status: str | None = None, limit: int = 300) -> list[dict]:
+        sql = "SELECT id, key, status, company, title, created, updated, body FROM job_apps WHERE user_id = %s"
+        args: tuple = (user_id,)
+        if status:
+            sql += " AND status = %s"
+            args += (status,)
+        rows = self.db.all(sql + " ORDER BY updated DESC LIMIT %s", args + (limit,))
+        out = []
+        for r in rows:
+            b = json.loads(r[7])
+            out.append({"id": r[0], "key": r[1], "status": r[2], "company": r[3], "title": r[4], "created": r[5], "updated": r[6],
+                        "location": (b.get("job") or {}).get("location", ""), "url": (b.get("job") or {}).get("url", ""),
+                        "ats": (b.get("job") or {}).get("ats", ""), "sponsor": ((b.get("screen") or {}).get("sponsor") or {}).get("level"),
+                        "why": b.get("why", [])[:3], "priority": b.get("priority")})
+        return out
+
+    def app(self, user_id: str, app_id: str) -> dict | None:
+        row = self.db.one("SELECT body, status FROM job_apps WHERE user_id = %s AND id = %s", (user_id, app_id))
+        return {**json.loads(row[0]), "status": row[1]} if row else None
+
+    def app_file(self, user_id: str, app_id: str, kind: str) -> bytes | None:
+        a = self.app(user_id, app_id)
+        b64 = ((a or {}).get("files_b64") or {}).get(kind)
+        return base64.b64decode(b64) if b64 else None
+
+    def set_app_status(self, user_id: str, app_id: str, status: str, **extra) -> None:
+        a = self.app(user_id, app_id)
+        if not a:
+            raise ValueError("That application doesn't exist.")
+        a.update(status=status, **extra)
+        a.setdefault("log", []).append({"at": now_ms(), "status": status, **{k: v for k, v in extra.items() if k in ("detail", "step")}})
+        self.db.run("UPDATE job_apps SET status = %s, body = %s, updated = %s WHERE user_id = %s AND id = %s",
+                    (status, json.dumps(a), now_ms(), user_id, app_id))
+
+    def seen_keys(self, user_id: str) -> set[str]:
+        return {r[0] for r in self.db.all("SELECT key FROM job_apps WHERE user_id = %s", (user_id,))}
+
+    def apps_since(self, user_id: str, status: str, since_ms: int) -> int:
+        return self.db.one("SELECT COUNT(*) FROM job_apps WHERE user_id = %s AND status = %s AND updated >= %s", (user_id, status, since_ms))[0]
+
+    def add_company(self, ats: str, board: str, job_id: str = "", url: str = "") -> bool:
+        if self.db.one("SELECT 1 FROM job_companies WHERE ats = %s AND board = %s", (ats, board)):
+            return False
+        self.db.run("INSERT INTO job_companies (ats, board, company, job_id, url, added, checked, failures) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (ats, board, "", job_id[:300], url[:500], now_ms(), None, 0))
+        return True
+
+    def companies_to_check(self, n: int) -> list[dict]:
+        rows = self.db.all("SELECT ats, board, company, job_id, url FROM job_companies WHERE failures < 5 "
+                           "ORDER BY COALESCE(checked, 0) ASC LIMIT %s", (n,))
+        return [{"ats": r[0], "board": r[1], "company": r[2], "job_id": r[3], "url": r[4]} for r in rows]
+
+    def mark_checked(self, ats: str, board: str, company: str = "", failed: bool = False) -> None:
+        if failed:
+            self.db.run("UPDATE job_companies SET checked = %s, failures = failures + 1 WHERE ats = %s AND board = %s", (now_ms(), ats, board))
+        else:
+            self.db.run("UPDATE job_companies SET checked = %s, failures = 0, company = COALESCE(NULLIF(%s, ''), company) WHERE ats = %s AND board = %s",
+                        (now_ms(), company, ats, board))
+
+    def company_count(self) -> int:
+        return self.db.one("SELECT COUNT(*) FROM job_companies", ())[0]
 
     # ---- the experiment journal: what worked and what failed in earlier Solve runs, offered to the next problem ----
     def add_lessons(self, user_id: str, lessons: list[dict]) -> int:
