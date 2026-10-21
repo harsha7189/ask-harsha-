@@ -165,10 +165,41 @@ def add_to_bank(base: dict, other: dict) -> int:
 
 
 def sources_for(base: dict, job_id: str) -> dict[str, str]:
-    """Every true bullet for one job: from the base résumé and the bank."""
+    """Every true statement for one job: his résumé bullets, the bank from his other résumés, then his evidence notes."""
     out = {b["id"]: b["text"] for e in base["experience"] if e["id"] == job_id for b in e["bullets"]}
     out.update({b["id"]: b["text"] for b in base.get("bank", []) if b["job"] == job_id})
+    out.update({b["id"]: b["text"] for b in base.get("notes_bank", []) if b["job"] == job_id})
     return out
+
+
+def notes_bank(base: dict, notes: str) -> list[dict]:
+    """His evidence notes, filed under the job each section is about. A heading line that names a company (e.g.
+    "IBM — Product Manager") switches the job; the lines under it belong to that job until the next company heading."""
+    jobs = [(e["id"], squash(e["company"]).split()[:1]) for e in base.get("experience", [])]
+    out, current = [], None
+    for raw in (notes or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        is_item = bool(re.match(r"^[-•*]\s+", line))
+        text = re.sub(r"^[-•*]\s+", "", line).strip()
+        if not is_item:
+            hit = next((jid for jid, first in jobs if first and first[0] in squash(text).split()), None)
+            if hit:
+                current = hit
+            continue          # sub-headings like "$8M+ retention" just label what follows
+        if current and len(text) >= 20:
+            out.append({"id": f"N{len(out) + 1}", "job": current, "text": " ".join(text.split())[:400]})
+    return out[:120]
+
+
+def with_notes(base: dict, notes: str) -> dict:
+    """A copy of his base résumé that can also draw on his evidence notes (his own statements) when tailoring."""
+    b = dict(base)
+    b["notes_bank"] = notes_bank(base, notes)
+    if b["notes_bank"]:
+        b["source_text"] = (base.get("source_text", "") + "\n\nEVIDENCE NOTES:\n" + "\n".join(x["text"] for x in b["notes_bank"]))[:140000]
+    return b
 
 
 def years_of_experience(base: dict, today: date | None = None) -> float:
@@ -231,7 +262,9 @@ TAILOR_PROMPT = """You tailor Harsha Reddy's résumé to one job. The goal: he r
 looking for, using only things he really did.
 
 Hard rules (code checks every one, and a bullet that breaks them is thrown away):
-- Every bullet cites the IDs of the real bullets it's built from (from the same job). Reword, reorder, combine and \
+- Every bullet cites the IDs of the real statements it's built from (from the same job): his résumé bullets (E…), \
+bullets from his other résumés (K…) and his own evidence notes (N…). Pick, for this job, the statements that best match \
+what the posting asks for; a strong bullet often combines a résumé bullet with the detail from a note. Reword, reorder, combine and \
 emphasize freely; never add a number, tool, product, company, scope or result that isn't in the cited bullets.
 - Keep his ownership honest: if a source says engineering built it and he owned the requirements, say that.
 - {bullet_counts}
@@ -264,7 +297,7 @@ def tailor(client, model: str, base: dict, brief: dict, job: dict, rules: dict, 
             + ", ".join(brief.get("technical_skills") or []) + f"\nSeniority: {brief.get('seniority', 'mid')}"
             + "\nKeywords: " + ", ".join(brief.get("keywords") or [])
             + f"\nAngle: {brief.get('angle', '')}\n\nHIS CURRENT HEADLINE: {base.get('headline', '')}\nHIS SUMMARY: {base.get('summary', '')}\nHIS SKILLS: "
-            + ", ".join(base["skills"]) + f"\n\nHIS REAL BULLETS:\n{src}")
+            + ", ".join(base["skills"]) + f"\n\nEVERYTHING TRUE HE HAS SAID ABOUT EACH JOB (résumé bullets E…, other résumés K…, his notes N…):\n{src}")
     if fix and previous:
         user += "\n\nYOUR PREVIOUS VERSION:\n" + json.dumps(previous)[:12000] + "\n\nFIX ONLY THESE PROBLEMS (keep everything else):\n" + "\n".join(f"- {f}" for f in fix)
     system = TAILOR_PROMPT.format(bullet_counts=count_text, titles=", ".join(rules.get("allowed_titles") or DEFAULT_RULES["allowed_titles"]),
@@ -337,7 +370,8 @@ def check_truth(client, helper: str, base: dict, cv: dict, rules: dict, usage: U
     c = Check()
     allowed = [t.lower() for t in rules.get("allowed_titles") or DEFAULT_RULES["allowed_titles"]]
     base_text = " ".join([base.get("summary", ""), base.get("headline", ""), " ".join(base["skills"])]
-                         + [b["text"] for e in base["experience"] for b in e["bullets"]] + [b["text"] for b in base.get("bank", [])])
+                         + [b["text"] for e in base["experience"] for b in e["bullets"]] + [b["text"] for b in base.get("bank", [])]
+                         + [b["text"] for b in base.get("notes_bank", [])])
     base_lower = base_text.lower()
     for i, e in enumerate(cv["experience"]):
         orig = base["experience"][i]

@@ -246,3 +246,27 @@ def test_morning_report_outcomes_zip_and_private_notes():
     L = c.get("/api/jobs/learning", headers=h).json()
     assert L["arms"]["problem_first"]["positive"] == 1 and L["decided"] == 1
     assert c.get("/api/jobs/learning").status_code in (401, 403)
+
+
+# ---------------------------------------------------------------- evidence notes as true material
+NOTES = """IBM — Product Manager, Salesforce enterprise platform
+IBM Video Streaming
+- I defined FairPlay and Widevine DRM entitlement rules for protected playback.
+- short
+CYBAGE SOFTWARE — Associate Product Manager
+- I coordinated launches across marketing and sales while managing an $18M budget, eliminating $1.2M in avoidable spend."""
+
+
+def test_notes_become_citable_sources_under_the_right_job():
+    b = rs.with_notes(base(), NOTES)
+    bank = b["notes_bank"]
+    assert [(x["job"], x["text"][:12]) for x in bank] == [("E1", "I defined Fa"), ("E2", "I coordinate")]
+    assert bank[0]["id"] in rs.sources_for(b, "E1") and bank[1]["id"] not in rs.sources_for(b, "E1")
+    cv = tailored()
+    cv["experience"][0]["bullets"][4] = {"text": "Defined FairPlay and Widevine DRM entitlement rules for protected playback", "sources": [bank[0]["id"]], "covers": []}
+    cv["experience"][1]["bullets"][3] = {"text": "Eliminated $1.2M in avoidable spend while managing an $18M launch budget", "sources": [bank[1]["id"]], "covers": []}
+    full = {**cv, "experience": [{**e, "company": b["experience"][i]["company"]} for i, e in enumerate(cv["experience"])]}
+    c = rs.check_truth(None, "helper", b, full, RULES, rs.Usage(), judge=False)
+    assert c.passed, c.issues
+    plain = rs.check_truth(None, "helper", base(), full, RULES, rs.Usage(), judge=False)    # without the notes, the same bullets fail
+    assert not plain.passed

@@ -46,6 +46,7 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
     base = profile.get("base")
     if not base:
         return {"ok": False, "message": "Upload your résumé first."}
+    base = rs.with_notes(base, profile.get("evidence_notes", ""))      # his notes are true material for tailoring too
     f = fetcher or js.Fetcher()
     usage = rs.Usage()
     started = time.monotonic()
