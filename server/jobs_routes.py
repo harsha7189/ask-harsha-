@@ -482,6 +482,12 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         if done >= int(rules.get("nightly_cap", 10)):
             return {"app": None, "reason": "Tonight's cap is reached."}
         ready = accounts.apps(p["user_id"], "ready", 50)
+        # the skip list is checked again right before applying, so a company added after preparation is still never applied to
+        skip = [js.norm_company(x) for x in rules.get("exclude_companies", []) if js.norm_company(x)]
+        for a in list(ready):
+            if any(x in js.norm_company(a["company"]) for x in skip):
+                accounts.set_app_status(p["user_id"], a["id"], "skipped", why=["Company is on your skip list"], detail="skip list")
+                ready.remove(a)
         if not ready:
             return {"app": None, "reason": "Nothing ready."}
         ready.sort(key=lambda a: -(a.get("priority") or 0))
