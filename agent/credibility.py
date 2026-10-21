@@ -287,13 +287,13 @@ related experience that a fair recruiter would count for some of it. missing: no
 résumé exactly for has and partial. Be strict: a different industry or tool is partial at best."""
 
 
-def qualify(client, helper: str, base: dict, brief: dict, job: dict, usage: Usage, today=None) -> dict:
+def qualify(client, helper: str, base: dict, brief: dict, job: dict, usage: Usage, today=None, max_years: int = 4) -> dict:
     """Is this worth one of tonight's applications? strong / good / stretch go ahead; weak is skipped."""
     reasons = []
     mine = years_of_experience(base, today)
     need = brief.get("years_required")
-    if isinstance(need, int) and need > mine + 1:
-        return {"decision": "skip", "match": "weak", "ratio": 0.0, "reasons": [f"Asks for {need}+ years; you have about {mine:.0f}."], "musts": []}
+    if isinstance(need, int) and (need > mine + 1 or need > max_years):
+        return {"decision": "skip", "match": "weak", "ratio": 0.0, "reasons": [f"Asks for {need}+ years (your limit is {max_years})."], "musts": []}
     musts = brief.get("must_haves") or []
     if not musts:
         return {"decision": "apply", "match": "good", "ratio": None, "reasons": ["The posting lists no clear must-haves."], "musts": []}

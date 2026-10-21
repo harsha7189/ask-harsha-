@@ -270,3 +270,93 @@ def test_notes_become_citable_sources_under_the_right_job():
     assert c.passed, c.issues
     plain = rs.check_truth(None, "helper", base(), full, RULES, rs.Usage(), judge=False)    # without the notes, the same bullets fail
     assert not plain.passed
+
+
+# ---------------------------------------------------------------- filling the form without him
+from test_jobs import JobsClient as _JC  # noqa: E402
+
+SHEET = {"first_name": "Harsha", "city": "Austin", "state": "TX", "authorized": "Yes", "sponsorship": "Yes", "authorized_eu": "No",
+         "visa_status": "F-1 STEM OPT"}
+
+
+def ask(label, options=None, typ="", ctx=None, sheet=SHEET):
+    b = base()
+    return rs.answer_question(_JC(), "helper", {"label": label, "options": options or [], "type": typ, "required": True}, sheet,
+                              "Skills: Salesforce Service Cloud, API design", RESUME_TEXT, rs.Usage(),
+                              ctx or {"base": b, "job": {"title": "PM", "company": "Acme", "description": "Own support automation."}, "brief": {"problem": "Scale support."}})
+
+
+def test_status_questions_with_any_wording_or_options():
+    assert ask("Will you now or in the future require sponsorship for employment visa status (e.g., H-1B)?", ["Yes", "No"])["value"] == "Yes"
+    assert ask("Are you legally authorized to work in the United States?", ["Yes", "No"])["value"] == "Yes"
+    assert ask("Are you authorized to work in the US without employer sponsorship?", ["Yes", "No"])["value"] == "No"
+    opts = ["I am a U.S. citizen", "I am a lawful permanent resident (green card)", "I am authorized to work but will require sponsorship in the future",
+            "I am authorized and will not require sponsorship"]
+    got = ask("Which of the following describes your work authorization in the US?", opts)
+    assert got["value"] == opts[2] and not got["needs_you"]                                   # never citizen or green card
+    assert ask("Do you require visa sponsorship to work in Germany?", ["Yes", "No"])["value"] == "Yes"   # abroad, from the EU answer
+    assert ask("Are you eligible to work in the European Union?", ["Yes", "No"])["value"] == "No"
+    no_eu = {k: v for k, v in SHEET.items() if k != "authorized_eu"}
+    assert ask("Do you require visa sponsorship to work in Germany?", ["Yes", "No"], sheet=no_eu)["needs_you"]
+
+
+def test_answers_from_his_record_not_from_guessing():
+    assert ask("Current employer")["value"] == "IBM"
+    assert ask("How many years of product management experience do you have?", ["0-2 years", "3-5 years", "5+ years"])["value"] == "5+ years" \
+        or ask("How many years of product management experience do you have?", ["0-2 years", "3-5 years", "5+ years"])["value"] == "3-5 years"
+    assert ask("Location (City, State)")["value"] == "Austin, TX"
+    assert ask("University")["value"] == "JNTU"
+
+
+class Writer(_JC):
+    def __init__(self, text):
+        super().__init__()
+        self.text = text
+
+    def create(self, **kw):
+        if (kw.get("tool_choice") or {}).get("name") == "write":
+            self.requests.append(kw)
+            return response([tool_use("w", "write", {"text": self.text})], "tool_use")
+        return super().create(**kw)
+
+
+def test_essay_questions_are_written_from_his_record_and_checked():
+    ok = "I've spent the last few years on Salesforce Service Cloud automation, which is the work this role needs to scale support."
+    r = rs.answer_question(Writer(ok), "helper", {"label": "Why do you want to work at Acme?", "type": "textarea", "required": True}, SHEET,
+                           "Salesforce Service Cloud automation", RESUME_TEXT, rs.Usage(),
+                           {"base": base(), "job": {"title": "PM", "company": "Acme", "description": "Scale support"}, "brief": {}})
+    assert r["source"] == "written" and r["value"] == ok
+    bad = "I grew revenue 300% using Snowflake, and I'm a US citizen."
+    r = rs.answer_question(Writer(bad), "helper", {"label": "Why do you want to work at Acme?", "type": "textarea", "required": True}, SHEET,
+                           "Salesforce Service Cloud automation", RESUME_TEXT, rs.Usage(), {"base": base(), "job": {}, "brief": {}})
+    assert r["needs_you"] and r["value"] is None
+
+
+def test_locations_and_years_rules():
+    from agent import jobsearch as js
+    J = lambda loc, d="Requirements: 3+ years of product management experience. " * 8: js.Job("greenhouse", "b", "1", "Co", "Product Manager", loc, "u", d)
+    rules = pilot.rules_of({"rules": {"max_years_required": 5}})           # an old saved 5 still means "skip 5+"
+    assert rules["max_years_required"] == 4
+    assert js.screen(J("Kuala Lumpur, Malaysia"), rules, {}, set())["reasons"][0].startswith("Outside the US")
+    assert js.screen(J("Berlin, Germany"), rules, {}, set())["reasons"] == ["In Germany, and the posting doesn't say it sponsors visas"]
+    assert js.screen(J("Berlin, Germany", "We offer visa sponsorship and relocation support. 3+ years of product experience. " * 6), rules, {}, set())["ok"]
+    assert not js.screen(J("London, UK", "We offer visa sponsorship. " * 20), rules, {}, set())["ok"]
+    assert js.screen(J("Austin, TX", "5+ years of product management experience. " * 8), rules, {}, set())["reasons"] == ["Asks for 5+ years"]
+    assert js.screen(J("Remote"), rules, {}, set())["ok"]
+    assert not js.screen(J("Remote", "Remote - Europe. Requirements: 3+ years of product experience. " * 6), rules, {}, set())["ok"]
+    stale = {"job": {**J("Austin, TX").to_dict(), "description": "5+ years of product management experience. " * 8}, "screen": {"years": 3}}
+    assert pilot.still_eligible(stale, rules) == "Asks for 5+ years"
+
+
+def test_waiting_on_a_question_gets_retried_with_the_new_sheet():
+    from agent import jobsearch as js
+    store, u = setup_store()
+    j = js.Job("greenhouse", "acme", "7", "Acme", "Product Manager", "Austin, TX", "u", "Requirements: 3+ years of product management experience. " * 8)
+    store.save_app(u.id, {"key": j.key, "status": "needs_you", "job": j.to_dict(), "screen": {"years": 3}, "resume": {"text": "Skills: Salesforce Service Cloud"},
+                          "questions": [{"label": "Will you now or in the future require sponsorship?", "required": True, "options": ["Yes", "No"]}],
+                          "why": ["A required question has no supported answer."]})
+    profile = {"user_id": u.id, "base": base(), "rules": {"nightly_cap": 1}, "sheet": {"authorized": "Yes", "sponsorship": "Yes"}}
+    res = pilot.run_night(JobsClient(bad_first=False), "main", "helper", "today", profile, store, fetcher=js.Fetcher(Opener({})), web=False)
+    assert res["unblocked"] == 1
+    a = store.app_bodies(u.id, "ready")[0]
+    assert a["answers"][0]["value"] == "Yes"

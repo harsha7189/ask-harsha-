@@ -30,7 +30,7 @@ from agent import resume as rs
 
 SHEET_FIELDS = ["first_name", "last_name", "email", "phone", "address", "city", "state", "zip", "country", "linkedin", "website",
                 "authorized", "sponsorship", "relocate", "salary", "start_date", "notice", "adult", "previous_employee", "noncompete",
-                "how_heard", "gender", "race", "veteran", "disability", "pronouns", "remote_ok", "certify"]
+                "how_heard", "gender", "race", "veteran", "disability", "pronouns", "remote_ok", "certify", "visa_status", "authorized_eu"]
 
 
 class ResumeUpload(BaseModel):
@@ -469,6 +469,7 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         if not p:
             return error(401, "runner", "This runner token isn't valid. Make a new one in Job Pilot's settings.")
         p["sheet"] = decrypt(p.get("sheet_enc"))
+        p["evidence_notes"] = decrypt(p.get("notes_enc")).get("text", "")
         return p
 
     @app.get("/api/jobs/runner/next")
@@ -482,11 +483,12 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         if done >= int(rules.get("nightly_cap", 10)):
             return {"app": None, "reason": "Tonight's cap is reached."}
         ready = accounts.apps(p["user_id"], "ready", 50)
-        # the skip list is checked again right before applying, so a company added after preparation is still never applied to
-        skip = [js.norm_company(x) for x in rules.get("exclude_companies", []) if js.norm_company(x)]
+        # every rule is checked again right before applying (skip list, years, location, sponsorship abroad), so a rule
+        # changed after preparation still holds
         for a in list(ready):
-            if any(x in js.norm_company(a["company"]) for x in skip):
-                accounts.set_app_status(p["user_id"], a["id"], "skipped", why=["Company is on your skip list"], detail="skip list")
+            why = pilot.still_eligible(accounts.app(p["user_id"], a["id"]) or {}, rules)
+            if why:
+                accounts.set_app_status(p["user_id"], a["id"], "skipped", why=[why], detail="rules re-checked before applying")
                 ready.remove(a)
         if not ready:
             return {"app": None, "reason": "Nothing ready."}
@@ -515,6 +517,7 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         if not a:
             return error(404, "not_found", "That application doesn't exist.")
         usage = rs.Usage()
+        base_full = rs.with_notes(p.get("base") or {"experience": []}, p.get("evidence_notes", ""))
         cache = {x["label"]: x for x in a.get("answers", []) if x.get("value") is not None}
         out = []
         for f in req.fields[:80]:
@@ -527,7 +530,7 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
             q = {"label": label, "options": [str(o)[:200] for o in (f.get("options") or [])[:60]], "type": str(f.get("type", ""))[:30],
                  "required": bool(f.get("required"))}
             ans = rs.answer_question(get_client(), settings.assist_model, q, p["sheet"], (a.get("resume") or {}).get("text", ""),
-                                     (p.get("base") or {}).get("source_text", ""), usage)
+                                     base_full.get("source_text", ""), usage, ctx={"base": base_full, "job": a.get("job") or {}, "brief": a.get("brief") or {}})
             out.append({"label": label, **ans})
         budget.add(usage.input_tokens, usage.output_tokens)
         a.setdefault("answers", [])

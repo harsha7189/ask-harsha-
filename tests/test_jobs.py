@@ -221,7 +221,7 @@ def test_answers_come_from_the_tailored_resume_and_never_guess():
     s = ask("Does Harsha have Salesforce experience?", ["Yes", "No"])
     assert s["value"] == "Yes" and s["source"] == "tailored" and s["quote"] == "Salesforce Service Cloud"
     k = ask("Do you have Kubernetes experience?", ["Yes", "No"])                  # the model "quoted" words that aren't there
-    assert k["needs_you"] and k["value"] is None
+    assert k["value"] == "No" and k["source"] == "not_in_resume" and not k["needs_you"]   # never a made-up Yes
     assert ask("Notice period")["needs_you"]                                      # not on his answer sheet
 
 
@@ -298,7 +298,7 @@ def test_runner_api_end_to_end(monkeypatch):
         {"label": "Will you now or in the future require sponsorship?", "options": ["Yes", "No"]},
         {"label": "Do you have Salesforce experience?", "options": ["Yes", "No"]},
         {"label": "Why do you want to work here?", "type": "textarea"}]}).json()["answers"]
-    assert [a["value"] for a in ans] == ["Yes", "Yes", None] and ans[2]["needs_you"]
+    assert [a["value"] for a in ans] == ["Yes", "Yes", None]                     # an essay nothing could be written for stays empty
     shot = base64.b64encode(b"\xff\xd8jpeg").decode()
     assert c.post("/api/jobs/runner/report", headers=r, json={"app_id": aid, "status": "filled", "step": "review", "screenshots": [shot]}).json()["ok"]
     got = c.get(f"/api/jobs/apps/{aid}", headers=h).json()

@@ -26,7 +26,8 @@ from . import resume as rs
 
 DEFAULT_RULES = {
     "titles": ["Product Manager", "Product Owner", "Technical Product Manager"],
-    "min_years_required": 2, "max_years_required": 5,
+    "min_years_required": 2, "max_years_required": 4,          # 3-5 years means: skip anything asking for 5 or more
+    "abroad_countries": ["Germany", "Netherlands", "Ireland"],  # only when the posting says it sponsors
     "preferred_locations": ["Austin", "Dallas"], "open_to_relocate": True,
     "exclude_companies": ["IBM"],
     "needs_sponsorship": True, "sponsor_filter": "likely",       # likely: skip employers unlikely to sponsor
@@ -35,7 +36,29 @@ DEFAULT_RULES = {
 
 
 def rules_of(profile: dict) -> dict:
-    return {**DEFAULT_RULES, **(profile.get("rules") or {})}
+    r = {**DEFAULT_RULES, **(profile.get("rules") or {})}
+    if int(r.get("max_years_required") or 4) >= 5:      # the old default let 5+ through; he wants 3-5 years, so 5 and up are skipped
+        r["max_years_required"] = 4
+    return r
+
+
+def still_eligible(app: dict, rules: dict) -> str | None:
+    """Checked again right before applying, so a rule changed after preparation still holds. Returns why not, or None."""
+    job = app.get("job") or {}
+    skip = [js.norm_company(x) for x in rules.get("exclude_companies", []) if js.norm_company(x)]
+    if any(x in js.norm_company(job.get("company", "")) for x in skip):
+        return "Company is on your skip list"
+    yrs = [y for y in ((app.get("screen") or {}).get("years"), (app.get("brief") or {}).get("years_required"),
+                       js.years_required(job.get("description", ""))) if isinstance(y, int)]
+    if yrs and max(yrs) > int(rules.get("max_years_required", 4)):
+        return f"Asks for {max(yrs)}+ years"
+    if job:
+        j = js.Job(**{k: v for k, v in job.items() if k in js.Job.__dataclass_fields__})
+        s = js.screen(j, rules, {}, set())
+        bad = [r for r in s["reasons"] if r.startswith(("Outside the US", "Remote, but", "In ", "Asks for")) or r.endswith("isn't on your list")]
+        if bad:
+            return bad[0]
+    return None
 
 
 def run_night(client, model: str, helper: str, today: str, profile: dict, store, emit: Callable[[str, dict], None] | None = None,
@@ -97,6 +120,19 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
         j = js.Job(**jd)
         candidates.append((a.get("priority") or js.priority(j, a["screen"]), j, a["screen"]))
         carried += 1
+    # applications that waited only on a question get another try with the current answer sheet and rules
+    summary["unblocked"] = 0
+    for a in store.app_bodies(profile["user_id"], "needs_you", 60) if hasattr(store, "app_bodies") else []:
+        why = " ".join(a.get("why") or [])
+        if "question" not in why or "didn't pass its checks" in why or not a.get("resume") or still_eligible(a, rules):
+            continue
+        if a.get("questions"):
+            a["answers"] = prefill(client, helper, a, profile, usage)
+            if any(x["needs_you"] for x in a["answers"] if x.get("required")):
+                continue
+        store.save_app(profile["user_id"], {"key": a["key"], "answers": a.get("answers", []), "status": "ready",
+                                            "why": ["Re-answered with your updated answer sheet."], "force": True})
+        summary["unblocked"] += 1
     candidates.sort(key=lambda x: -x[0])
     summary["screened_in"] = len(candidates) - carried
     summary["carried_over"] = carried
@@ -117,7 +153,7 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
         emit("status", {"label": f"Researching {j.title} at {j.company} ({rank + 1} of {min(pool, len(candidates))})"})
         try:
             brief = rs.role_brief(client, model, today, j.to_dict(), usage, web=web)
-            q = cr.qualify(client, helper, base, brief, j.to_dict(), usage)
+            q = cr.qualify(client, helper, base, brief, j.to_dict(), usage, max_years=int(rules.get("max_years_required", 4)))
         except Exception as e:
             summary["errors"].append(f"{j.company}: {type(e).__name__}: {str(e)[:120]}")
             store.save_app(profile["user_id"], {**app, "why": [f"Research failed ({type(e).__name__}); it'll be retried."]})
@@ -176,11 +212,12 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
 def prefill(client, helper: str, app: dict, profile: dict, usage: rs.Usage) -> list[dict]:
     """Answers for the questions the job feed lists in advance (Greenhouse)."""
     sheet = profile.get("sheet") or {}
-    base_text = (profile.get("base") or {}).get("source_text", "")
+    base = rs.with_notes(profile.get("base") or {"experience": []}, profile.get("evidence_notes", ""))
     out = []
     for q in app.get("questions", [])[:40]:
         if q.get("type") in ("input_file",) or not q.get("label"):
             continue
-        a = rs.answer_question(client, helper, q, sheet, app["resume"]["text"], base_text, usage)
+        a = rs.answer_question(client, helper, q, sheet, app["resume"]["text"], base.get("source_text", ""), usage,
+                               ctx={"base": base, "job": app.get("job") or {}, "brief": app.get("brief") or {}})
         out.append({"label": q["label"], "required": q.get("required", False), **a})
     return out

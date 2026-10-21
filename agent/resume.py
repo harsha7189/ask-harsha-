@@ -767,34 +767,143 @@ def yes_no(v) -> str | None:
     return "Yes" if s in ("yes", "y", "true", "1") else "No" if s in ("no", "n", "false", "0") else None
 
 
-def work_authorization(label: str, sheet: dict) -> tuple[str | None, str]:
+FOREIGN = re.compile(r"\b(germany|german|netherlands|dutch|ireland|irish|european\s+union|\beu\b|eea|united\s+kingdom|\buk\b|canada|"
+                     r"india|australia|singapore|country\s+where\s+this\s+(job|role)|country\s+of\s+(the\s+)?(job|role|position))\b", re.I)
+SAYS_CITIZEN = re.compile(r"citizen|permanent\s+resident|green\s*card|lawful\s+permanent|national\b", re.I)
+SAYS_NO_SPONSOR = re.compile(r"(do\s+not|don't|will\s+not|won't|not|never|no)\s+(now\s+or\s+in\s+the\s+future\s+)?(require|need)|without\s+(visa\s+)?sponsor|no\s+sponsorship", re.I)
+SAYS_SPONSOR = re.compile(r"(will|do|would|may)\s+(now\s+or\s+in\s+the\s+future\s+|in\s+the\s+future\s+)?(require|need)|require[sd]?\s+(visa\s+)?sponsor|need\s+(visa\s+)?sponsor|sponsorship\s+required|h-?1b|visa\s+holder|opt\b|stem", re.I)
+
+
+def _status(sheet: dict, label: str) -> tuple[str | None, str | None, str]:
+    """(authorized, needs_sponsorship, where) for the country the question is about: the US from the main answers,
+    abroad (Germany, the Netherlands, Ireland, the EU…) from the 'authorized in the EU' answer."""
+    if FOREIGN.search(label) and not re.search(r"united\s+states|\bu\.?s\.?a?\b", label, re.I):
+        eu = yes_no(sheet.get("authorized_eu"))
+        return eu, ("No" if eu == "Yes" else "Yes" if eu == "No" else None), "abroad"
+    return yes_no(sheet.get("authorized")), yes_no(sheet.get("sponsorship")), "US"
+
+
+def work_authorization(label: str, sheet: dict, kind: str | None = None) -> tuple[str | None, str]:
     """Work authorization and sponsorship questions are worded many ways and the polarity matters, so each wording is
-    handled explicitly. Anything else waits for him. Returns (Yes/No or None, why)."""
+    handled explicitly in code from his answer sheet. `kind` (from the classifier) handles wordings the patterns miss.
+    Returns (Yes/No or None, why)."""
     l = label.lower()
-    authorized, needs = yes_no(sheet.get("authorized")), yes_no(sheet.get("sponsorship"))
-    if re.search(r"without\s+(the\s+)?(need\s+for\s+)?(current\s+or\s+future\s+|future\s+|employer\s+)?(visa\s+)?sponsor", l):
+    authorized, needs, where = _status(sheet, label)
+    missing = "Fill in “Authorized to work in the EU” on your answer sheet." if where == "abroad" else "Your answer sheet needs both work authorization and sponsorship."
+    if kind == "authorized_without_sponsorship" or re.search(r"without\s+(the\s+)?(need\s+for\s+)?(current\s+or\s+future\s+|future\s+|employer\s+|any\s+)?(visa\s+|employment\s+)?sponsor", l):
         if authorized is None or needs is None:
-            return None, "Your answer sheet needs both work authorization and sponsorship for this question."
-        return ("Yes" if authorized == "Yes" and needs == "No" else "No"), "Authorized to work without sponsorship? From your answer sheet."
-    if re.search(r"(require|need|will\s+you\s+.*\bsponsor|sponsorship\s+(now|in\s+the\s+future))", l) and re.search(r"sponsor|h-?1b|visa", l):
-        if re.search(r"\bnot\b|\bno\s+longer\b", l):
-            return None, "This sponsorship question is worded unusually, so it waits for you."
-        return needs, "Will you need sponsorship? From your answer sheet."
-    if re.search(r"authori[sz]ed|eligible|right\s+to\s+work|able\s+to\s+(legally\s+)?work\s+in", l) and not re.search(r"sponsor|visa|h-?1b", l):
-        return authorized, "Authorized to work? From your answer sheet."
-    return None, "This work-authorization question is worded unusually, so it waits for you."
+            return None, missing
+        return ("Yes" if authorized == "Yes" and needs == "No" else "No"), f"Authorized to work ({where}) without sponsorship? From your answer sheet."
+    if kind == "needs_sponsorship" or (re.search(r"(require|need|will\s+you\s+.*\bsponsor|sponsorship\s+(now|in\s+the\s+future))", l)
+                                       and re.search(r"sponsor|h-?1b|visa|immigration", l)):
+        if re.search(r"\b(not|no\s+longer)\b", l) and kind != "needs_sponsorship":
+            return None, "unusual"
+        return needs, f"Will you need sponsorship ({where})? From your answer sheet." if needs else missing
+    if kind == "authorized" or (re.search(r"authori[sz]ed|eligible|right\s+to\s+work|able\s+to\s+(legally\s+)?work\s+in|permitted\s+to\s+work", l)
+                                and not re.search(r"sponsor|visa|h-?1b", l)):
+        return authorized, f"Authorized to work ({where})? From your answer sheet." if authorized else missing
+    return None, "unusual"
 
 
-def answer_question(client, helper: str, q: dict, sheet: dict, tailored_text: str, base_text: str, usage: Usage) -> dict:
-    """{"value", "source": sheet|tailored|base|none, "quote", "needs_you": bool, "why"}."""
+LEGAL_KIND_TOOL = {
+    "name": "legal_kind", "description": "What this work-eligibility question is asking.",
+    "input_schema": {"type": "object", "properties": {"kind": {"type": "string", "enum": [
+        "authorized", "needs_sponsorship", "authorized_without_sponsorship", "visa_status", "other"]}}, "required": ["kind"]},
+}
+
+
+def pick_status_option(options: list[str], authorized: str | None, needs: str | None, visa_status: str) -> str | None:
+    """For choice lists that aren't plain Yes/No ("I am a US citizen" / "I will require sponsorship" / …): the one option
+    consistent with his answers. Never picks citizenship or a green card unless his own status says so."""
+    allowed = [o for o in options if not (SAYS_CITIZEN.search(o) and not SAYS_CITIZEN.search(visa_status or ""))]
+    if needs == "Yes":
+        allowed = [o for o in allowed if not SAYS_NO_SPONSOR.search(o)]
+        hits = [o for o in allowed if SAYS_SPONSOR.search(o) or (visa_status and squash(visa_status) and squash(visa_status).split()[0] in squash(o))]
+    elif needs == "No":
+        hits = [o for o in allowed if SAYS_NO_SPONSOR.search(o) or (authorized == "Yes" and re.search(r"authori[sz]ed|eligible", o, re.I) and not SAYS_SPONSOR.search(o))]
+    else:
+        hits = []
+    if visa_status:
+        exact = [o for o in allowed if squash(visa_status) and (squash(visa_status) in squash(o) or squash(o) in squash(visa_status))]
+        if len(exact) == 1:
+            return exact[0]
+    return hits[0] if len(hits) == 1 else None
+
+
+DERIVED = [
+    ("current_company", r"current\s+(company|employer)|(most\s+recent|present)\s+(company|employer)|^\s*(current\s+)?(company|employer)(\s+name)?\s*\*?$"),
+    ("current_title", r"current\s+(job\s+)?(title|role|position)|(most\s+recent|present)\s+(job\s+)?title|^\s*(job\s+)?title\s*\*?$"),
+    ("school", r"\b(school|university|college|institution)\b"), ("degree", r"\b(degree|level\s+of\s+education|highest\s+(level|education))\b"),
+    ("major", r"\b(major|field\s+of\s+study|discipline|area\s+of\s+study)\b"),
+    ("location", r"^\s*(current\s+)?location\s*\*?$|where\s+are\s+you\s+(currently\s+)?(located|based)|city\s*,\s*state"),
+    ("years_total", r"(how\s+many|number\s+of|total)\s+years|years\s+of\s+(professional\s+|relevant\s+|work\s+|related\s+|product\s+(management\s+)?|pm\s+)?experience"),
+]
+ESSAY = re.compile(r"why\s+(do\s+you\s+want|are\s+you\s+(interested|applying|a\s+good\s+fit)|this\s+(role|company|position|team)|us\b|join|\w+\?)|"
+                   r"cover\s+letter|tell\s+us\s+(about\s+yourself|why|what)|what\s+(excites|interests|draws|attracts|motivates)|motivat|"
+                   r"what\s+makes\s+you|describe\s+(a|your)\s+(time|experience|approach)|how\s+would\s+you|summary\s+of\s+(your\s+)?(experience|qualifications)", re.I)
+ESSAY_PROMPT = """You write a short answer on a job application for Harsha Reddy, in his voice (first person, plain and \
+specific, like a real person wrote it; no buzzwords, no flattery). Use ONLY facts from his résumé and from the job posting: \
+never add a number, tool, company or achievement that isn't in them, and never mention visas, citizenship or sponsorship. \
+Connect what he has really done to what this role is hired to solve. {length}"""
+ESSAY_TOOL = {"name": "write", "description": "The answer.", "input_schema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}
+
+
+def number_option(value: float, options: list[str]) -> str | None:
+    """'3' against ['0-2 years', '3-5 years', '5+ years'] -> '3-5 years'."""
+    for o in options:
+        nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", o)]
+        if not nums:
+            continue
+        if re.search(r"\+|or\s+more|more\s+than|over|at\s+least", o, re.I) and len(nums) == 1:
+            if value >= nums[0]:
+                return o
+        elif re.search(r"less\s+than|under|fewer", o, re.I) and len(nums) == 1:
+            if value < nums[0]:
+                return o
+        elif len(nums) >= 2 and nums[0] <= value <= nums[1]:
+            return o
+        elif len(nums) == 1 and value == nums[0]:
+            return o
+    return None
+
+
+def derived_answer(key: str, ctx: dict, sheet: dict, options: list[str]) -> str | None:
+    base = (ctx or {}).get("base") or {}
+    exps = base.get("experience") or []
+    edu = (base.get("education") or [{}])
+    if key == "current_company" and exps and exps[0].get("end") in ("Present", ""):
+        v = exps[0]["company"]
+    elif key == "current_title" and exps:
+        v = exps[0]["title"]
+    elif key == "school":
+        v = edu[0].get("school", "")
+    elif key == "degree":
+        v = edu[0].get("degree", "")
+    elif key == "major":
+        v = edu[0].get("field", "")
+    elif key == "location":
+        v = ", ".join(x for x in (sheet.get("city"), sheet.get("state")) if x)
+    elif key == "years_total" and exps:
+        yrs = years_of_experience(base)
+        return number_option(yrs, options) if options else str(int(yrs))
+    else:
+        return None
+    return pick_option(v, options) if (v and options) else (v or None)
+
+
+def _written_ok(text: str, allowed_text: str) -> bool:
+    return (not (_nums(text) - _nums(allowed_text)) and not STATUS_WORDS.search(text)
+            and not {t for t in _terms(text) if t.lower() not in allowed_text.lower()})
+
+
+def answer_question(client, helper: str, q: dict, sheet: dict, tailored_text: str, base_text: str, usage: Usage, ctx: dict | None = None) -> dict:
+    """{"value", "source": sheet|derived|tailored|base|written|not_in_resume|none, "quote", "needs_you": bool, "why"}.
+    ctx (optional): {"base": his résumé, "job": the posting, "brief": the role brief} for derived and written answers."""
     label, options = q.get("label", ""), q.get("options") or []
+    ctx = ctx or {}
     kind, key = classify(label)
-    if kind == "legal" and key in ("authorized", "sponsorship"):
-        v, why = work_authorization(label, sheet)
-        chosen = pick_option(v, options) if v else None
-        if chosen is None:
-            return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": why if not v else f"“{v}” doesn't match the options: {', '.join(options[:6])}."}
-        return {"value": chosen, "source": "sheet", "quote": "", "needs_you": False, "why": why}
+    if kind == "legal" and key in ("authorized", "sponsorship") or re.search(r"visa\s+status|immigration\s+status|work\s+(permit|visa)\s+(status|type)", label, re.I):
+        return legal_answer(client, helper, label, options, sheet, usage)
     if kind in ("profile", "legal"):
         v = sheet.get(key)
         if key == "full_name" and not v:
@@ -810,19 +919,89 @@ def answer_question(client, helper: str, q: dict, sheet: dict, tailored_text: st
         chosen = pick_option(custom.get("answer", ""), options)
         if chosen is not None:
             return {"value": chosen, "source": "sheet", "quote": "", "needs_you": False, "why": "From your saved answers."}
-    for source_name, text in (("tailored", tailored_text), ("base", base_text)):
-        resp = client.messages.create(model=helper, max_tokens=500, system=ANSWER_PROMPT, tools=[ANSWER_TOOL],
-                                      tool_choice={"type": "tool", "name": "answer"}, **speed.params(helper, "helper"),
-                                      messages=[{"role": "user", "content": f"RÉSUMÉ:\n{text[:14000]}\n\nQUESTION: {label}"
-                                                 + (f"\nOPTIONS: {json.dumps(options)}" if options else "")
-                                                 + ("\nAnswer in at most 120 words." if q.get("type") in ("textarea", "long_text") else "")}])
+    for dkey, pat in DERIVED:
+        specific = dkey == "years_total" and re.search(r"years.{0,40}\b(with|in|using|of)\s+(?!product|pm\b|professional|relevant|work|related)", label, re.I)
+        if re.search(pat, label, re.I) and not specific:
+            v = derived_answer(dkey, ctx, sheet, options)
+            if v:
+                return {"value": v, "source": "derived", "quote": "", "needs_you": False, "why": f"From your résumé ({dkey.replace('_', ' ')})."}
+    long = q.get("type") in ("textarea", "long_text") or ESSAY.search(label)
+    if not (long and ESSAY.search(label)):
+        for source_name, text in (("tailored", tailored_text), ("base", base_text)):
+            resp = client.messages.create(model=helper, max_tokens=500, system=ANSWER_PROMPT, tools=[ANSWER_TOOL],
+                                          tool_choice={"type": "tool", "name": "answer"}, **speed.params(helper, "helper"),
+                                          messages=[{"role": "user", "content": f"RÉSUMÉ:\n{text[:14000]}\n\nQUESTION: {label}"
+                                                     + (f"\nOPTIONS: {json.dumps(options)}" if options else "")
+                                                     + ("\nAnswer in at most 120 words." if long else "")}])
+            usage.add(resp)
+            d = _tool_input(resp)
+            quote = str(d.get("quote") or "")
+            if d.get("supported") and quote_in(quote, text):
+                chosen = pick_option(str(d.get("answer", "")), options)
+                if chosen is not None and len(str(chosen).split()) <= 140:
+                    return {"value": chosen, "source": source_name, "quote": quote[:240], "needs_you": False,
+                            "why": "Supported by this job's tailored résumé." if source_name == "tailored"
+                            else "Supported by your base résumé or notes (not shown on this job's tailored version)."}
+        if options and pick_option("No", options) and pick_option("Yes", options) and not long:
+            # a yes/no about experience that nothing he's written supports: the honest answer is No
+            return {"value": pick_option("No", options), "source": "not_in_resume", "quote": "", "needs_you": False,
+                    "why": "Answered No: nothing in your résumés or notes shows this. Add it to your notes if you do have it."}
+    if long:
+        job, brief = ctx.get("job") or {}, ctx.get("brief") or {}
+        allowed = f"{tailored_text}\n{base_text}\n{job.get('description', '')}\n{job.get('company', '')} {job.get('title', '')}\n{brief.get('problem', '')}"
+        length = "Up to 180 words." if re.search(r"cover\s+letter", label, re.I) else "2-4 sentences, under 90 words."
+        for _ in range(2):
+            resp = client.messages.create(model=helper, max_tokens=600, system=ESSAY_PROMPT.format(length=length), tools=[ESSAY_TOOL],
+                                          tool_choice={"type": "tool", "name": "write"}, **speed.params(helper, "helper"),
+                                          messages=[{"role": "user", "content": f"QUESTION: {label}\n\nJOB: {job.get('title', '')} at {job.get('company', '')}\n"
+                                                     f"WHAT THEY'RE HIRING TO SOLVE: {brief.get('problem', '')}\nPOSTING:\n{job.get('description', '')[:5000]}\n\n"
+                                                     f"HIS RÉSUMÉ FOR THIS JOB:\n{tailored_text[:8000]}"}])
+            usage.add(resp)
+            t = " ".join(str(_tool_input(resp).get("text") or "").split())
+            if t and _written_ok(t, allowed):
+                return {"value": t, "source": "written", "quote": "", "needs_you": False,
+                        "why": "Written for this job from your résumé and the posting; every fact checked against them."}
+    return {"value": None, "source": "none", "quote": "", "needs_you": bool(q.get("required", True)),
+            "why": "Nothing you've written supports an answer, so it won't guess."}
+
+
+def legal_answer(client, helper: str, label: str, options: list[str], sheet: dict, usage: Usage) -> dict:
+    visa = str(sheet.get("visa_status") or "")
+    v, why = work_authorization(label, sheet)
+    kind = None
+    if why == "unusual" or re.search(r"visa\s+status|immigration\s+status|work\s+(permit|visa)\s+(status|type)", label, re.I):
+        resp = client.messages.create(model=helper, max_tokens=100, tools=[LEGAL_KIND_TOOL], tool_choice={"type": "tool", "name": "legal_kind"},
+                                      **speed.params(helper, "helper"),
+                                      system="Classify a job-application question about work eligibility. authorized: is he allowed to work there. "
+                                             "needs_sponsorship: will he need the employer to sponsor a visa (now or later). authorized_without_sponsorship: "
+                                             "can he work there with no sponsorship ever. visa_status: what is his current visa or work status. other: none of these.",
+                                      messages=[{"role": "user", "content": label + (f"\nOPTIONS: {json.dumps(options)}" if options else "")}])
         usage.add(resp)
-        d = _tool_input(resp)
-        quote = str(d.get("quote") or "")
-        if d.get("supported") and quote_in(quote, text):
-            chosen = pick_option(str(d.get("answer", "")), options)
-            if chosen is not None and len(str(chosen).split()) <= 140:
-                return {"value": chosen, "source": source_name, "quote": quote[:240], "needs_you": False,
-                        "why": "Supported by this job's tailored résumé." if source_name == "tailored"
-                        else "Supported by your base résumé (not shown on this job's tailored version)."}
-    return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": "Neither résumé supports an answer, so it won't guess."}
+        kind = _tool_input(resp).get("kind")
+        if kind == "visa_status":
+            if not visa:
+                return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": "Add your visa status to the answer sheet."}
+            chosen = pick_option(visa, options) if options else visa
+            if chosen is None:
+                authorized, needs, _ = _status(sheet, label)
+                chosen = pick_status_option(options, authorized, needs, visa)
+            if chosen:
+                return {"value": chosen, "source": "sheet", "quote": "", "needs_you": False, "why": "Visa status, from your answer sheet."}
+            return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": f"Your visa status doesn't match the options: {', '.join(options[:6])}."}
+        if kind in ("authorized", "needs_sponsorship", "authorized_without_sponsorship"):
+            v, why = work_authorization(label, sheet, kind)
+    if v:
+        chosen = pick_option(v, options) if options else v
+        if chosen is None and options:
+            authorized, needs, _ = _status(sheet, label)
+            chosen = pick_status_option(options, authorized, needs, visa)
+        if chosen:
+            return {"value": chosen, "source": "sheet", "quote": "", "needs_you": False, "why": why}
+        return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": f"“{v}” doesn't match the options: {', '.join(options[:6])}."}
+    if options:   # e.g. "Which describes you?" with status options and no clear yes/no
+        authorized, needs, _ = _status(sheet, label)
+        chosen = pick_status_option(options, authorized, needs, visa)
+        if chosen:
+            return {"value": chosen, "source": "sheet", "quote": "", "needs_you": False, "why": "The option that matches your answer sheet."}
+    return {"value": None, "source": "none", "quote": "", "needs_you": True,
+            "why": why if why != "unusual" else "This work-eligibility question is worded so differently it waits for you."}

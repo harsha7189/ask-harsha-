@@ -44,8 +44,22 @@ TITLE_OUT = re.compile(r"\b(director|vice\s+president|vp|head\s+of|chief|princip
                        r"manager,\s+product\s+management|manager\s+of\s+product)\b", re.I)
 US_STATES = ("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD "
              "TN TX UT VT VA WA WV WI WY DC").split()
-STATE_NAMES = {"texas", "california", "washington", "new york", "massachusetts", "illinois", "georgia", "colorado", "florida",
-               "north carolina", "virginia", "arizona", "utah", "oregon", "pennsylvania", "new jersey", "minnesota", "ohio", "michigan"}
+STATE_NAMES = {"alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut", "delaware", "florida", "georgia",
+               "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland", "massachusetts",
+               "michigan", "minnesota", "mississippi", "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+               "new mexico", "new york", "north carolina", "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania", "rhode island",
+               "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont", "virginia", "washington", "west virginia",
+               "wisconsin", "wyoming", "district of columbia"}
+US_CITIES = re.compile(r"\b(austin|dallas|houston|san antonio|fort worth|plano|irving|frisco|new york|nyc|brooklyn|san francisco|"
+                       r"bay area|san jose|palo alto|mountain view|sunnyvale|menlo park|redwood city|oakland|los angeles|san diego|seattle|"
+                       r"bellevue|redmond|boston|cambridge|chicago|denver|boulder|atlanta|miami|raleigh|durham|charlotte|nashville|"
+                       r"phoenix|scottsdale|salt lake city|lehi|portland|minneapolis|detroit|pittsburgh|philadelphia|washington,? d\.?c|"
+                       r"arlington|reston|mclean|baltimore|columbus|cincinnati|indianapolis|kansas city|st\.? louis)\b", re.I)
+# Abroad: only these countries, and only when the posting itself says it sponsors (see screen()).
+ABROAD = {"Germany": re.compile(r"\b(germany|deutschland|berlin|munich|münchen|muenchen|hamburg|frankfurt|cologne|köln|stuttgart|"
+                                r"düsseldorf|dusseldorf|leipzig|karlsruhe|heidelberg)\b", re.I),
+          "Netherlands": re.compile(r"\b(netherlands|holland|amsterdam|rotterdam|utrecht|eindhoven|the hague|den haag|delft|leiden)\b", re.I),
+          "Ireland": re.compile(r"\b(ireland|dublin|cork|galway|limerick)\b", re.I)}
 NON_US = re.compile(r"\b(india|canada|united kingdom|uk|london|germany|berlin|france|paris|ireland|dublin|netherlands|amsterdam|spain|"
                     r"poland|israel|singapore|australia|sydney|japan|tokyo|brazil|mexico|philippines|toronto|vancouver|bangalore|bengaluru|"
                     r"hyderabad|pune|emea|apac|latam)\b", re.I)
@@ -57,7 +71,11 @@ NO_SPONSOR = re.compile(
     r"|sponsorship\s+(is\s+)?not\s+(available|offered|provided)"
     r"|must\s+be\s+(a\s+)?u\.?s\.?\s+citizen|u\.?s\.?\s+citizens?\s+only|(active|current)\s+(security\s+)?clearance|green\s+card\s+holders?\s+only",
     re.I)
-YES_SPONSOR = re.compile(r"(visa\s+sponsorship\s+(is\s+)?(available|offered|provided)|will\s+(consider\s+)?sponsor|h-?1b\s+(sponsorship|transfer)s?\s+(available|welcome|considered)|open\s+to\s+sponsor)", re.I)
+YES_SPONSOR = re.compile(r"(visa\s+sponsorship\s+(is\s+)?(available|offered|provided|possible)|will\s+(consider\s+)?sponsor|"
+                         r"h-?1b\s+(sponsorship|transfer)s?\s+(available|welcome|considered)|open\s+to\s+sponsor|we\s+(can\s+|do\s+|will\s+)?sponsor|"
+                         r"(offer|provide|including|with|and)\s+(full\s+)?(visa|work\s+permit)\s+(sponsorship|support)|"
+                         r"relocation\s+(and|&|\+)\s+visa|visa\s+(and|&|\+)\s+relocation|sponsorship\s+(is\s+)?available|"
+                         r"blue\s+card|highly\s+skilled\s+migrant|kennismigrant|critical\s+skills\s+(employment\s+)?permit)", re.I)
 YEARS = re.compile(r"(\d{1,2})\s*(?:\+|plus)?\s*(?:-|–|to)?\s*(\d{1,2})?\s*\+?\s*(?:years?|yrs?)", re.I)
 
 
@@ -228,12 +246,15 @@ DISCOVER_SITES = ["boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.leve
 
 
 def discovery_queries(rules: dict) -> list[str]:
-    places = (rules.get("preferred_locations") or ["Austin", "Dallas"])[:3] + ["Remote US"]
+    places = (rules.get("preferred_locations") or ["Austin", "Dallas"])[:3] + ["Remote United States"]
     titles = ["Product Manager", "Product Owner"]
     qs = []
     for site in ("greenhouse.io", "lever.co", "ashbyhq.com", "myworkdayjobs.com", "icims.com"):
         for t in titles:
-            qs.append(f'"{t}" {places[len(qs) % len(places)]} site:{site}')
+            qs.append(f'"{t}" {places[len(qs) % len(places)]} "United States" site:{site}')
+    abroad = rules.get("abroad_countries", ["Germany", "Netherlands", "Ireland"])
+    for i, country in enumerate(abroad[:3]):   # abroad, only postings that talk about visa sponsorship
+        qs.append(f'"Product Manager" {country} "visa sponsorship" site:{("greenhouse.io", "lever.co", "ashbyhq.com")[i % 3]}')
     return qs
 
 
@@ -266,31 +287,71 @@ def discover(client, model: str, rules: dict, usage: dict, max_searches: int = 8
 
 # ---------------------------------------------------------------- screening
 def years_required(text: str) -> int | None:
-    """The smallest 'N years' that's about experience, e.g. '3+ years of product management experience' -> 3."""
+    """The main experience requirement: the largest 'N years of experience' minimum in the posting. A range counts by its
+    lower end ('3-5 years' -> 3), so '5+ years of product management, 2+ years in fintech' -> 5."""
     best = None
     for m in YEARS.finditer(text or ""):
-        tail = (text[m.end():m.end() + 80] + " " + text[max(0, m.start() - 60):m.start()]).lower()
-        if not re.search(r"experience|product|management|pm\b|work", tail):
+        after = text[m.end():m.end() + 80].lower()
+        before = text[max(0, m.start() - 40):m.start()].lower()
+        if re.match(r"\s*(ago|old|in business|of history|running|warranty|vesting|contract)", after) or \
+                re.search(r"(founded|over the (past|last)|for (more than|over)|since|anniversary)\W*$", before):
+            continue
+        sentence = re.split(r"[.;\n]", after)[0] + " " + re.split(r"[.;\n]", before)[-1]
+        if not re.search(r"experience|product|management|pm\b|work|industry", sentence):
             continue
         n = int(m.group(1))
         if 1 <= n <= 20:
-            best = n if best is None else min(best, n)
+            best = n if best is None else max(best, n)
     return best
 
 
+def country_of(job: Job) -> str:
+    """'US', one of the allowed countries abroad, or 'other'. A location has to be recognizably in the US to count as US."""
+    loc = f"{job.location} "
+    low = loc.lower()
+    us = bool(re.search(r"\b(us|usa|u\.s\.a?\.?|united states|america)\b", low) or any(re.search(rf"\b{s}\b", loc) for s in US_STATES)
+              or any(re.search(rf"\b{n}\b", low) for n in STATE_NAMES) or US_CITIES.search(low))
+    for country, pat in ABROAD.items():
+        if pat.search(low) and not us:
+            return country
+    if us:
+        return "US"
+    if NON_US.search(low) or re.search(r"\b(europe|emea|apac|asia|latam|worldwide|global|anywhere|malaysia|kuala lumpur|vietnam|"
+                                       r"indonesia|thailand|korea|china|hong kong|taiwan|uae|dubai|saudi|egypt|nigeria|kenya|"
+                                       r"south africa|argentina|colombia|chile|portugal|lisbon|italy|sweden|denmark|norway|finland|"
+                                       r"switzerland|austria|belgium|czech|romania|ukraine|turkey|pakistan|sri lanka|new zealand)\b", low):
+        return "other"
+    if re.fullmatch(r"\s*(remote|fully remote|remote[- ]first|hybrid|anywhere in the us)?\s*", low) and (job.remote or "remote" in low):
+        return "US"         # plain "Remote" on a US board; the posting text is checked again in screen()
+    return "other"          # unknown places are not assumed to be in the US
+
+
+def remote_elsewhere(text: str) -> bool:
+    """A 'Remote' posting that actually requires living outside the US."""
+    t = (text or "")[:8000]
+    if re.search(r"remote\W{1,3}(europe|emea|apac|latam|canada|uk|india|asia)", t, re.I):
+        return True
+    for m in re.finditer(r"(must|need\s+to|required\s+to)\s+(be\s+)?(based|located|reside|live)\s+in\s+([^.;\n]{1,50})", t, re.I):
+        place = Job("", "", "", "", "", m.group(4), "")
+        if country_of(place) not in ("US",) and not re.search(r"time\s*zone|commuting|office", m.group(4), re.I):
+            return True
+    return False
+
+
 def location_rank(job: Job, preferred: list[str]) -> int | None:
-    """0 = a preferred city, 1 = remote in the US, 2 = elsewhere in the US, None = outside the US."""
-    loc = f"{job.location} ".lower()
-    if NON_US.search(loc) and not re.search(r"\b(us|usa|united states)\b", loc):
+    """0 = a preferred city, 1 = remote in the US, 2 = elsewhere in the US, 3 = allowed country abroad, None = anywhere else."""
+    c = country_of(job)
+    if c == "other":
         return None
-    for i, city in enumerate(preferred):
+    if c != "US":
+        return 3
+    loc = f"{job.location} ".lower()
+    for city in preferred:
         if city.lower() in loc:
             return 0
     if job.remote or "remote" in loc:
         return 1
-    if any(re.search(rf"\b{s}\b", job.location or "") for s in US_STATES) or any(n in loc for n in STATE_NAMES) or re.search(r"\b(us|usa|united states)\b", loc):
-        return 2
-    return 2 if not loc.strip() else 2
+    return 2
 
 
 def sponsorship_signal(text: str) -> dict:
@@ -355,12 +416,21 @@ def screen(job: Job, rules: dict, index: dict, seen: set[str]) -> dict:
     if any(norm_company(x) and norm_company(x) in company for x in rules.get("exclude_companies", [])):
         reasons.append("Company excluded")
     loc = location_rank(job, rules.get("preferred_locations") or ["Austin", "Dallas"])
+    country = country_of(job)
     if loc is None:
-        reasons.append(f"Outside the US: {job.location}")
+        reasons.append(f"Outside the US: {job.location or 'location not given'}")
     elif loc == 2 and not rules.get("open_to_relocate", True):
         reasons.append("Not a preferred location")
+    elif loc == 1 and remote_elsewhere(job.description):
+        reasons.append("Remote, but not from the US")
+    if loc == 3:
+        allowed = [c.lower() for c in rules.get("abroad_countries", ["Germany", "Netherlands", "Ireland"])]
+        if country.lower() not in allowed:
+            reasons.append(f"{country} isn't on your list")
+        elif sponsorship_signal(job.description)["signal"] != "yes":
+            reasons.append(f"In {country}, and the posting doesn't say it sponsors visas")
     yrs = years_required(job.description)
-    if yrs is not None and yrs > int(rules.get("max_years_required", 5)):
+    if yrs is not None and yrs > int(rules.get("max_years_required", 4)):
         reasons.append(f"Asks for {yrs}+ years")
     if yrs is not None and yrs < int(rules.get("min_years_required", 2)):
         reasons.append(f"Too junior ({yrs} years)")
@@ -376,8 +446,8 @@ def screen(job: Job, rules: dict, index: dict, seen: set[str]) -> dict:
 
 def priority(job: Job, s: dict) -> float:
     """Order for the night: preferred cities first, then remote, likely sponsors, fresher posts."""
-    score = {0: 30, 1: 20, 2: 10}.get(s["location_rank"], 0)
+    score = {0: 30, 1: 20, 2: 10, 3: 5}.get(s["location_rank"], 0)
     score += {"high": 25, "medium": 15, "unknown": 8, "low": 0, "excluded": -100}[s["sponsor"]["level"]]
-    if s["years"] is not None and 3 <= s["years"] <= 5:
+    if s["years"] is not None and 3 <= s["years"] <= 4:
         score += 10
     return score

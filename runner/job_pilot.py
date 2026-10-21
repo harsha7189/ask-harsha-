@@ -441,6 +441,8 @@ class Runner:
     def fill_page(self, page, app_id: str, resume: Path) -> list[str]:
         fields = page.evaluate(SCAN_JS)
         for f in fields:
+            if f["type"] == "file" and re.search(r"cover\s*letter|transcript|portfolio|writing\s+sample", f.get("label", ""), re.I):
+                continue                    # only the résumé is ever uploaded
             if f["type"] == "file":
                 el = page.query_selector(f'[data-jp="{f["n"]}"]')
                 if el and not el.evaluate("e => e.files && e.files.length"):
