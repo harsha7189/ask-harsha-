@@ -575,9 +575,26 @@ def cmd_run(args) -> None:
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(str(HOME / "browser"), headless=not args.show, viewport={"width": 1280, "height": 900},
                                                    locale="en-US", timezone_id="America/Chicago")
-        runner = Runner(api, keys, Mailbox(cfg["email"], imap) if imap else None, cfg["email"], page_factory=lambda: ctx.new_page())
-        print(runner.run(max_apps=args.max, between=(5, 15) if args.fast else (90, 240)))
-        ctx.close()
+        runner = Runner(api, keys, Mailbox(cfg["email"], imap) if imap else None, cfg["email"], page_factory=lambda: ctx.new_page(), log=log)
+        log(f"=== Job Pilot run {datetime.now():%Y-%m-%d %H:%M} ===")
+        try:
+            log(str(runner.run(max_apps=args.max, between=(5, 15) if args.fast else (90, 240))))
+        except Exception as e:
+            log(f"Stopped: {type(e).__name__}: {e}")
+            raise
+        finally:
+            ctx.close()
+
+
+def log(line: str) -> None:
+    """Prints, and keeps a copy in ~/.job_pilot/runner.log (scheduled runs have no window to print to)."""
+    print(line, flush=True)
+    try:
+        HOME.mkdir(parents=True, exist_ok=True)
+        with open(HOME / "runner.log", "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        pass
 
 
 def cmd_outcomes(args) -> None:
@@ -605,7 +622,9 @@ def cmd_schedule(args) -> None:
         print(f"Scheduled nightly at 1:00. Keep the Mac plugged in; to wake it: sudo pmset repeat wake MTWRFSU 00:55:00. Log: {HOME}/runner.log")
     elif sys.platform.startswith("win"):
         os.system(f'schtasks /Create /F /SC DAILY /ST 01:00 /TN "AskHarshaJobPilot" /TR "\\"{py}\\" \\"{me}\\" run"')
-        print("Scheduled nightly at 1:00 (Task Scheduler). Turn on 'Wake the computer to run this task' in the task's settings.")
+        print("Scheduled nightly at 1:00 (Task Scheduler). Next: in Task Scheduler, open AskHarshaJobPilot > Properties and tick "
+              "'Wake the computer to run this task' (Conditions) and 'Run task as soon as possible after a scheduled start is missed' (Settings). "
+              f"Log: {HOME / 'runner.log'}")
     else:
         print(f"Add this line with `crontab -e`:\n0 1 * * * {py} {me} run >> {HOME}/runner.log 2>&1")
 
