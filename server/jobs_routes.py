@@ -20,8 +20,11 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+import zipfile
+
 from agent import attachments as files
 from agent import jobsearch as js
+from agent import learning as lr
 from agent import pilot
 from agent import resume as rs
 
@@ -40,6 +43,15 @@ class ProfileUpdate(BaseModel):
     enabled: bool | None = None
     rules: dict | None = None
     resume_rules: dict | None = None
+    evidence_notes: str | None = Field(default=None, max_length=20000)
+
+
+class OutcomeUpdate(BaseModel):
+    outcome: str = Field(pattern="^(recruiter_reply|interview|offer|rejected|clear)$")
+
+
+class RunnerOutcomes(BaseModel):
+    items: list[dict] = Field(max_length=200)
 
 
 class SheetUpdate(BaseModel):
@@ -81,6 +93,7 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
     def profile_of(uid: str) -> dict:
         p = accounts.job_profile(uid) or {"user_id": uid, "enabled": False, "rules": {}, "resume_rules": {}}
         p["sheet"] = decrypt(p.get("sheet_enc"))
+        p["evidence_notes"] = decrypt(p.get("notes_enc")).get("text", "")
         return p
 
     def decrypt(token: str | None) -> dict:
@@ -102,7 +115,8 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
                            "bank": len(base.get("bank", [])), "skills": len(base.get("skills", [])), "dropped": base.get("parse_dropped", 0)} if base else None,
                 "sheet_fields": {k: bool(p["sheet"].get(k)) for k in SHEET_FIELDS}, "runner": bool(p.get("runner_hash")),
                 "companies": accounts.company_count(), "sponsor_index": bool(telemetry.get("sponsors:meta")),
-                "encryption": fernet is not None, "last_run": telemetry.get(f"jobs:last_run:{p['user_id']}")}
+                "encryption": fernet is not None, "last_run": telemetry.get(f"jobs:last_run:{p['user_id']}"),
+                "evidence_notes": p.get("evidence_notes", "")}
 
     @app.get("/jobs")
     def jobs_page():
@@ -129,6 +143,10 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
             p["rules"] = {k: v for k, v in req.rules.items() if k in pilot.DEFAULT_RULES}
         if req.resume_rules is not None:
             p["resume_rules"] = {k: v for k, v in req.resume_rules.items() if k in rs.DEFAULT_RULES}
+        if req.evidence_notes is not None:
+            if fernet is None:
+                return error(503, "encryption", "Set INBOX_KEY (or OWNER_PASSCODE) on the server so your notes can be encrypted.")
+            p["notes_enc"] = fernet.encrypt(json.dumps({"text": req.evidence_notes.strip()}).encode()).decode()
         accounts.save_job_profile(user.id, p)
         return public(profile_of(user.id))
 
@@ -318,11 +336,131 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         if isinstance(user, JSONResponse):
             return user
         new = {"skip": "skipped", "requeue": "ready", "retry": "found", "mark_submitted": "submitted"}[req.action]
+        extra = {"submitted_at": int(time.time() * 1000)} if new == "submitted" else {}
         try:
-            accounts.set_app_status(user.id, app_id, new, detail=f"by you: {req.action}")
+            accounts.set_app_status(user.id, app_id, new, detail=f"by you: {req.action}", **extra)
         except ValueError as e:
             return error(404, "not_found", str(e))
         return {"ok": True, "status": new}
+
+    # ---------- outcomes, learning and the morning report ----------
+    RANK = {"rejected": 1, "recruiter_reply": 2, "interview": 3, "offer": 4}
+
+    def record_outcome(uid: str, app_id: str, outcome: str, source: str, at: int | None = None) -> dict:
+        a = accounts.app(uid, app_id)
+        if not a:
+            raise ValueError("That application doesn't exist.")
+        at = at or int(time.time() * 1000)
+        log_ = (a.get("outcome_log") or []) + [{"outcome": outcome, "source": source, "at": at}]
+        if outcome == "clear":
+            best = None
+        else:   # the furthest it got is what counts (an interview followed by a rejection still got an interview)
+            best = max([outcome] + ([a["outcome"]] if a.get("outcome") in RANK else []), key=lambda o: RANK[o])
+        accounts.save_app(uid, {"key": a["key"], "outcome": best, "outcome_at": at, "outcome_log": log_[-20:], "force": True,
+                                "status": a["status"]})
+        return {"outcome": best}
+
+    @app.post("/api/jobs/apps/{app_id}/outcome")
+    def set_outcome(app_id: str, req: OutcomeUpdate, request: Request):
+        user = owner_user(request)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            return record_outcome(user.id, app_id, req.outcome, "you")
+        except ValueError as e:
+            return error(404, "not_found", str(e))
+
+    @app.get("/api/jobs/learning")
+    def learning(request: Request):
+        user = owner_user(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return lr.analyze(accounts.app_bodies(user.id, None, 1000))
+
+    def report_for(uid: str, hours: int) -> dict:
+        since = int(time.time() * 1000) - hours * 3600 * 1000
+        bodies = [b for b in accounts.app_bodies(uid, None, 600) if (b.get("updated") or 0) >= since]
+        def card(b):
+            ch = b.get("check") or {}
+            job = b.get("job") or {}
+            return {"id": b["id"], "company": job.get("company"), "title": job.get("title"), "location": job.get("location"), "url": job.get("url"),
+                    "ats": job.get("ats"), "status": b["status"], "submitted_at": b.get("submitted_at"),
+                    "strategy": lr.STRATEGIES.get(b.get("strategy"), {}).get("label"), "match": (b.get("qualify") or {}).get("match"),
+                    "sponsor": ((b.get("screen") or {}).get("sponsor") or {}).get("level"), "problem": (b.get("brief") or {}).get("problem", ""),
+                    "first_impression": (ch.get("recruiter") or {}).get("first_impression", ""), "defensibility": ch.get("defensibility"),
+                    "ats_ok": (ch.get("ats") or {}).get("passed"), "replaced": len(ch.get("replaced") or []), "why": (b.get("why") or [])[-2:],
+                    "prep": len(b.get("prep") or []), "has_files": bool((b.get("resume") or {}).get("text"))}
+        out = {"since": since, "hours": hours, "submitted": [], "needs_you": [], "failed": [], "ready": [], "skipped": 0, "skip_reasons": {}}
+        for b in bodies:
+            st = b["status"]
+            if st == "submitted" and (b.get("submitted_at") or 0) >= since:
+                out["submitted"].append(card(b))
+            elif st in ("needs_you", "failed", "ready"):
+                out[st].append(card(b))
+            elif st == "skipped":
+                out["skipped"] += 1
+                r = ((b.get("why") or ["other"])[0] or "other").split(":")[0][:60]
+                out["skip_reasons"][r] = out["skip_reasons"].get(r, 0) + 1
+        out["submitted"].sort(key=lambda c: c["submitted_at"] or 0)
+        out["last_run"] = telemetry.get(f"jobs:last_run:{uid}")
+        out["learning"] = lr.analyze(accounts.app_bodies(uid, None, 1000))["verdict"]
+        return out
+
+    @app.get("/api/jobs/report")
+    def report(request: Request, hours: int = 24):
+        user = owner_user(request)
+        if isinstance(user, JSONResponse):
+            return user
+        return report_for(user.id, max(1, min(hours, 24 * 14)))
+
+    def prep_markdown(b: dict) -> str:
+        job, brief = b.get("job") or {}, b.get("brief") or {}
+        lines = [f"# {job.get('title')} at {job.get('company')}", "", f"Posting: {job.get('url')}", "",
+                 "## What they're hiring to solve", brief.get("problem", ""), "", "## Interview prep: questions a hiring manager will ask", ""]
+        for p in b.get("prep") or []:
+            lines.append(f"**{p['claim']}**")
+            lines += [f"- {q}" for q in p.get("questions", [])]
+            if p.get("prepare"):
+                lines.append(f"- Have ready: {p['prepare']}")
+            lines.append("")
+        musts = (b.get("qualify") or {}).get("musts") or []
+        if musts:
+            lines += ["## Must-haves and your evidence", ""] + [f"- {m['must_have']}: {m['status']}" + (f" (“{m['quote']}”)" if m.get("quote") else "") for m in musts]
+        return "\n".join(lines) + "\n"
+
+    @app.get("/api/jobs/report/zip")
+    def report_zip(request: Request, hours: int = 24):
+        """Every résumé sent in the window (PDF and Word) plus an interview prep sheet for each, in one download."""
+        user = owner_user(request)
+        if isinstance(user, JSONResponse):
+            return user
+        rep = report_for(user.id, max(1, min(hours, 24 * 14)))
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            summary = [f"Job Pilot: {len(rep['submitted'])} application(s) submitted in the last {rep['hours']} hours", ""]
+            for c in rep["submitted"]:
+                folder = "".join(ch for ch in f"{c['company']}_{c['title']}" if ch.isalnum() or ch in " _-").strip().replace(" ", "_")[:70] or c["id"]
+                for kind in ("pdf", "docx"):
+                    data = accounts.app_file(user.id, c["id"], kind)
+                    if data:
+                        z.writestr(f"{folder}/Resume.{kind}", data)
+                b = accounts.app(user.id, c["id"]) or {}
+                b.pop("files_b64", None)
+                z.writestr(f"{folder}/Interview_prep.md", prep_markdown(b))
+                summary.append(f"- {c['title']} at {c['company']} ({c['location']}): {c['url']}")
+            z.writestr("Summary.txt", "\n".join(summary) + "\n")
+        stamp = datetime.now(ZoneInfo(settings.timezone)).strftime("%Y-%m-%d")
+        return Response(buf.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="Job_Pilot_{stamp}.zip"'})
+
+    @app.get("/api/jobs/apps/{app_id}/prep")
+    def app_prep(app_id: str, request: Request):
+        user = owner_user(request)
+        if isinstance(user, JSONResponse):
+            return user
+        a = accounts.app(user.id, app_id)
+        if not a:
+            return error(404, "not_found", "That application doesn't exist.")
+        return Response(prep_markdown(a), media_type="text/markdown; charset=utf-8")
 
     # ---------- the laptop runner ----------
     def runner(request: Request):
@@ -392,6 +530,35 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         accounts.save_app(p["user_id"], {**a, "force": True})
         return {"answers": out}
 
+    @app.get("/api/jobs/runner/watch")
+    def runner_watch(request: Request):
+        """Submitted applications from the last 90 days, so the laptop can match replies in his inbox to them locally."""
+        p = runner(request)
+        if isinstance(p, JSONResponse):
+            return p
+        cutoff = int(time.time() * 1000) - 90 * 86_400_000
+        return {"apps": [{"id": b["id"], "company": (b.get("job") or {}).get("company", ""), "ats": (b.get("job") or {}).get("ats", ""),
+                          "submitted_at": b.get("submitted_at"), "outcome": b.get("outcome")}
+                         for b in accounts.app_bodies(p["user_id"], "submitted", 500) if (b.get("submitted_at") or 0) >= cutoff]}
+
+    @app.post("/api/jobs/runner/outcomes")
+    def runner_outcomes(req: RunnerOutcomes, request: Request):
+        """Only {app_id, outcome, at} arrives: the email itself never leaves the laptop."""
+        p = runner(request)
+        if isinstance(p, JSONResponse):
+            return p
+        n = 0
+        for it in req.items:
+            o = str(it.get("outcome", ""))
+            if o not in RANK:
+                continue
+            try:
+                record_outcome(p["user_id"], str(it.get("app_id", "")), o, "email", int(it.get("at") or 0) or None)
+                n += 1
+            except (ValueError, TypeError):
+                continue
+        return {"recorded": n}
+
     @app.post("/api/jobs/runner/report")
     def runner_report(req: RunnerReport, request: Request):
         p = runner(request)
@@ -406,6 +573,8 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
             extra["screenshots"] = shots
         if req.confirmation:
             extra["confirmation"] = req.confirmation
+        if req.status == "submitted":
+            extra["submitted_at"] = int(time.time() * 1000)
         if req.status == "needs_you":
             extra["why"] = (a.get("why") or []) + [req.detail or req.step]
         accounts.set_app_status(p["user_id"], req.app_id, req.status, **extra)

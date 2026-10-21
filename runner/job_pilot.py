@@ -11,8 +11,10 @@ What it does for each ready application, at night:
   3. Fills every page: it reads each field's label, options and whether it's required, asks Ask Harsha for the
      answers (which come from your answer sheet or that job's tailored résumé, quoted), uploads the tailored résumé,
      and stops the application if a required question has no supported answer.
-  4. Dry run: stops at the final page, takes a screenshot, and reports "filled". Otherwise it clicks Submit, waits for
-     the confirmation, and reports "submitted" with proof.
+  4. Clicks Submit, waits for the confirmation, and reports "submitted" with a screenshot as proof. (If dry run is
+     turned on in Job Pilot's settings, it stops before Submit and reports "filled" instead.)
+  5. After the night's applications, reads your inbox here on the laptop for replies to earlier applications
+     (rejections, recruiter replies, interview requests) and sends only "which application, what outcome, when".
 It never solves CAPTCHAs or gets around bot checks: an application that shows one waits for you.
 
 Setup:
@@ -26,6 +28,7 @@ from __future__ import annotations
 import argparse
 import base64
 import email
+import email.utils
 import imaplib
 import json
 import os
@@ -73,6 +76,12 @@ class Api:
 
     def answers(self, app_id: str, fields: list[dict]) -> list[dict]:
         return self._req("POST", "/api/jobs/runner/answers", {"app_id": app_id, "fields": fields})["answers"]
+
+    def watch(self) -> list[dict]:
+        return self._req("GET", "/api/jobs/runner/watch").get("apps", [])
+
+    def outcomes(self, items: list[dict]) -> dict:
+        return self._req("POST", "/api/jobs/runner/outcomes", {"items": items})
 
     def report(self, app_id: str, status: str, step: str = "", detail: str = "", screenshots=None, confirmation: str = ""):
         return self._req("POST", "/api/jobs/runner/report", {"app_id": app_id, "status": status, "step": step[:200], "detail": detail[:2000],
@@ -136,6 +145,94 @@ class Mailbox:
                 pass
             time.sleep(10)
         return None
+
+
+    def recent(self, days: int = 14, limit: int = 300) -> list[dict]:
+        """Recent inbox messages, read here on the laptop. Only matched outcomes (app, outcome, date) are ever sent anywhere."""
+        out = []
+        m = imaplib.IMAP4_SSL(self.host)
+        m.login(self.user, self.pw)
+        m.select("INBOX", readonly=True)
+        _, ids = m.search(None, f'(SINCE "{(datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")}")')
+        for i in reversed(ids[0].split()[-limit:]):
+            _, data = m.fetch(i, "(BODY.PEEK[])")     # PEEK: doesn't mark anything as read
+            msg = email.message_from_bytes(data[0][1])
+            try:
+                at = int(email.utils.parsedate_to_datetime(msg.get("Date")).timestamp() * 1000)
+            except Exception:
+                at = int(time.time() * 1000)
+            out.append({"from": _hdr(msg.get("From", "")), "subject": _hdr(msg.get("Subject", "")), "body": _plain(_body(msg))[:5000], "at": at})
+        m.logout()
+        return out
+
+
+def _hdr(v) -> str:
+    try:
+        return "".join(t.decode(c or "utf-8", "replace") if isinstance(t, bytes) else t for t, c in decode_header(str(v)))
+    except Exception:
+        return str(v)
+
+
+def _plain(html_text: str) -> str:
+    t = re.sub(r"(?is)<(script|style).*?</\1>", " ", html_text or "")
+    return " ".join(re.sub(r"<[^>]+>", " ", t).replace("&nbsp;", " ").replace("&amp;", "&").split())
+
+
+# what an email from an employer means (decided here, on the laptop)
+REJECT = re.compile(r"(unfortunately|regret to inform|not (be )?(moving|move) forward|decided to (move|proceed) (forward )?with other|"
+                    r"pursue other candidates|position has been filled|no longer (under )?consider|will not be (moving|proceeding)|"
+                    r"not selected|other candidates whose)", re.I)
+INTERVIEW = re.compile(r"(schedule (a|an|your) (call|interview|chat|conversation|time)|interview (invitation|request)|invite you to (an? )?interview|"
+                       r"next steps? in (the|our) (hiring|interview) process|availability for (a|an) (call|interview|chat)|phone screen|"
+                       r"book (a )?time|calendly\.com|goodtime\.io|would love to (chat|connect|speak))", re.I)
+OFFER = re.compile(r"(pleased to (extend|offer)|offer letter|formal offer)", re.I)
+AUTOMATED = re.compile(r"no-?reply|do-?not-?reply|notifications?@|myworkday|icims|greenhouse|lever\.co|ashbyhq|talent@|careers@|jobs@|recruiting@|news(letter)?@|marketing|info@|hello@|updates?@|events?@|team@|support@", re.I)
+
+
+def _norm(name: str) -> str:
+    n = re.sub(r"[^a-z0-9 ]", " ", (name or "").lower())
+    n = re.sub(r"\b(inc|incorporated|llc|ltd|limited|corp|corporation|co|company|plc|lp|llp|holdings|group|technologies|technology|the)\b", " ", n)
+    return " ".join(n.split())
+
+
+def classify_email(subject: str, body: str, sender: str) -> str | None:
+    t = f"{subject}\n{body}"
+    if OFFER.search(t):
+        return "offer"
+    if REJECT.search(t):
+        return "rejected"
+    if INTERVIEW.search(t):
+        return "interview"
+    if re.search(r"thank you for (applying|your application|your interest)|received your application|application (was )?received", t, re.I):
+        return None                      # a receipt is not a response
+    if not AUTOMATED.search(sender) and re.search(r"\b(application|position|role|r[eé]sum[eé]|candidacy|opportunity|your background)\b", t, re.I):
+        return "recruiter_reply"         # a real person at the company wrote back
+    return None
+
+
+def match_outcomes(messages: list[dict], watch: list[dict]) -> list[dict]:
+    """Ties inbox messages to submitted applications by company name, and decides what each one means."""
+    out, best = [], {}
+    rank = {"rejected": 1, "recruiter_reply": 2, "interview": 3, "offer": 4}
+    for w in watch:
+        name = _norm(w.get("company", ""))
+        if len(name) < 3:
+            continue
+        pat = re.compile(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])")
+        compact = name.replace(" ", "")
+        for msg in messages:
+            if msg["at"] < (w.get("submitted_at") or 0):
+                continue
+            sender = msg["from"].lower()
+            head = _norm(msg["from"] + " " + msg["subject"])
+            domain = (re.search(r"@([\w.-]+)", sender) or [None, ""])[1]
+            if not (pat.search(head) or (compact and compact in domain.replace("-", ""))):
+                continue
+            o = classify_email(msg["subject"], msg["body"], sender)
+            if o and rank[o] > rank.get(best.get(w["id"], {}).get("outcome"), 0) and rank[o] > rank.get(w.get("outcome"), 0):
+                best[w["id"]] = {"app_id": w["id"], "outcome": o, "at": msg["at"]}
+    out = list(best.values())
+    return out
 
 
 def _body(msg) -> str:
@@ -410,6 +507,13 @@ class Runner:
         except Exception:
             return False
 
+    # ---- replies from employers ----
+    def check_outcomes(self) -> dict:
+        if not self.mail:
+            return {"recorded": 0, "note": "no mailbox set up"}
+        found = match_outcomes(self.mail.recent(), self.api.watch())
+        return self.api.outcomes(found) if found else {"recorded": 0}
+
     # ---- the night ----
     def run(self, max_apps: int = 15, between=(90, 240)) -> dict:
         done = {"submitted": 0, "filled": 0, "needs_you": 0, "failed": 0}
@@ -423,6 +527,10 @@ class Runner:
             status = self.apply(job, nxt.get("dry_run", True), nxt.get("profile") or {})
             done[status] = done.get(status, 0) + 1
             time.sleep(random.uniform(*between))    # pacing, so it reads like a person, not a burst
+        try:
+            done["outcomes"] = self.check_outcomes().get("recorded", 0)
+        except Exception as e:
+            self.log(f"Couldn't check the inbox for replies ({type(e).__name__})")
         return done
 
 
@@ -472,6 +580,15 @@ def cmd_run(args) -> None:
         ctx.close()
 
 
+def cmd_outcomes(args) -> None:
+    cfg, keys = load_config(), Keys()
+    imap = keys.get("imap_password")
+    if not imap:
+        sys.exit("Add a Gmail app password with: python job_pilot.py setup")
+    r = Runner(Api(cfg["server"], keys.get("runner_token")), keys, Mailbox(cfg["email"], imap), cfg["email"], page_factory=lambda: None)
+    print(r.check_outcomes())
+
+
 def cmd_schedule(args) -> None:
     py, me = sys.executable, str(Path(__file__).resolve())
     if sys.platform == "darwin":
@@ -502,8 +619,9 @@ def main(argv=None) -> None:
     r.add_argument("--max", type=int, default=15)
     r.add_argument("--fast", action="store_true", help="short pauses (for testing)")
     sub.add_parser("schedule")
+    sub.add_parser("outcomes", help="match employer replies in your inbox to applications (runs after every night too)")
     args = ap.parse_args(argv)
-    {"setup": cmd_setup, "run": cmd_run, "schedule": cmd_schedule}[args.cmd](args)
+    {"setup": cmd_setup, "run": cmd_run, "schedule": cmd_schedule, "outcomes": cmd_outcomes}[args.cmd](args)
 
 
 if __name__ == "__main__":

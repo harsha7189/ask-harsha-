@@ -624,7 +624,7 @@ class Accounts:
         return {**json.loads(row[0]), "user_id": user_id, "sheet_enc": row[1], "runner_hash": row[2]}
 
     def save_job_profile(self, user_id: str, body: dict, sheet_enc: str | None = None, runner_hash: str | None = None) -> None:
-        clean = {k: v for k, v in body.items() if k not in ("user_id", "sheet_enc", "runner_hash", "sheet")}
+        clean = {k: v for k, v in body.items() if k not in ("user_id", "sheet_enc", "runner_hash", "sheet", "evidence_notes")}
         cur = self.db.one("SELECT sheet, runner_hash FROM job_profiles WHERE user_id = %s", (user_id,))
         sheet_enc = sheet_enc if sheet_enc is not None else (cur[0] if cur else None)
         runner_hash = runner_hash if runner_hash is not None else (cur[1] if cur else None)
@@ -686,7 +686,23 @@ class Accounts:
             out.append({"id": r[0], "key": r[1], "status": r[2], "company": r[3], "title": r[4], "created": r[5], "updated": r[6],
                         "location": (b.get("job") or {}).get("location", ""), "url": (b.get("job") or {}).get("url", ""),
                         "ats": (b.get("job") or {}).get("ats", ""), "sponsor": ((b.get("screen") or {}).get("sponsor") or {}).get("level"),
-                        "why": b.get("why", [])[:3], "priority": b.get("priority")})
+                        "why": b.get("why", [])[:3], "priority": b.get("priority"), "strategy": b.get("strategy"),
+                        "match": (b.get("qualify") or {}).get("match"), "outcome": b.get("outcome"), "submitted_at": b.get("submitted_at"),
+                        "has_files": bool(b.get("files_b64"))})
+        return out
+
+    def app_bodies(self, user_id: str, status: str | None = None, limit: int = 400) -> list[dict]:
+        """Full application records without the files (for learning and carry-over)."""
+        sql = "SELECT id, status, created, updated, body FROM job_apps WHERE user_id = %s"
+        args: tuple = (user_id,)
+        if status:
+            sql += " AND status = %s"
+            args += (status,)
+        out = []
+        for r in self.db.all(sql + " ORDER BY updated DESC LIMIT %s", args + (limit,)):
+            b = json.loads(r[4])
+            b.pop("files_b64", None)
+            out.append({**b, "id": r[0], "status": r[1], "created": r[2], "updated": r[3]})
         return out
 
     def app(self, user_id: str, app_id: str) -> dict | None:

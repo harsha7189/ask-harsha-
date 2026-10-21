@@ -90,6 +90,16 @@ code.tok{font-family:var(--f-mono);font-size:12.5px;word-break:break-all;backgro
 .st{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted)}
 .spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--fg);animation:spin .8s linear infinite;flex:0 0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
+.rep{display:grid;gap:6px;padding:12px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.rep b{font-size:15px}
+.rep .q{font-size:13.5px;color:var(--muted);margin:0}
+.big{font-family:var(--f-display);font-weight:900;font-size:44px;line-height:1;margin:0}
+table.lr{width:100%;border-collapse:collapse;font-size:13.5px}
+table.lr th,table.lr td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+table.lr th{color:var(--muted);font-weight:600;font-size:12px}
+.lv-strong{color:var(--good)}.lv-adequate{color:var(--blue)}.lv-weak{color:var(--warn)}
+.oc{display:flex;flex-wrap:wrap;gap:6px}
+.oc button.on{border-color:var(--fg);background:var(--raise)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;max-width:min(520px,calc(100vw - 32px));z-index:30}
 </style>
 </head>
@@ -100,7 +110,12 @@ code.tok{font-family:var(--f-mono);font-size:12.5px;word-break:break-all;backgro
 </header>
 <main>
   <p class="warnline" id="gate" hidden></p>
-  <div class="tabs" id="tabs" hidden><button type="button" class="on" data-t="track">Applications</button><button type="button" data-t="set">Settings</button></div>
+  <div class="tabs" id="tabs" hidden><button type="button" class="on" data-t="report">Morning report</button><button type="button" data-t="track">Applications</button><button type="button" data-t="set">Settings</button></div>
+
+  <section id="report" hidden>
+    <div class="card" id="r-main"><p class="fine">Loading…</p></div>
+    <div class="card" id="r-learn"></div>
+  </section>
 
   <section id="track" hidden>
     <div class="card">
@@ -119,6 +134,7 @@ code.tok{font-family:var(--f-mono);font-size:12.5px;word-break:break-all;backgro
   <section id="set" hidden>
     <div class="card" id="c-resume"></div>
     <div class="card" id="c-rules"></div>
+    <div class="card" id="c-notes"></div>
     <div class="card" id="c-sheet"></div>
     <div class="card" id="c-runner"></div>
   </section>
@@ -136,21 +152,21 @@ async function readSSE(res,onEvent){const reader=res.body.getReader(),dec=new Te
   for(;;){const {value,done}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
     while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);let kind=null,data='';block.split('\n').forEach(l=>{if(l.startsWith('event: '))kind=l.slice(7);else if(l.startsWith('data: '))data+=l.slice(6)});if(kind){let d={};try{d=JSON.parse(data||'{}')}catch(e){}onEvent(kind,d)}}}}
 function toggle(on,onChange,label){const b=el('button','sw');b.type='button';b.setAttribute('role','switch');b.setAttribute('aria-checked',!!on);b.setAttribute('aria-label',label);b.onclick=()=>{const v=b.getAttribute('aria-checked')!=='true';b.setAttribute('aria-checked',v);onChange(v)};return b}
-const STATUS={ready:'Ready',needs_you:'Needs you',filled:'Filled (dry run)',applying:'Applying',submitted:'Submitted',found:'Waiting',skipped:'Skipped',failed:'Failed'};
+const STATUS={ready:'Ready to send',needs_you:'Needs you',filled:'Filled (dry run)',applying:'Applying',submitted:'Submitted',found:'Waiting',skipped:'Skipped',failed:'Failed'};
 const SPONSOR={high:'Likely sponsors',medium:'Sometimes sponsors',low:'Rarely sponsors',unknown:'Sponsorship unknown',excluded:'Won’t sponsor'};
 let prof=null,filter='ready';
 
 // ---------- tabs ----------
-$('#tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#tabs').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));$('#track').hidden=b.dataset.t!=='track';$('#set').hidden=b.dataset.t!=='set';if(b.dataset.t==='set')drawSettings()});
+function tab(t){$('#tabs').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.t===t));['report','track','set'].forEach(k=>$('#'+k).hidden=k!==t);if(t==='set')drawSettings();if(t==='report')loadReport();if(t==='track')loadApps()}
+$('#tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
 
 async function load(){
   try{prof=await api('GET','/api/jobs/profile')}
   catch(e){const g=$('#gate');g.hidden=false;g.textContent=passcode?e.message:'Job Pilot is for the owner: on the chat page, sign in with your passkey and unlock owner mode (the lock icon), then come back.';return}
-  $('#tabs').hidden=false;$('#track').hidden=false;
-  $('#mode').textContent=!prof.enabled?'Off':prof.rules.dry_run?'On · dry run (fills, doesn’t submit)':'On · submits';
+  $('#tabs').hidden=false;
+  $('#mode').textContent=!prof.enabled?'Off':prof.rules.dry_run?'On · dry run (fills, doesn’t submit)':'On · applies on its own';
   const lr=prof.last_run;$('#lastrun').textContent=lr?`Last run ${new Date(lr.at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}: ${lr.jobs_seen||0} jobs read, ${lr.screened_in||0} fit, ${lr.ready||0} ready, ${lr.needs_you||0} need you.`:'Hasn’t run yet.';
-  if(!prof.resume){$('#tabs').querySelectorAll('button')[1].click();toast('Start by uploading your résumé.')}
-  loadApps();
+  if(!prof.resume){tab('set');toast('Start by uploading your résumé.')}else tab('report');
 }
 async function loadApps(){
   const box=$('#apps');let all=[];try{all=(await api('GET','/api/jobs/apps')).apps}catch(e){box.textContent=e.message;return}
@@ -179,13 +195,21 @@ async function openApp(id){
     [...c.truth.issues,...c.fit.issues].forEach(i=>d.append(el('div','issue'+(i.kind==='truth'?' bad':''),`${i.where}: ${i.detail}`)));
     (c.replaced||[]).forEach(r=>d.append(el('div','issue',r)));
     if((c.fit.coverage||[]).length){const ul=el('ul','plain');c.fit.coverage.forEach(x=>ul.append(el('li',null,`${x.status==='covered'?'✓':x.status==='not_in_his_background'?'—':'!'} ${x.must_have}${x.status==='not_in_his_background'?' (an honest gap)':''}`)));d.append(el('p','fine','Must-haves covered:'),ul)}}
+  if(a.qualify)d.append(el('p','fine',`Match: ${a.qualify.match}${a.qualify.ratio!=null?` (${Math.round(a.qualify.ratio*100)}% of must-haves shown in your résumé)`:''}${a.strategy?` · Résumé strategy: ${a.strategy.replace('_',' ')}`:''}`));
+  if(a.check&&a.check.recruiter){const r=a.check.recruiter;d.append(el('h2',null,'Recruiter’s view'));if(r.first_impression)d.append(el('p',null,'“'+r.first_impression+'”'));
+    const ul=el('ul','plain');Object.entries(r.dimensions||{}).forEach(([k,v])=>{const li=el('li');li.append(el('b','lv-'+v.level,`${k}: ${v.level}`),' · '+v.why);ul.append(li)});d.append(ul)}
+  if(a.check&&a.check.ats){const t=a.check.ats;d.append(el('p',null,`ATS parsing: ${t.passed?'✓ read back intact by '+Object.keys(t.parsers||{}).length+' parsers (PDF and Word)':'✕ '+t.issues.join(' ')}`))}
+  if(a.check&&a.check.defensibility){const x=a.check.defensibility;d.append(el('p',null,`Interview defensibility: ${x.defensible} backed by your evidence · ${x.prepare} to prepare for · ${x.overreach} went too far and were put back in your words`));
+    const pb=el('button','btn small','Interview prep sheet');pb.type='button';pb.onclick=()=>dl(`/api/jobs/apps/${a.id}/prep`,'Interview_prep.md');d.append(pb)}
+  if(a.check&&a.check.style&&a.check.style.issues.length){const det=el('details');det.append(el('summary',null,`Writing notes (${a.check.style.issues.length})`));a.check.style.issues.forEach(i=>det.append(el('div','issue',`${i.where}: ${i.detail}`)));d.append(det)}
+  if(a.status==='submitted')d.append(outcomes(a));
   if(a.resume&&a.resume.text){const det=el('details');det.append(el('summary',null,'The tailored résumé'),Object.assign(el('pre','cv'),{textContent:a.resume.text}));d.append(det)}
   if((a.answers||[]).length){d.append(el('h2',null,'Answers'));a.answers.forEach(x=>{const r=el('div','ans'+(x.needs_you?' need':''));r.append(el('b',null,x.label),el('span',null,x.value==null?'— waits for you':String(x.value)));
     r.append(el('small',null,x.why+(x.quote?` · “${x.quote}”`:'')));d.append(r)})}
   if((a.screenshots||[]).length){const s=el('div','shots');s.append(el('h2',null,'What the runner saw'));a.screenshots.forEach(b64=>{const i=el('img');i.alt='Screenshot of the filled application';i.src='data:image/jpeg;base64,'+b64;s.append(i)});d.append(s)}
   if(a.confirmation)d.append(el('p','fine','Confirmation: '+a.confirmation.slice(0,400)));
   const acts=el('div','row');const act=(label,action)=>{const b=el('button','btn small',label);b.type='button';b.onclick=async()=>{try{await api('POST',`/api/jobs/apps/${a.id}/action`,{action});toast('Done.');loadApps();openApp(a.id)}catch(e){toast(e.message)}};acts.append(b)};
-  if(a.status!=='skipped')act('Skip it','skip');if(['needs_you','filled','failed','skipped'].includes(a.status))act('Queue for the runner','requeue');if(a.status!=='submitted')act('I applied myself','mark_submitted');
+  if(!['skipped','submitted'].includes(a.status))act('Skip it','skip');if(['needs_you','filled','failed','skipped'].includes(a.status))act('Queue for the runner','requeue');if(a.status!=='submitted')act('I applied myself','mark_submitted');
   d.append(acts);
 }
 async function dl(url,name){try{const res=await fetch(url,{headers:headers()});if(!res.ok)throw new Error('That file isn’t ready.');const b=await res.blob();const u=URL.createObjectURL(b),x=el('a');x.href=u;x.download=(res.headers.get('content-disposition')||'').split('filename="')[1]?.replace('"','')||name;document.body.append(x);x.click();x.remove();setTimeout(()=>URL.revokeObjectURL(u),3000)}catch(e){toast(e.message)}}
@@ -194,9 +218,47 @@ $('#runnow').onclick=async()=>{const b=$('#runnow');b.disabled=true;$('#live').h
     await readSSE(res,(k,d)=>{if(k==='status')$('#livetext').textContent=d.label+'…';else if(k==='final'){$('#livetext').textContent=d.ok?`Done: ${d.jobs_seen} jobs read, ${d.screened_in} fit, ${d.ready} ready, ${d.needs_you} need you.`:d.message;filter='ready';loadApps()}else if(k==='error')throw new Error(d.message)})}
   catch(e){$('#livetext').textContent=e.message}finally{b.disabled=false;setTimeout(()=>{$('#live').hidden=true},8000)}};
 
+// ---------- morning report ----------
+const OUT=[['recruiter_reply','Recruiter replied'],['interview','Interview'],['offer','Offer'],['rejected','Rejected']];
+function outcomes(a){const w=el('div');w.append(el('h2',null,'What happened'));const box=el('div','oc');
+  OUT.forEach(([k,label])=>{const b=el('button','chip'+(a.outcome===k?' on':''),label);b.type='button';b.onclick=async()=>{try{const d=await api('POST',`/api/jobs/apps/${a.id}/outcome`,{outcome:a.outcome===k?'clear':k});a.outcome=d.outcome;box.querySelectorAll('button').forEach((x,i)=>x.classList.toggle('on',OUT[i][0]===d.outcome));toast('Recorded. It feeds the learning report.')}catch(e){toast(e.message)}};box.append(b)});
+  w.append(box,el('p','fine','The runner also reads replies in your inbox on your laptop and records these for you. No reply in 21 days counts as no response.'));return w}
+async function loadReport(){
+  const c=$('#r-main');c.textContent='';c.append(el('p','fine','Loading…'));let r;try{r=await api('GET','/api/jobs/report?hours=24')}catch(e){c.textContent=e.message;return}
+  c.textContent='';const top=el('div','row');top.style.justifyContent='space-between';top.append(el('h2',null,'Last 24 hours'),el('span','fine',prof.rules.dry_run?'Dry run is on':'Applies on its own'));c.append(top);
+  const n=el('div','row');n.append(el('p','big',String(r.submitted.length)),el('span',null,r.submitted.length===1?'application submitted':'applications submitted'));c.append(n);
+  const lr=r.last_run;if(lr)c.append(el('p','fine',`Last run: ${lr.jobs_seen||0} jobs read · ${lr.screened_in||0} passed screening · ${lr.not_qualified||0} not a strong enough match · ${lr.ready||0} prepared and passed every check · ${lr.needs_you||0} need you.`));
+  if(r.submitted.length){const z=el('button','btn red','Download all résumés and prep sheets (.zip)');z.type='button';z.onclick=()=>dl('/api/jobs/report/zip?hours=24','Job_Pilot.zip');c.append(z)}
+  r.submitted.forEach(x=>{const b=el('div','rep');b.append(el('b',null,`${x.title} · ${x.company}`),el('p','q',[x.location,x.match?`${x.match} match`:'',SPONSOR[x.sponsor]||'',x.strategy||''].filter(Boolean).join(' · ')));
+    if(x.problem)b.append(el('p','q','They’re hiring to solve: '+x.problem));if(x.first_impression)b.append(el('p','q','Recruiter’s first impression: “'+x.first_impression+'”'));
+    if(x.defensibility)b.append(el('p','q',`Defensible claims: ${x.defensibility.defensible} · to prepare: ${x.defensibility.prepare}`));
+    const row=el('div','row');[['pdf','PDF'],['docx','Word']].forEach(([k,l])=>{const y=el('button','btn small',l);y.type='button';y.onclick=()=>dl(`/api/jobs/apps/${x.id}/file/${k}`,`resume.${k}`);row.append(y)});
+    const pp=el('button','btn small','Prep sheet');pp.type='button';pp.onclick=()=>dl(`/api/jobs/apps/${x.id}/prep`,'Interview_prep.md');row.append(pp);
+    const o=el('button','btn small','Details');o.type='button';o.onclick=()=>{tab('track');filter='submitted';loadApps();openApp(x.id)};row.append(o);
+    const po=el('a','btn small','Posting');po.href=x.url;po.target='_blank';po.rel='noopener';row.append(po);b.append(row);c.append(b)});
+  if(r.needs_you.length){c.append(el('h2',null,`Needs you (${r.needs_you.length})`));r.needs_you.forEach(x=>{const b=el('button','app');b.type='button';b.append(el('b',null,`${x.title} · ${x.company}`),el('span','pill s-needs_you','Needs you'),el('small',null,(x.why||[]).slice(-1)[0]||''));b.onclick=()=>{tab('track');filter='needs_you';loadApps();openApp(x.id)};c.append(b)})}
+  if(r.failed.length)c.append(el('p','warnline',`${r.failed.length} application(s) failed on the site; they’re under Applications → Failed.`));
+  if(r.skipped){const ul=el('ul','plain');Object.entries(r.skip_reasons).sort((a,b)=>b[1]-a[1]).slice(0,6).forEach(([k,v])=>ul.append(el('li',null,`${k}: ${v}`)));const det=el('details');det.append(el('summary',null,`${r.skipped} roles skipped`),ul);c.append(det)}
+  loadLearning();
+}
+async function loadLearning(){
+  const c=$('#r-learn');c.textContent='';c.append(el('h2',null,'What’s working'));let L;try{L=await api('GET','/api/jobs/learning')}catch(e){c.append(el('p','fine',e.message));return}
+  c.append(el('p',null,L.verdict.message),el('p','fine',`${L.submitted} submitted · ${L.decided} with a known outcome · ${L.pending} still waiting`));
+  const arms=Object.entries(L.arms);if(arms.length){const t=el('table','lr');t.innerHTML='<thead><tr><th>Résumé strategy</th><th>Sent</th><th>Known</th><th>Got a reply</th><th>95% range</th></tr></thead>';const tb=el('tbody');
+    arms.forEach(([k,v])=>{const tr=el('tr');[v.label,v.submitted,v.decided,v.response_rate==null?'—':Math.round(v.response_rate*100)+'%',v.decided?`${Math.round(v.response_ci[0]*100)}–${Math.round(v.response_ci[1]*100)}%`:'—'].forEach(x=>tr.append(el('td',null,String(x))));tb.append(tr)});t.append(tb);c.append(t)}
+  const seg=L.segments||{};const names={match:'By match',sponsor:'By sponsorship likelihood',ats:'By hiring system',location:'By location'};
+  Object.entries(seg).forEach(([k,rows])=>{const e=Object.entries(rows);if(!e.length)return;const det=el('details');det.append(el('summary',null,names[k]));const ul=el('ul','plain');e.forEach(([g,v])=>ul.append(el('li',null,`${g}: ${v.positive}/${v.decided} replied (${Math.round(v.ci[0]*100)}–${Math.round(v.ci[1]*100)}%)`)));det.append(ul);c.append(det)});
+  c.append(el('p','fine','Observed, not proven: only the strategy comparison is a fair test, because strategies are assigned evenly across similar jobs.'));
+}
+
 // ---------- settings ----------
 function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
-function drawSettings(){drawResume();drawRules();drawSheet();drawRunner()}
+function drawSettings(){drawResume();drawRules();drawNotes();drawSheet();drawRunner()}
+function drawNotes(){
+  const c=$('#c-notes');c.textContent='';c.append(el('h2',null,'Evidence notes for interviews'),el('p','fine','The details behind your bullets that a hiring manager will ask about: how a metric was measured and the baseline, team size, what was yours versus the team’s, what went wrong. Job Pilot uses these to check every claim on a tailored résumé is one you can defend, and to write your prep sheet for each job. They never add new claims to the résumé. Stored encrypted.'));
+  const t=el('textarea','field');t.style.minHeight='160px';t.value=prof.evidence_notes||'';t.placeholder='e.g. $8M retention: 14 enterprise accounts flagged at risk in FY24 renewal review; I wrote the diagnostic-capture requirements, 3 engineers built it.';
+  const b=el('button','btn red','Save notes');b.type='button';b.onclick=async()=>{try{prof=await api('PUT','/api/jobs/profile',{evidence_notes:t.value});toast('Saved.')}catch(e){toast(e.message)}};c.append(t,b);
+}
 function drawResume(){
   const c=$('#c-resume');c.textContent='';c.append(el('h2',null,'Your résumé'));const r=prof.resume;
   if(r){const ul=el('ul','plain');r.jobs.forEach(j=>ul.append(el('li',null,`${j.title}, ${j.company} (${j.start} – ${j.end}): ${j.bullets} bullets`)));c.append(ul,el('p','fine',`${r.skills} skills · ${r.bank} extra true bullets in the bank${r.dropped?` · ${r.dropped} line(s) left out because they weren’t copied exactly`:''}`))}
@@ -209,7 +271,7 @@ function drawResume(){
 function drawRules(){
   const c=$('#c-rules');c.textContent='';const R=prof.rules;c.append(el('h2',null,'What to apply to'));
   const on=el('div','tog');const t=el('span');t.append(el('b',null,'Job Pilot is on'),el('small',null,'Runs every night at the hour below'));on.append(t,toggle(prof.enabled,async v=>{try{prof=await api('PUT','/api/jobs/profile',{enabled:v});load()}catch(e){toast(e.message);drawRules()}},'Job Pilot on'));c.append(on);
-  const dry=el('div','tog');const t2=el('span');t2.append(el('b',null,'Dry run'),el('small',null,'Fill every page but don’t click Submit; screenshots come back for you to check. Keep this on for the first week.'));
+  const dry=el('div','tog');const t2=el('span');t2.append(el('b',null,'Dry run'),el('small',null,'Off: applications that pass every check are submitted overnight and show up in the morning report. On: it fills every page and stops before Submit.'));
   dry.append(t2,toggle(R.dry_run,v=>save({dry_run:v}),'Dry run'));c.append(dry);
   const g=el('div','grid2');
   const fld=(label,key,kind='text',hint)=>{const l=el('label','f',label);let i;if(kind==='list'){i=el('textarea','field');i.value=(R[key]||[]).join('\n')}else{i=el('input','field');i.type=kind;i.value=R[key]??''}
@@ -224,7 +286,7 @@ function drawRules(){
   sp.append(t3,toggle(R.sponsor_filter==='likely',v=>save({sponsor_filter:v?'likely':'any',needs_sponsorship:true}),'Only likely sponsors'));c.append(sp);
   c.append(el('p','fine',prof.sponsor_index?'H-1B history is loaded.':'H-1B history isn’t loaded yet: run runner/build_sponsor_index.py on your laptop once (instructions under Laptop runner). Until then, only what each posting says is used.'));
 }
-async function save(patch){try{prof=await api('PUT','/api/jobs/profile',{rules:{...prof.rules,...patch}});$('#mode').textContent=!prof.enabled?'Off':prof.rules.dry_run?'On · dry run (fills, doesn’t submit)':'On · submits';toast('Saved.')}catch(e){toast(e.message)}}
+async function save(patch){try{prof=await api('PUT','/api/jobs/profile',{rules:{...prof.rules,...patch}});$('#mode').textContent=!prof.enabled?'Off':prof.rules.dry_run?'On · dry run (fills, doesn’t submit)':'On · applies on its own';toast('Saved.')}catch(e){toast(e.message)}}
 const SHEET=[['first_name','First name'],['last_name','Last name'],['email','Email'],['phone','Phone'],['address','Street address'],['city','City'],['state','State'],['zip','ZIP'],['country','Country'],['linkedin','LinkedIn URL'],['website','Website or portfolio'],
   ['authorized','Authorized to work in the US? (Yes/No)'],['sponsorship','Will you need visa sponsorship now or in future? (Yes/No)'],['relocate','Willing to relocate? (Yes/No)'],['salary','Salary expectation'],['start_date','Earliest start date'],['notice','Notice period'],
   ['adult','18 or older? (Yes/No)'],['previous_employee','Worked for the company before? (usually No)'],['noncompete','Bound by a non-compete? (Yes/No)'],['how_heard','How did you hear about us?'],['remote_ok','OK with on-site or hybrid? (Yes/No)'],
@@ -244,7 +306,7 @@ async function drawSheet(){
 }
 function drawRunner(){
   const c=$('#c-runner');c.textContent='';c.append(el('h2',null,'Laptop runner'),el('p','fine','The server prepares applications. A small program on your laptop fills in the forms at night (cloud servers get blocked by job sites), including creating Workday and iCIMS accounts. It never solves CAPTCHAs: those wait for you.'));
-  const steps=el('ol','plain');['Install Python 3.11+, then: pip install playwright keyring && python -m playwright install chromium','Download runner/job_pilot.py and runner/build_sponsor_index.py from your GitHub repo.','Make a runner token below and run: python job_pilot.py setup (it asks for the token and, for Workday/iCIMS email verification, a Gmail app password).','Once: download the last two years of “LCA Programs (H-1B)” disclosure files from dol.gov/agencies/eta/foreign-labor/performance, then run: pip install openpyxl && python build_sponsor_index.py FILE1.xlsx FILE2.xlsx --upload','First week: python job_pilot.py run --show --max 2 to watch it fill two dry-run applications.','Schedule it nightly: python job_pilot.py schedule (sets up a nightly task). Keep the laptop plugged in and awake.'].forEach(s=>steps.append(el('li',null,s)));c.append(steps);
+  const steps=el('ol','plain');['Install Python 3.11+, then: pip install playwright keyring && python -m playwright install chromium','Download runner/job_pilot.py and runner/build_sponsor_index.py from your GitHub repo.','Make a runner token below and run: python job_pilot.py setup (it asks for the token and, for Workday/iCIMS email verification, a Gmail app password).','Once: download the last two years of “LCA Programs (H-1B)” disclosure files from dol.gov/agencies/eta/foreign-labor/performance, then run: pip install openpyxl && python build_sponsor_index.py FILE1.xlsx FILE2.xlsx --upload','First week: python job_pilot.py run --show --max 1 to watch it apply to one job.','Schedule it nightly: python job_pilot.py schedule (sets up a nightly task). Keep the laptop plugged in and awake.'].forEach(s=>steps.append(el('li',null,s)));c.append(steps);
   const out=el('div');const b=el('button','btn red',prof.runner?'Make a new runner token':'Make a runner token');b.type='button';
   b.onclick=async()=>{if(prof.runner&&!b.dataset.sure){b.dataset.sure='1';b.textContent='Tap again: the old token stops working';return}try{const d=await api('POST','/api/jobs/runner-token');out.textContent='';out.append(el('code','tok',d.token),el('p','fine',d.note));prof.runner=true;b.textContent='Make a new runner token';delete b.dataset.sure}catch(e){toast(e.message)}};
   c.append(b,out,el('p','fine',`${prof.companies} companies in the search list so far.`));

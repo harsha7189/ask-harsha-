@@ -133,9 +133,10 @@ def tailored(bad=False):
 class JobsClient(FakeClient):
     """Routes each kind of call the way a careful model would answer it."""
 
-    def __init__(self, bad_first=True, fix_works=True):
+    def __init__(self, bad_first=True, fix_works=True, match="has", overreach=False):
         super().__init__([])
         self.bad_first, self.fix_works, self.tailors = bad_first, fix_works, 0
+        self.match, self.overreach = match, overreach
 
     def create(self, **kw):
         self.requests.append(kw)
@@ -150,6 +151,21 @@ class JobsClient(FakeClient):
             return response([tool_use("j", "judge", {"verdicts": [{"n": i, "verdict": "faithful", "quote": ""} for i in range(1, n + 1)]})], "tool_use")
         if name == "coverage":
             return response([tool_use("c", "coverage", {"items": [{"n": 1, "status": "covered", "quote": "Salesforce Service Cloud"}]})], "tool_use")
+        if name == "qualify":
+            n = len(re.findall(r"\\n\d+\. ", msg)) or 1
+            return response([tool_use("q", "qualify", {"items": [{"n": i, "status": self.match, "quote": "Salesforce Service Cloud"} for i in range(1, n + 1)]})], "tool_use")
+        if name == "review":
+            return response([tool_use("v", "review", {"first_impression": "A support-automation PM with Salesforce depth.", "dimensions": [
+                {"dimension": d, "level": "strong", "quote": "Salesforce Service Cloud", "why": "Shown early."}
+                for d in ("relevance", "credibility", "seniority", "readability", "clarity")]})], "tool_use")
+        if name == "defend":
+            raw = kw["messages"][-1]["content"]
+            evs = re.findall(r"EVIDENCE: (.+)", raw)
+            claims = [{"n": i, "questions": ["How did you measure that?", "What was your part?"], "status": "defensible",
+                       "evidence": " ".join(ev.split()[:5])} for i, ev in enumerate(evs, 1)]
+            if self.overreach and claims:
+                claims[0].update(status="overreach")
+            return response([tool_use("d", "defend", {"claims": claims})], "tool_use")
         if name == "answer":
             msg = msg.split("QUESTION:")[-1]
             if "Salesforce" in msg:
@@ -276,7 +292,7 @@ def test_runner_api_end_to_end(monkeypatch):
     r = {"X-Runner-Token": tok}
     assert c.get("/api/jobs/runner/next", headers={"X-Runner-Token": "jp_wrong"}).status_code == 401
     nxt = c.get("/api/jobs/runner/next", headers=r).json()
-    assert nxt["app"]["id"] == aid and nxt["dry_run"] is True and nxt["profile"]["first_name"] == "Harsha"
+    assert nxt["app"]["id"] == aid and nxt["dry_run"] is False and nxt["profile"]["first_name"] == "Harsha"
     assert c.get(f"/api/jobs/runner/file/{aid}/pdf", headers=r).content.startswith(b"%PDF")
     ans = c.post("/api/jobs/runner/answers", headers=r, json={"app_id": aid, "fields": [
         {"label": "Will you now or in the future require sponsorship?", "options": ["Yes", "No"]},
