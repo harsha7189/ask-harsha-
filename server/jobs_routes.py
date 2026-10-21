@@ -204,8 +204,9 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
 
     @app.post("/api/jobs/sponsors")
     async def upload_sponsors(request: Request):
-        """The compact H-1B index built by runner/build_sponsor_index.py from the Department of Labor's public data."""
-        user = owner_user(request)
+        """The compact H-1B index built by runner/build_sponsor_index.py from the Department of Labor's public data.
+        Accepts the owner's session or the runner token (the script runs on the laptop)."""
+        user = runner(request) if request.headers.get("X-Runner-Token") else owner_user(request)
         if isinstance(user, JSONResponse):
             return user
         body = await request.json()

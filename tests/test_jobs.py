@@ -289,3 +289,8 @@ def test_runner_api_end_to_end(monkeypatch):
     assert got["status"] == "filled" and got["screenshots"] == [shot] and "files_b64" not in got and len(got["answers"]) == 3
     assert c.get("/api/jobs/runner/next", headers=r).json()["app"] is None
     assert c.post(f"/api/jobs/apps/{aid}/action", headers=h, json={"action": "requeue"}).json()["status"] == "ready"
+    # the sponsor index uploads from the laptop with the runner token; a wrong token can't
+    idx = {"index": {"Acme, Inc.": {"pm": 4, "total": 30, "years": ["2025"]}}, "source": "FY2025"}
+    assert c.post("/api/jobs/sponsors", headers={"X-Runner-Token": "jp_wrong"}, json=idx).status_code == 401
+    assert c.post("/api/jobs/sponsors", headers=r, json=idx).json()["employers"] == 1
+    assert c.get("/api/jobs/profile", headers=h).json()["sponsor_index"] is True
