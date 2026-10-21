@@ -553,10 +553,13 @@ def cmd_setup(args) -> None:
     cfg["server"] = input(f"Ask Harsha address [{cfg.get('server', 'https://ask-harsha.onrender.com')}]: ").strip() or cfg.get("server", "https://ask-harsha.onrender.com")
     cfg["email"] = input(f"Email to use for job-site accounts [{cfg.get('email', '')}]: ").strip() or cfg.get("email", "")
     keys = Keys()
-    tok = input("Runner token from Job Pilot's settings (leave empty to keep): ").strip()
+    tok = re.sub(r"[^A-Za-z0-9_-]", "", input("Runner token from Job Pilot's settings (leave empty to keep): "))
     if tok:
         keys.set("runner_token", tok)
     app_pw = input("Gmail app password for reading verification emails (optional, leave empty to skip): ").strip()
+    app_pw = re.sub(r"[^A-Za-z0-9]", "", app_pw)     # Google shows it in groups of 4; spaces or stray symbols from copying are dropped
+    if app_pw and len(app_pw) != 16:
+        print(f"That app password has {len(app_pw)} letters; Google's have 16. Run setup again and paste it carefully.")
     if app_pw:
         keys.set("imap_password", app_pw)
     CONFIG.write_text(json.dumps(cfg, indent=2))
