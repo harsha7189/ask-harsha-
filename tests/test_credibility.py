@@ -374,3 +374,14 @@ def test_small_format_problems_are_repaired_not_blocking():
     ibm = cv["experience"][0]["bullets"]
     assert "3 releases" in ibm[1]["text"] and ibm[2].get("original") and len(cv["experience"][1]["bullets"]) == 4
     assert all(rs.metric_count(x["text"]) <= 1 for x in ibm)
+
+
+def test_out_of_credit_stops_the_run_with_a_clear_message():
+    class Broke(JobsClient):
+        def create(self, **kw):
+            raise Exception("Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API.'}}")
+    from agent import jobsearch as js
+    store, u = setup_store()
+    res = pilot.run_night(Broke(), "main", "helper", "today", {"user_id": u.id, "base": base(), "rules": {}, "sheet": {}}, store,
+                          fetcher=js.Fetcher(Opener({})), web=True)
+    assert "out of API credit" in res["stopped"] and len(res["errors"]) == 1

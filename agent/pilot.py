@@ -61,6 +61,16 @@ def still_eligible(app: dict, rules: dict) -> str | None:
     return None
 
 
+def fatal(e: Exception) -> str | None:
+    """Errors that will fail every call (no credit, bad key): stop the run and say why, instead of trying every job."""
+    msg = str(e).lower()
+    if "credit balance" in msg or "billing" in msg:
+        return "Your Anthropic account is out of API credit. Add credit at console.anthropic.com → Billing, then run again."
+    if type(e).__name__ in ("AuthenticationError", "PermissionDeniedError"):
+        return "The Anthropic API key was refused. Check ANTHROPIC_API_KEY in Render."
+    return None
+
+
 def run_night(client, model: str, helper: str, today: str, profile: dict, store, emit: Callable[[str, dict], None] | None = None,
               fetcher: js.Fetcher | None = None, sponsor_index: dict | None = None, web: bool = True, budget_ok: Callable[[], bool] = lambda: True) -> dict:
     """One night's work for one person. `store` saves apps and the company registry (accounts.Accounts or a test double)."""
@@ -87,7 +97,11 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
             usage.output_tokens += u.get("output_tokens", 0)
             usage.web_searches += u.get("web_searches", 0)
         except Exception as e:
-            summary["errors"].append(f"discovery: {type(e).__name__}")
+            summary["errors"].append(f"discovery: {type(e).__name__}: {str(e)[:160]}")
+            if fatal(e):
+                summary.update(ok=True, stopped=fatal(e), seconds=round(time.monotonic() - started, 1), input_tokens=usage.input_tokens,
+                               output_tokens=usage.output_tokens, web_searches=usage.web_searches)
+                return summary
     boards = store.companies_to_check(int(rules.get("boards_per_night", 60)))
     seen = store.seen_keys(profile["user_id"])
     candidates = []
@@ -159,6 +173,9 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
         except Exception as e:
             summary["errors"].append(f"{j.company}: {type(e).__name__}: {str(e)[:120]}")
             store.save_app(profile["user_id"], {**app, "why": [f"Research failed ({type(e).__name__}); it'll be retried."]})
+            if fatal(e):
+                summary["stopped"] = fatal(e)
+                break
             continue
         app.update(brief=brief, qualify=q)
         if q["decision"] == "skip":
