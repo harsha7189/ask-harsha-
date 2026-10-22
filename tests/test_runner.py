@@ -48,6 +48,40 @@ WD_STEP2 = """<form action="/wd/review" method="get">
   <button type="submit">Save and Continue</button></form>"""
 
 
+ASHBY = """<div id="app">Loading…</div><script>
+setTimeout(() => {
+  document.getElementById('app').innerHTML = `
+  <h1>Product Manager</h1>
+  <form id="f" onsubmit="return false">
+    <div class="field"><label for="nm">Name</label><input id="nm" required></div>
+    <div class="field"><label for="em">Email</label><input id="em" type="email" required></div>
+    <div class="field"><label for="cv">Resume</label><input id="cv" type="file" style="display:none"><button type="button" onclick="document.getElementById('cv').click()">Upload File</button></div>
+    <div class="question"><label>Are you legally authorized to work in the United States?</label>
+      <button type="button" class="yn" data-q="auth" onclick="pick(this)">Yes</button><button type="button" class="yn" data-q="auth" onclick="pick(this)">No</button></div>
+    <div class="question"><label>Will you now or in the future require visa sponsorship?</label>
+      <button type="button" class="yn" data-q="spon" onclick="pick(this)">Yes</button><button type="button" class="yn" data-q="spon" onclick="pick(this)">No</button></div>
+    <div class="field"><label id="locl">Location</label><input id="loc" role="combobox" aria-labelledby="locl" aria-autocomplete="list" oninput="opts(this.value)">
+      <ul id="lb" role="listbox"></ul></div>
+    <div id="err" role="alert"></div>
+    <button type="button" onclick="send()">Submit Application</button>
+  </form>`;
+}, 400);
+const picked = {};
+function pick(b) { picked[b.dataset.q] = b.innerText; document.querySelectorAll(`[data-q=${b.dataset.q}]`).forEach(x => x.setAttribute('aria-pressed', x === b)); }
+function opts(v) { const lb = document.getElementById('lb'); lb.innerHTML = '';
+  ['Austin, Texas, United States', 'Austin, Minnesota, United States'].filter(o => o.toLowerCase().includes(v.toLowerCase().split(',')[0])).forEach(o => {
+    const li = document.createElement('li'); li.setAttribute('role', 'option'); li.innerText = o; li.onclick = () => { document.getElementById('loc').value = o; lb.innerHTML = ''; }; lb.appendChild(li); }); }
+function send() {
+  const ok = document.getElementById('nm').value && document.getElementById('em').value && picked.auth && picked.spon && document.getElementById('loc').value.startsWith('Austin, Texas');
+  if (!ok) { document.getElementById('err').innerText = 'Please fill in all required fields.'; return; }
+  fetch('/ashby/submit?auth=' + picked.auth + '&spon=' + picked.spon + '&loc=' + encodeURIComponent(document.getElementById('loc').value) + '&file=' + (document.getElementById('cv').files.length))
+    .then(() => { document.getElementById('app').innerHTML = '<h2>Your application was successfully submitted.</h2>'; });
+}
+</script>"""
+INVISIBLE = '<iframe src="https://www.google.com/recaptcha/api2/anchor?k=x&size=invisible" style="width:256px;height:60px;position:fixed;bottom:0;right:-200px"></iframe>'
+VISIBLE = '<iframe src="https://www.google.com/recaptcha/api2/anchor?k=x&size=normal" style="width:304px;height:78px"></iframe>'
+
+
 class Site:
     """Mock job sites with just enough state for accounts: registered, verified."""
 
@@ -80,7 +114,14 @@ class Site:
                 if p == "/gh/why":
                     return self.send(GH_FORM.format(slug="why", extra='<label for="w">Why do you want to work here?</label><textarea id="w" name="w" required></textarea>'))
                 if p == "/gh/captcha":
-                    return self.send(GH_FORM.format(slug="captcha", extra='<div class="g-recaptcha" data-sitekey="x"></div>'))
+                    return self.send(GH_FORM.format(slug="captcha", extra=VISIBLE))
+                if p == "/gh/invisible":
+                    return self.send(GH_FORM.format(slug="invisible", extra=INVISIBLE))
+                if p == "/ashby/job/application":
+                    return self.send(ASHBY)
+                if p == "/ashby/submit":
+                    site.submitted.append({"ashby": True, **q})
+                    return self.send("ok")
                 if p == "/wd/job":
                     return self.send('<h1>Senior Product Manager</h1><a href="/wd/choice">Apply</a>')
                 if p == "/wd/choice":
@@ -131,7 +172,8 @@ class Site:
 
 class FakeApi:
     ANSWERS = {r"first name": "Harsha", r"last name": "Reddy", r"email": "harsha@example.com", r"phone": "5125550100",
-               r"legally authorized": "Yes", r"require sponsorship": "Yes", r"salesforce": "Yes", r"how did you hear": "LinkedIn"}
+               r"legally authorized": "Yes", r"require (visa )?sponsorship": "Yes", r"salesforce": "Yes", r"how did you hear": "LinkedIn",
+               r"^name$": "Harsha Reddy", r"^location$": "Austin, Texas, United States", r"agree|terms": "Yes"}
 
     def __init__(self, jobs, dry_run=True):
         self.jobs, self.dry, self.reports, self.asked = list(jobs), dry_run, [], []
@@ -153,6 +195,47 @@ class FakeApi:
     def report(self, app_id, status, step="", detail="", screenshots=None, confirmation=""):
         self.reports.append({"id": app_id, "status": status, "step": step, "detail": detail, "shots": len([s for s in screenshots or [] if s]),
                              "confirmation": confirmation})
+
+    ADVANCE = re.compile(r"^\s*(apply manually|apply|save and continue|continue|next|submit( application)?)\s*$", re.I)
+
+    def step(self, app_id, snap):
+        """The real server-side checks (navigator.validate) around a scripted planner standing in for Claude."""
+        from agent import navigator as nav
+        self.steps = getattr(self, "steps", 0) + 1
+        answers = {a["label"]: a for a in self.answers(app_id, nav.fields_needing_answers(snap))}
+        _validate = nav.validate
+        nav = type("N", (), {"FILLABLE": nav.FILLABLE, "validate": staticmethod(lambda plan, sn, an: _validate(plan, sn, an, allow_submit=not snap.get("dry_run")))})
+        missing = [e["label"] for e in snap["elements"] if e.get("required") and e["kind"] in nav.FILLABLE and not e.get("value")
+                   and (answers.get(e["label"][:400]) or {}).get("value") is None]
+        if missing:
+            return {"status": "needs_you", "actions": [], "reason": "No supported answer for: " + "; ".join(missing)}
+        els, text, acts = snap["elements"], snap["text"], []
+        if re.search(r"successfully submitted|thank you for applying", text, re.I):
+            return nav.validate({"status": "submitted", "actions": []}, snap, answers)
+        if re.search(r"check your email for a verification link", text, re.I):
+            return {"status": "verify_email", "actions": []}
+        pw = [e for e in els if e["kind"] == "password"]
+        if pw:
+            if not any("filled the password" in h for h in snap["history"]):
+                link = next((e for e in els if e["kind"] in ("link", "button") and re.search(r"create account", e["text"], re.I)), None)
+                if link and not any(re.search(r"verify", e.get("label", ""), re.I) for e in pw):
+                    return nav.validate({"status": "continue", "actions": [{"op": "click", "i": link["i"]}]}, snap, answers)
+            acts += [{"op": "credential", "i": e["i"], "field": "email"} for e in els if e["kind"] == "email"]
+            acts += [{"op": "credential", "i": e["i"], "field": "password"} for e in pw]
+            acts += [{"op": "check", "i": e["i"]} for e in els if e["kind"] == "checkbox"]
+            btn = next(e for e in els if e["kind"] == "button" and re.search(r"create account|sign in", e["text"], re.I))
+            return nav.validate({"status": "continue", "actions": acts + [{"op": "click", "i": btn["i"]}]}, snap, answers)
+        for e in els:
+            if e["kind"] in nav.FILLABLE and not e.get("value") and e.get("label"):
+                acts.append({"op": "choose" if e["kind"] in ("select", "radio", "combobox") else "fill", "i": e["i"]})
+            if e["kind"] == "file" and re.search(r"resume|cv", e.get("label", ""), re.I) and not e.get("value"):
+                acts.append({"op": "upload", "i": e["i"]})
+            if e["kind"] == "button" and e.get("context") and not e.get("pressed") and re.match(r"^(yes|no)$", e["text"], re.I):
+                acts.append({"op": "click", "i": e["i"]})            # tries both Yes and No; validation keeps the right one
+        nxt = next((e for e in els if e["kind"] in ("button", "link") and self.ADVANCE.match(e["text"])), None)
+        if nxt:
+            acts.append({"op": "click", "i": nxt["i"]})
+        return nav.validate({"status": "continue", "actions": acts}, snap, answers)
 
 
 class DictKeys:
@@ -192,8 +275,10 @@ def site():
 
 def make(browser, api, site=None, user="harsha@example.com"):
     ctx = browser.new_context()
-    return jp.Runner(api, jp.Keys(DictKeys()), FakeMail(site, user) if site else None, user, page_factory=ctx.new_page,
+    r = jp.Runner(api, jp.Keys(DictKeys()), FakeMail(site, user) if site else None, user, page_factory=ctx.new_page,
                      pause=lambda *a: None, log=lambda *a: None)
+    r.SETTLE_MS = 1500
+    return r
 
 
 def job(site, path, ats, i="a1"):
@@ -241,6 +326,7 @@ def test_workday_creates_account_verifies_email_and_fills_every_page(browser, si
     ctx = browser.new_context()
     mail = FakeMail(site, "harsha@example.com")
     r = jp.Runner(api, jp.Keys(keys), mail, "harsha@example.com", page_factory=ctx.new_page, pause=lambda *a: None, log=lambda *a: None)
+    r.SETTLE_MS = 1500
     out = r.run(between=(0, 0))
     assert out["submitted"] == 1, api.reports
     assert "harsha@example.com" in site.users and "harsha@example.com" in site.verified and mail.asked == 1
@@ -274,3 +360,60 @@ def test_sponsor_index_from_dol_csv(tmp_path):
     idx = bsi.build([str(f)])
     assert idx["acme"] == {"pm": 2, "total": 3, "years": ["2025"]}
     assert idx["widget"]["pm"] == 0 and idx["widget"]["total"] == 2
+
+
+def test_ashby_style_page_with_yes_no_buttons_and_type_ahead(browser, site):
+    before = len(site.submitted)
+    api = FakeApi([job(site, "/ashby/job", "ashby", "a9")], dry_run=False)
+    out = make(browser, api).run(between=(0, 0))
+    assert out["submitted"] == 1, api.reports
+    sent = site.submitted[before]
+    assert sent["auth"] == "Yes" and sent["spon"] == "Yes" and sent["loc"] == "Austin, Texas, United States" and sent["file"] == "1"
+
+
+def test_invisible_spam_check_is_not_a_captcha(browser, site):
+    api = FakeApi([job(site, "/gh/invisible", "greenhouse")], dry_run=False)
+    assert make(browser, api).run(between=(0, 0))["submitted"] == 1, api.reports
+
+
+def test_server_never_lets_the_model_choose_values():
+    from agent import navigator as nav
+    snap = {"text": "Apply", "elements": [
+        {"i": 0, "kind": "text", "label": "First Name", "value": "", "required": True},
+        {"i": 1, "kind": "select", "label": "Will you require sponsorship?", "options": ["Yes", "No"], "value": "", "required": True},
+        {"i": 2, "kind": "button", "text": "No", "context": "Are you authorized to work in the US?"},
+        {"i": 3, "kind": "button", "text": "Yes", "context": "Are you authorized to work in the US?"},
+        {"i": 4, "kind": "button", "text": "Apply with LinkedIn"},
+        {"i": 5, "kind": "file", "label": "Cover Letter", "value": ""},
+        {"i": 6, "kind": "text", "label": "Favorite color", "value": ""},
+        {"i": 7, "kind": "button", "text": "Submit Application"}]}
+    answers = {"First Name": {"value": "Harsha"}, "Will you require sponsorship?": {"value": "Yes"},
+               "Are you authorized to work in the US?": {"value": "Yes"}, "Favorite color": {"value": None}}
+    plan = {"status": "continue", "actions": [{"op": "fill", "i": 0, "value": "Bob"}, {"op": "choose", "i": 1, "value": "No"},
+                                             {"op": "click", "i": 2}, {"op": "click", "i": 3}, {"op": "click", "i": 4},
+                                             {"op": "upload", "i": 5}, {"op": "fill", "i": 6, "value": "blue"}, {"op": "click", "i": 7}]}
+    out = nav.validate(plan, snap, answers)
+    assert out["actions"] == [{"op": "fill", "i": 0, "value": "Harsha"}, {"op": "choose", "i": 1, "value": "Yes"},
+                              {"op": "click", "i": 3}, {"op": "click", "i": 7}]
+    assert len(out["dropped"]) == 4
+    assert nav.validate({"status": "submitted", "actions": []}, snap, answers)["status"] == "continue"     # no confirmation on the page
+    assert nav.validate(plan, snap, answers, allow_submit=False)["status"] == "filled"
+
+
+def test_upload_through_the_sites_own_button(browser, site):
+    """No visible file box: the runner clicks "Upload File" and the file picker gets the résumé."""
+    from agent import navigator as nav
+    before = len(site.submitted)
+    api = FakeApi([job(site, "/ashby/job", "ashby", "a10")], dry_run=False)
+    real = api.step
+
+    def step(app_id, snap):
+        out = real(app_id, snap)
+        btn = next((e for e in snap["elements"] if e["kind"] == "button" and e["text"] == "Upload File"), None)
+        if btn and out["status"] == "continue":
+            out["actions"] = [a for a in out["actions"] if a["op"] != "upload"]
+            out["actions"].insert(0, {"op": "click", "i": btn["i"]})
+        return out
+    api.step = step
+    make(browser, api).run(between=(0, 0))
+    assert site.submitted[before]["file"] == "1"

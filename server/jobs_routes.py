@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import queue
+import re
 import secrets
 import threading
 import time
@@ -330,6 +331,23 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         mime = "application/pdf" if kind == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         return Response(data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{name}.{kind}"'})
 
+    @app.post("/api/jobs/apps/retry-site")
+    def retry_site(request: Request):
+        """Sends back to the laptop the applications a website stopped (not CAPTCHAs, and never one where Submit was
+        already clicked, so nothing is sent twice)."""
+        user = owner_user(request)
+        if isinstance(user, JSONResponse):
+            return user
+        n = 0
+        for b in accounts.app_bodies(user.id, "needs_you", 200) + accounts.app_bodies(user.id, "failed", 200):
+            detail = " ".join([str(b.get("detail") or "")] + [str(w) for w in (b.get("why") or [])[-1:]])
+            if not b.get("resume") or re.search(r"captcha|clicked submit|didn't pass its checks|no supported answer|budget", detail, re.I):
+                continue
+            if re.search(r"next or submit|stuck|more steps|more pages|couldn't select|failed|error|timeout|couldn't find|couldn't finish", detail, re.I):
+                accounts.set_app_status(user.id, b["id"], "ready", detail="sent back to the laptop after the runner update")
+                n += 1
+        return {"requeued": n}
+
     @app.post("/api/jobs/apps/{app_id}/action")
     def app_action(app_id: str, req: AppAction, request: Request):
         user = owner_user(request)
@@ -507,6 +525,63 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
             return p
         return send_file(p["user_id"], app_id, kind)
 
+    def answers_for(p: dict, a: dict, fields: list[dict], usage) -> list[dict]:
+        """Answers for form questions: answer sheet, this job's résumé, or derived from his record. Never guessed."""
+        base_full = rs.with_notes(p.get("base") or {"experience": []}, p.get("evidence_notes", ""))
+        cache = {x["label"]: x for x in a.get("answers", []) if x.get("value") is not None}
+        out = []
+        for f in fields[:80]:
+            label = str(f.get("label", ""))[:400]
+            if not label:
+                continue
+            if label in cache:
+                out.append({"label": label, **{k: cache[label].get(k) for k in ("value", "source", "quote", "needs_you", "why")}})
+                continue
+            q = {"label": label, "options": [str(o)[:200] for o in (f.get("options") or [])[:60]], "type": str(f.get("type", ""))[:30],
+                 "required": bool(f.get("required"))}
+            ans = rs.answer_question(get_client(), settings.assist_model, q, p["sheet"], (a.get("resume") or {}).get("text", ""),
+                                     base_full.get("source_text", ""), usage, ctx={"base": base_full, "job": a.get("job") or {}, "brief": a.get("brief") or {}})
+            out.append({"label": label, **ans})
+        known = {x["label"] for x in a.get("answers", [])}
+        a["answers"] = a.get("answers", []) + [x for x in out if x["label"] not in known and x.get("value") is not None]
+        return out
+
+    @app.post("/api/jobs/runner/step")
+    async def runner_step(request: Request):
+        """One page of an application: the laptop describes the page, Claude picks the actions, the code checks them."""
+        from agent import navigator as nav
+        p = runner(request)
+        if isinstance(p, JSONResponse):
+            return p
+        body = await request.json()
+        a = accounts.app(p["user_id"], str(body.get("app_id", "")))
+        if not a:
+            return error(404, "not_found", "That application doesn't exist.")
+        if budget.exhausted():
+            return {"status": "needs_you", "actions": [], "reason": "Today's budget ran out mid-application; it'll be retried."}
+        snap = {"url": str(body.get("url", ""))[:500], "title": str(body.get("title", ""))[:200], "text": str(body.get("text", ""))[:6000],
+                "elements": [e for e in (body.get("elements") or [])[:260] if isinstance(e, dict) and isinstance(e.get("i"), int)],
+                "errors": [str(x)[:200] for x in (body.get("errors") or [])[:12]], "step": int(body.get("step") or 1),
+                "stuck": int(body.get("stuck") or 0), "history": [str(x)[:120] for x in (body.get("history") or [])[:12]]}
+        usage = rs.Usage()
+        answers = {x["label"]: x for x in answers_for(p, a, nav.fields_needing_answers(snap), usage)}
+        model = settings.model if (snap["stuck"] or snap["step"] >= 12) else settings.assist_model    # a stronger model when stuck
+        try:
+            plan = nav.plan_step(get_client(), model, snap, answers, a.get("job") or {}, usage, dry_run=bool(body.get("dry_run")))
+        except Exception as e:
+            upstream_failed(e)
+            budget.add(usage.input_tokens, usage.output_tokens)
+            msg = pilot.fatal(e) or f"Couldn't reach Claude for this page ({type(e).__name__}); it'll be retried."
+            return {"status": "needs_you", "actions": [], "reason": msg}
+        budget.add(usage.input_tokens, usage.output_tokens)
+        out = nav.validate(plan, snap, answers, allow_submit=not bool(body.get("dry_run")))
+        if out["status"] == "needs_you" and not out["reason"]:
+            out["reason"] = "It couldn't finish this page."
+        accounts.save_app(p["user_id"], {"key": a["key"], "answers": a.get("answers", []), "status": a["status"], "force": True})
+        log.info(json.dumps({"event": "job_pilot_step", "step": snap["step"], "status": out["status"], "actions": len(out["actions"]),
+                             "dropped": len(out["dropped"]), "model": model}))
+        return out
+
     @app.post("/api/jobs/runner/answers")
     def runner_answers(req: RunnerFields, request: Request):
         """Answers for the fields the runner found on a form page. Nothing unsupported is ever guessed."""
@@ -517,25 +592,8 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         if not a:
             return error(404, "not_found", "That application doesn't exist.")
         usage = rs.Usage()
-        base_full = rs.with_notes(p.get("base") or {"experience": []}, p.get("evidence_notes", ""))
-        cache = {x["label"]: x for x in a.get("answers", []) if x.get("value") is not None}
-        out = []
-        for f in req.fields[:80]:
-            label = str(f.get("label", ""))[:400]
-            if not label:
-                continue
-            if label in cache:
-                out.append({"label": label, **{k: cache[label][k] for k in ("value", "source", "quote", "needs_you", "why")}})
-                continue
-            q = {"label": label, "options": [str(o)[:200] for o in (f.get("options") or [])[:60]], "type": str(f.get("type", ""))[:30],
-                 "required": bool(f.get("required"))}
-            ans = rs.answer_question(get_client(), settings.assist_model, q, p["sheet"], (a.get("resume") or {}).get("text", ""),
-                                     base_full.get("source_text", ""), usage, ctx={"base": base_full, "job": a.get("job") or {}, "brief": a.get("brief") or {}})
-            out.append({"label": label, **ans})
+        out = answers_for(p, a, req.fields, usage)
         budget.add(usage.input_tokens, usage.output_tokens)
-        a.setdefault("answers", [])
-        known = {x["label"] for x in a["answers"]}
-        a["answers"] += [x for x in out if x["label"] not in known]
         accounts.save_app(p["user_id"], {**a, "force": True})
         return {"answers": out}
 

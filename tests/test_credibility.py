@@ -419,3 +419,63 @@ def test_held_back_resumes_are_rescued_on_the_next_run_without_model_calls():
     assert res["rescued"] == 1
     a = store.app_bodies(u.id, "ready")[0]
     assert a["resume"]["cv"]["summary"] == b["summary"] and store.app_file(u.id, a["id"], "pdf")[:5] == b"%PDF-"
+
+
+def test_runner_step_endpoint_plans_and_checks_each_page():
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+    from agent import inbox as inboxmod, receipts as rcpt
+    from agent.notes import MemoryNotesStore
+    from server.app import Settings, create_app
+
+    class Nav(JobsClient):
+        def create(self, **kw):
+            if (kw.get("tool_choice") or {}).get("name") == "act" or any(t.get("name") == "act" for t in kw.get("tools") or []):
+                self.requests.append(kw)
+                return response([tool_use("a", "act", {"status": "continue", "actions": [
+                    {"op": "fill", "i": 0, "value": "Someone Else"}, {"op": "choose", "i": 1, "value": "No"}, {"op": "click", "i": 2}]})], "tool_use")
+            return super().create(**kw)
+
+    store, u = setup_store()
+    client = Nav(bad_first=False)
+    app = create_app(client=client, settings=Settings(daily_budget_usd=5.0, rate_limit=50, allowed_origins=[], owner_passcode="pw", web_search=False),
+                     notes=MemoryNotesStore(), inbox=inboxmod.MemoryInboxStore(), receipts=rcpt.ReceiptStore(inboxmod.make_key("k")), accounts=store)
+    c = TestClient(app)
+    c.cookies.set("askh_session", store.start_session(u))
+    h = {"X-Owner-Passcode": "pw"}
+    c.post("/api/jobs/resume", headers=h, json={"name": "resume.txt", "data": base64.b64encode(RESUME_TEXT.encode()).decode()})
+    c.put("/api/jobs/sheet", headers=h, json={"sheet": {"first_name": "Harsha", "authorized": "Yes", "sponsorship": "Yes"}})
+    aid = store.save_app(u.id, {"key": "ashby:x:1", "status": "applying", "job": {"title": "PM", "company": "X", "ats": "ashby", "url": "u"},
+                                "resume": {"text": "Skills: Salesforce Service Cloud"}})
+    tok = c.post("/api/jobs/runner-token", headers=h).json()["token"]
+    snap = {"app_id": aid, "url": "https://jobs.ashbyhq.com/x/1/application", "title": "Apply", "text": "Apply for PM", "step": 1, "stuck": 0,
+            "errors": [], "history": [], "captcha": False, "elements": [
+                {"i": 0, "kind": "text", "label": "First Name", "value": "", "required": True},
+                {"i": 1, "kind": "select", "label": "Will you now or in the future require sponsorship?", "options": ["Yes", "No"], "value": "", "required": True},
+                {"i": 2, "kind": "button", "text": "Submit Application"}]}
+    out = c.post("/api/jobs/runner/step", headers={"X-Runner-Token": tok}, json=snap).json()
+    assert out["actions"] == [{"op": "fill", "i": 0, "value": "Harsha"}, {"op": "choose", "i": 1, "value": "Yes"}, {"op": "click", "i": 2}]
+    sent = next(r for r in client.requests if any(t.get("name") == "act" for t in r.get("tools") or []))
+    assert sent["model"] == Settings().assist_model and "ANSWER “Yes”" in sent["messages"][0]["content"]
+    stuck = c.post("/api/jobs/runner/step", headers={"X-Runner-Token": tok}, json={**snap, "stuck": 1}).json()
+    assert stuck["actions"]
+    assert [r for r in client.requests if any(t.get("name") == "act" for t in r.get("tools") or [])][-1]["model"] == Settings().model   # stronger when stuck
+
+
+def test_retry_sends_back_only_what_a_website_stopped():
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+    from agent import inbox as inboxmod, receipts as rcpt
+    from agent.notes import MemoryNotesStore
+    from server.app import Settings, create_app
+    store, u = setup_store()
+    app = create_app(client=JobsClient(), settings=Settings(daily_budget_usd=5.0, rate_limit=50, allowed_origins=[], owner_passcode="pw", web_search=False),
+                     notes=MemoryNotesStore(), inbox=inboxmod.MemoryInboxStore(), receipts=rcpt.ReceiptStore(inboxmod.make_key("k")), accounts=store)
+    c = TestClient(app)
+    c.cookies.set("askh_session", store.start_session(u))
+    ids = {}
+    for k, d in {"nobtn": "Couldn't find a Next or Submit button on this page.", "captcha": "This site showed a CAPTCHA.",
+                 "clicked": "Clicked Submit but didn't see a confirmation. Check your email or the site."}.items():
+        ids[k] = store.save_app(u.id, {"key": k, "status": "needs_you", "job": {"company": k}, "resume": {"text": "x"}, "detail": d, "why": [d]})
+    assert c.post("/api/jobs/apps/retry-site", headers={"X-Owner-Passcode": "pw"}).json()["requeued"] == 1
+    assert store.app(u.id, ids["nobtn"])["status"] == "ready" and store.app(u.id, ids["clicked"])["status"] == "needs_you"

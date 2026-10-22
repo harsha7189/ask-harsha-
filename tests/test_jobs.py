@@ -302,7 +302,7 @@ def test_runner_api_end_to_end(monkeypatch):
     shot = base64.b64encode(b"\xff\xd8jpeg").decode()
     assert c.post("/api/jobs/runner/report", headers=r, json={"app_id": aid, "status": "filled", "step": "review", "screenshots": [shot]}).json()["ok"]
     got = c.get(f"/api/jobs/apps/{aid}", headers=h).json()
-    assert got["status"] == "filled" and got["screenshots"] == [shot] and "files_b64" not in got and len(got["answers"]) == 3
+    assert got["status"] == "filled" and got["screenshots"] == [shot] and "files_b64" not in got and len(got["answers"]) == 2
     assert c.get("/api/jobs/runner/next", headers=r).json()["app"] is None
     assert c.post(f"/api/jobs/apps/{aid}/action", headers=h, json={"action": "requeue"}).json()["status"] == "ready"
     # a company added to the skip list after preparation is still never applied to

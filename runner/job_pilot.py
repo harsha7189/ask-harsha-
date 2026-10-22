@@ -48,8 +48,7 @@ HOME = Path(os.environ.get("JOB_PILOT_HOME", Path.home() / ".job_pilot"))
 CONFIG = HOME / "config.json"
 SERVICE = "ask-harsha-job-pilot"
 
-CAPTCHA = re.compile(r"recaptcha|hcaptcha|turnstile|captcha|are you a robot|i'm not a robot|verify you are human", re.I)
-CONFIRMED = re.compile(r"thank you for (applying|your application|your interest)|application (has been |was )?(submitted|received)|"
+CONFIRMED = re.compile(r"thanks? (you )?for (applying|your application|submitting)|application (has been |was )?(successfully )?(submitted|received)|"
                        r"we('ve| have) received your application|successfully (submitted|applied)", re.I)
 SUBMIT_TEXT = re.compile(r"^\s*(submit( application)?|send application|apply|finish|complete application)\s*$", re.I)
 NEXT_TEXT = re.compile(r"^\s*(save and continue|continue|next|save & continue)\s*$", re.I)
@@ -76,6 +75,9 @@ class Api:
 
     def answers(self, app_id: str, fields: list[dict]) -> list[dict]:
         return self._req("POST", "/api/jobs/runner/answers", {"app_id": app_id, "fields": fields})["answers"]
+
+    def step(self, app_id: str, snapshot: dict) -> dict:
+        return self._req("POST", "/api/jobs/runner/step", {"app_id": app_id, **snapshot})
 
     def watch(self) -> list[dict]:
         return self._req("GET", "/api/jobs/runner/watch").get("apps", [])
@@ -254,42 +256,96 @@ def find_verify_link(text: str) -> str | None:
     return None
 
 
-# ---------------------------------------------------------------- reading a form
-SCAN_JS = r"""
+# ---------------------------------------------------------------- reading a page
+SNAP_JS = r"""
 () => {
-  const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
-  const txt = e => (e ? e.innerText || e.textContent || '' : '').replace(/\s+/g, ' ').trim();
+  const vis = e => { if (!e) return false; const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+    return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0'; };
+  const txt = e => (e ? (e.innerText || e.textContent || '') : '').replace(/\s+/g, ' ').trim();
+  const short = (t, n) => (t || '').slice(0, n);
+  const byIds = ids => (ids || '').split(/\s+/).map(id => txt(document.getElementById(id))).join(' ').trim();
+  const QBOX = 'fieldset, [role=group], [role=radiogroup], [data-automation-id^="formField"], [class*="question" i], [class*="field" i], [class*="Field"], .form-group, li';
+  const questionOf = e => {
+    const box = e.closest(QBOX); if (!box) return '';
+    const l = box.querySelector('legend, label, [class*="label" i], [class*="title" i], h3, h4, p');
+    let t = l ? txt(l) : '';
+    if (!t) t = txt(box).slice(0, 160);
+    return short(t, 200);
+  };
   const labelOf = e => {
     if (e.id) { const l = document.querySelector(`label[for="${CSS.escape(e.id)}"]`); if (l && txt(l)) return txt(l); }
+    if (e.getAttribute('aria-labelledby')) { const t = byIds(e.getAttribute('aria-labelledby')); if (t) return t; }
     if (e.getAttribute('aria-label')) return e.getAttribute('aria-label');
-    const lb = e.getAttribute('aria-labelledby'); if (lb) { const t = lb.split(' ').map(id => txt(document.getElementById(id))).join(' ').trim(); if (t) return t; }
     const wrap = e.closest('label'); if (wrap && txt(wrap)) return txt(wrap);
-    const fs = e.closest('fieldset'); if (fs && fs.querySelector('legend')) return txt(fs.querySelector('legend'));
-    const box = e.closest('[data-automation-id^="formField"], .field, .application-question, .form-group, li, div');
-    if (box) { const l = box.querySelector('label, legend, [class*="label"]'); if (l && txt(l)) return txt(l); }
+    const q = questionOf(e); if (q) return q;
     return e.getAttribute('placeholder') || e.name || '';
   };
+  const required = (e, label) => !!(e.required || e.getAttribute('aria-required') === 'true' || /\*\s*$/.test(label || ''));
+  document.querySelectorAll('[data-jp]').forEach(x => x.removeAttribute('data-jp'));
   const out = []; let n = 0;
-  const seenRadio = new Set();
-  for (const e of document.querySelectorAll('input, select, textarea, button[aria-haspopup="listbox"]')) {
-    const type = (e.tagName === 'SELECT') ? 'select' : (e.tagName === 'TEXTAREA') ? 'textarea' : (e.tagName === 'BUTTON') ? 'listbox' : (e.type || 'text').toLowerCase();
-    if (['hidden', 'submit', 'button', 'image', 'reset', 'search', 'password'].includes(type)) continue;
-    if (type !== 'file' && !vis(e)) continue;
-    let options = [];
-    if (type === 'select') options = [...e.options].map(o => o.text.trim()).filter(t => t && !/^select|^choose|^--/i.test(t));
-    if (type === 'radio') {
-      if (seenRadio.has(e.name)) continue; seenRadio.add(e.name);
-      const group = [...document.querySelectorAll(`input[type=radio][name="${CSS.escape(e.name)}"]`)];
-      options = group.map(r => labelOf(r)).filter(Boolean);
-      const fs = e.closest('fieldset'); const q = fs && fs.querySelector('legend') ? txt(fs.querySelector('legend')) : (e.closest('[role=radiogroup]') ? (e.closest('[role=radiogroup]').getAttribute('aria-label') || '') : '');
-      e.setAttribute('data-jp', String(n)); out.push({n: n++, type, label: q || e.name, options, required: e.required, name: e.name}); continue;
-    }
-    if (type === 'listbox') options = [];
-    e.setAttribute('data-jp', String(n));
-    const filled = type === 'checkbox' ? e.checked : type === 'select' ? (e.selectedIndex > 0) : type === 'listbox' ? !/select one/i.test(txt(e)) : !!e.value;
-    out.push({n: n++, type, label: labelOf(e), options, required: e.required || e.getAttribute('aria-required') === 'true', filled, name: e.name || ''});
+  const mark = (e, item) => { e.setAttribute('data-jp', String(n)); item.i = n++; out.push(item); };
+  const seen = new Set();
+  // native radio groups as one question
+  for (const r of document.querySelectorAll('input[type=radio]')) {
+    if (seen.has('r:' + r.name)) continue; seen.add('r:' + r.name);
+    const group = [...document.querySelectorAll(`input[type=radio][name="${CSS.escape(r.name)}"]`)];
+    if (!group.some(x => vis(x) || vis(x.closest('label')))) continue;
+    const q = (r.closest('fieldset') && r.closest('fieldset').querySelector('legend')) ? txt(r.closest('fieldset').querySelector('legend')) : questionOf(r);
+    mark(r, {kind: 'radio', name: r.name, label: short(q || r.name, 300), options: group.map(x => short(labelOf(x), 120)),
+             value: (group.find(x => x.checked) ? labelOf(group.find(x => x.checked)) : ''), required: group.some(x => x.required)});
   }
-  return out;
+  // aria radio groups (custom widgets)
+  for (const g of document.querySelectorAll('[role=radiogroup]')) {
+    if (!vis(g) || g.querySelector('input[type=radio]')) continue;
+    const opts = [...g.querySelectorAll('[role=radio]')];
+    const sel = opts.find(o => o.getAttribute('aria-checked') === 'true');
+    mark(g, {kind: 'radio', aria: true, label: short(g.getAttribute('aria-label') || byIds(g.getAttribute('aria-labelledby')) || questionOf(g), 300),
+             options: opts.map(o => short(txt(o) || o.getAttribute('aria-label'), 120)), value: sel ? txt(sel) : '', required: g.getAttribute('aria-required') === 'true'});
+  }
+  for (const e of document.querySelectorAll('input, select, textarea, [role=combobox], [aria-haspopup=listbox], [contenteditable=true]')) {
+    if (e.getAttribute('data-jp') || e.type === 'radio') continue;
+    const tag = e.tagName;
+    let kind = tag === 'SELECT' ? 'select' : tag === 'TEXTAREA' ? 'textarea' : (e.getAttribute('role') === 'combobox' || e.getAttribute('aria-haspopup') === 'listbox' || e.getAttribute('aria-autocomplete')) ? 'combobox' : (e.type || 'text').toLowerCase();
+    if (['hidden', 'submit', 'button', 'image', 'reset'].includes(kind)) continue;
+    if (kind !== 'file' && !vis(e)) continue;
+    if (kind === 'combobox' && tag !== 'INPUT' && e.querySelector('input[role=combobox]')) continue;
+    const label = short(labelOf(e), 300);
+    let options = [], value = '';
+    if (kind === 'select') { options = [...e.options].map(o => o.text.trim()).filter(t => t && !/^(select|choose|--|please)/i.test(t)).slice(0, 60); value = e.selectedIndex > 0 ? e.options[e.selectedIndex].text.trim() : ''; }
+    else if (kind === 'checkbox') value = e.checked ? 'checked' : '';
+    else if (kind === 'file') value = (e.files && e.files.length) ? e.files[0].name : '';
+    else if (kind === 'combobox' && tag !== 'INPUT') value = /^(select|choose)/i.test(txt(e)) ? '' : txt(e);
+    else value = kind === 'password' ? (e.value ? '••••' : '') : (e.value || '');
+    mark(e, {kind, label, options, value: short(value, 200), required: required(e, label), name: e.name || '', ac: e.getAttribute('autocomplete') || ''});
+  }
+  // visible options of an open dropdown
+  for (const o of document.querySelectorAll('[role=option]')) {
+    if (!vis(o) || out.length > 260) continue;
+    mark(o, {kind: 'option', text: short(txt(o), 120)});
+  }
+  // buttons and button-like links, with the question they belong to (for Yes/No style buttons)
+  for (const b of document.querySelectorAll('button, [role=button], input[type=submit], input[type=button], a')) {
+    if (b.getAttribute('data-jp') || !vis(b) || out.length > 260) continue;
+    const t = short(txt(b) || b.value || b.getAttribute('aria-label') || '', 80);
+    if (!t) continue;
+    if (b.tagName === 'A' && !/apply|next|continue|submit|review|sign in|log ?in|create account|start|begin|save/i.test(t)) continue;
+    const q = questionOf(b);
+    mark(b, {kind: b.tagName === 'A' ? 'link' : 'button', text: t, context: q && q !== t ? q : '',
+             pressed: b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true' || /selected|active/i.test(b.className || ''),
+             disabled: !!b.disabled || b.getAttribute('aria-disabled') === 'true'});
+  }
+  const errors = [...document.querySelectorAll('[role=alert], [aria-live=assertive], [class*="error" i], [class*="invalid" i], [data-automation-id*="error" i]')]
+    .filter(vis).map(txt).filter(t => t && t.length < 200).slice(0, 12);
+  // a CAPTCHA only counts when there's an actual challenge to solve (not the invisible spam-check badge)
+  let captcha = false;
+  for (const f of document.querySelectorAll('iframe')) {
+    const src = f.src || ''; const r = f.getBoundingClientRect();
+    if (!vis(f) || r.width < 60 || r.height < 60) continue;
+    if (/recaptcha\/(api2|enterprise)\/(anchor|bframe)/.test(src) && !/size=invisible/.test(src)) captcha = true;
+    if (/hcaptcha\.com/.test(src) || /challenges\.cloudflare\.com/.test(src)) captcha = true;
+  }
+  if (/verify you are human|are you a robot|complete the security check/i.test(txt(document.body).slice(0, 4000))) captcha = true;
+  return {url: location.href, title: document.title, text: txt(document.body).slice(0, 3500), elements: out, errors, captcha};
 }
 """
 
@@ -298,7 +354,15 @@ def human_pause(a: float = 0.4, b: float = 1.4) -> None:
     time.sleep(random.uniform(a, b))
 
 
+BLOCKED_CLICKS = re.compile(r"(with|via)\s+(linkedin|indeed|google|facebook|apple|seek|glassdoor)|withdraw|delete|sign\s*out|log\s*out|unsubscribe", re.I)
+
+
 class Runner:
+    """Each page is read into a short list of fields and buttons; Ask Harsha decides what to fill and click (values come
+    only from his answer sheet and the job's résumé, checked on the server); the runner does it here."""
+    MAX_STEPS = 32
+    SETTLE_MS = 7000
+
     def __init__(self, api: Api, keys: Keys, mailbox: Mailbox | None, email_addr: str, page_factory, pause=human_pause, log=print):
         self.api, self.keys, self.mail, self.email = api, keys, mailbox, email_addr
         self.page_factory, self.pause, self.log = page_factory, pause, log
@@ -313,42 +377,199 @@ class Runner:
         pdf.write_bytes(self.api.file(app_id, "pdf"))
         docx.write_bytes(self.api.file(app_id, "docx"))
         resume = docx if job.get("ats") in ("workday", "icims") else pdf     # Word parses best in Workday and iCIMS
-        step = "opening the posting"
+        history: list[str] = []
+        last_sig, stuck, step = "", 0, 0
         try:
-            page.goto(job["url"], wait_until="domcontentloaded")
-            self.pause()
-            step = "getting to the form"
-            self.to_form(page, job, profile)
-            for n in range(1, 12):
-                step = f"page {n} of the form"
-                if self.captcha(page):
-                    return self.stop(app_id, page, "needs_you", step, "This site showed a CAPTCHA. Finish this one yourself; the posting link is in the tracker.")
-                unresolved = self.fill_page(page, app_id, resume)
-                if unresolved:
-                    return self.stop(app_id, page, "needs_you", step, "No supported answer for: " + "; ".join(unresolved[:4]))
-                nxt, submit = self.button(page, NEXT_TEXT), self.button(page, SUBMIT_TEXT)
-                if submit and not nxt:
-                    if dry_run:
-                        return self.stop(app_id, page, "filled", "final page", "Dry run: every page is filled; stopped before Submit.")
-                    submit.click()
-                    return self.confirm(app_id, page)
-                if not nxt:
-                    return self.stop(app_id, page, "needs_you", step, "Couldn't find a Next or Submit button on this page.")
-                nxt.click()
-                page.wait_for_load_state("domcontentloaded")
-                self.pause(0.8, 2.0)
-            return self.stop(app_id, page, "needs_you", step, "The form had more pages than expected.")
-        except CaptchaShown:
-            return self.stop(app_id, page, "needs_you", step, "This site showed a CAPTCHA. Finish this one yourself; the posting link is in the tracker.")
+            # sites that upload through their own "Attach" / "Select files" button open a file picker: it gets the résumé
+            page.on("filechooser", lambda fc: fc.set_files(str(resume)))
+            page.goto(self.start_url(job), wait_until="domcontentloaded")
+            self.settle(page)
+            for step in range(1, self.MAX_STEPS + 1):
+                body = self.body(page)
+                m = CONFIRMED.search(body)
+                if m and step > 1:
+                    return self.done(app_id, page, body, m)
+                snap = page.evaluate(SNAP_JS)
+                if snap["captcha"]:
+                    return self.stop(app_id, page, "needs_you", f"page {step}", "This site showed a CAPTCHA puzzle. Finish this one yourself; the posting link is in the tracker.")
+                sig = snap["url"] + "|" + "|".join(f"{e.get('label', e.get('text', ''))}={e.get('value', '')}" for e in snap["elements"])
+                stuck = stuck + 1 if sig == last_sig else 0
+                last_sig = sig
+                if stuck >= 3:
+                    return self.stop(app_id, page, "needs_you", f"page {step}", "Stuck on this page" + (": " + "; ".join(snap["errors"][:3]) if snap["errors"] else "."))
+                plan = self.api.step(app_id, {**snap, "step": step, "stuck": stuck, "history": history[-12:], "dry_run": dry_run})
+                status, reason = plan.get("status", "continue"), plan.get("reason", "")
+                if status == "submitted":
+                    m = CONFIRMED.search(body) or re.search(r"thank|received|submitted|success", body, re.I)
+                    if m:
+                        return self.done(app_id, page, body, m)
+                if status == "needs_you":
+                    return self.stop(app_id, page, "needs_you", f"page {step}", reason or "It couldn't finish this page.")
+                if status == "filled":
+                    return self.stop(app_id, page, "filled", "final page", "Dry run: every page is filled; stopped before Submit.")
+                if status == "verify_email":
+                    self.verify_email(page, job)
+                    history.append("opened the email verification link")
+                    continue
+                for act in plan.get("actions", [])[:30]:
+                    history.append(self.do(page, act, snap, resume))
+                    self.pause(0.2, 0.6)
+                self.settle(page)
+            return self.stop(app_id, page, "needs_you", f"page {step}", "The application took more steps than expected.")
         except NeedsYou as e:
-            return self.stop(app_id, page, "needs_you", step, str(e))
+            return self.stop(app_id, page, "needs_you", f"page {step}", str(e))
         except Exception as e:
-            return self.stop(app_id, page, "failed", step, f"{type(e).__name__}: {str(e)[:300]}")
+            return self.stop(app_id, page, "failed", f"page {step}", f"{type(e).__name__}: {str(e)[:300]}")
         finally:
             try:
                 page.close()
             except Exception:
                 pass
+
+    def start_url(self, job: dict) -> str:
+        u = job["url"]
+        if job.get("ats") == "lever" and "/apply" not in u:
+            return u.rstrip("/") + "/apply"
+        if job.get("ats") == "ashby" and "/application" not in u:
+            return u.rstrip("/") + "/application"
+        return u
+
+    def settle(self, page) -> None:
+        try:
+            page.wait_for_load_state("networkidle", timeout=self.SETTLE_MS)
+        except Exception:
+            pass
+        self.pause(0.6, 1.2)
+
+    def body(self, page) -> str:
+        try:
+            return page.inner_text("body")
+        except Exception:
+            return ""
+
+    # ---- doing one action ----
+    def do(self, page, act: dict, snap: dict, resume: Path) -> str:
+        op, i = act.get("op"), act.get("i")
+        el_info = next((e for e in snap["elements"] if e["i"] == i), {}) if i is not None else {}
+        what = el_info.get("label") or el_info.get("text") or ""
+        el = page.query_selector(f'[data-jp="{i}"]') if i is not None else None
+        try:
+            if op == "wait":
+                time.sleep(2)
+                return "waited"
+            if el is None:
+                return f"couldn't find [{i}]"
+            if op == "click":
+                if BLOCKED_CLICKS.search(el_info.get("text", "")):
+                    return f"skipped clicking “{el_info.get('text')}”"
+                self.click(el)
+                return f"clicked “{what[:60]}”"
+            if op == "upload":
+                el.set_input_files(str(resume))
+                return f"uploaded the résumé to “{what[:60]}”"
+            if op == "credential":
+                field = act.get("field", "email")
+                site = re.sub(r"^https?://", "", page.url).split("/")[0]
+                value = self.email if field == "email" else self.keys.password_for(site, self.email)[0]
+                el.fill(value)
+                return f"filled the {field}"
+            v = str(act.get("value", ""))
+            if op == "fill":
+                self.fill(page, el, el_info, v)
+                return f"filled “{what[:60]}”"
+            if op == "choose":
+                self.choose(page, el, el_info, v)
+                return f"chose “{v[:40]}” for “{what[:60]}”"
+            if op == "check":
+                try:
+                    el.check()
+                except Exception:
+                    self.click(el)
+                return f"ticked “{what[:60]}”"
+            return f"unknown action {op}"
+        except Exception as e:
+            return f"{op} on “{what[:40]}” failed ({type(e).__name__})"
+
+    def click(self, el) -> None:
+        try:
+            el.scroll_into_view_if_needed(timeout=3000)
+        except Exception:
+            pass
+        try:
+            el.click(timeout=5000)
+        except Exception:
+            try:
+                el.click(timeout=3000, force=True)     # e.g. Workday puts a transparent layer over its buttons
+            except Exception:
+                el.evaluate("e => e.click()")
+
+    def fill(self, page, el, info: dict, v: str) -> None:
+        if info.get("kind") == "combobox":
+            return self.choose(page, el, info, v)
+        try:
+            el.fill(v, timeout=5000)
+        except Exception:
+            self.click(el)
+            page.keyboard.press("Control+A")
+            page.keyboard.type(v, delay=15)
+
+    def choose(self, page, el, info: dict, v: str) -> None:
+        kind = info.get("kind")
+        if kind == "select":
+            opts = info.get("options") or []
+            label = next((o for o in opts if o.lower() == v.lower()), None) or next((o for o in opts if v.lower() in o.lower()), v)
+            el.select_option(label=label)
+            return
+        if kind == "radio" and not info.get("aria"):
+            for r in page.query_selector_all(f'input[type=radio][name="{info.get("name")}"]'):
+                lab = r.evaluate("e => { const l = e.closest('label') || (e.id && document.querySelector(`label[for='${e.id}']`)); return (l ? l.innerText : e.value || '').trim(); }")
+                if lab.lower() == v.lower() or v.lower() in lab.lower():
+                    try:
+                        r.check()
+                    except Exception:
+                        r.evaluate("e => e.click()")
+                    return
+            raise NeedsYou(f"Couldn't select “{v}” for “{info.get('label', '')[:80]}”.")
+        if kind == "radio":
+            for o in el.query_selector_all("[role=radio]"):
+                if (o.inner_text() or "").strip().lower() == v.lower():
+                    self.click(o)
+                    return
+        # a dropdown or type-ahead: open it, type, pick the matching option
+        self.click(el)
+        time.sleep(0.4)
+        try:
+            if el.evaluate("e => e.tagName") == "INPUT":
+                el.fill("")
+                page.keyboard.type(v[:40], delay=20)
+                time.sleep(0.9)
+        except Exception:
+            pass
+        options = [o for o in page.query_selector_all("[role=option]") if o.is_visible()]
+        best = next((o for o in options if (o.inner_text() or "").strip().lower() == v.lower()), None) \
+            or next((o for o in options if v.lower() in (o.inner_text() or "").lower()), None)
+        if best:
+            self.click(best)
+        else:
+            page.keyboard.press("Enter")
+
+    def verify_email(self, page, job: dict) -> None:
+        if not self.mail:
+            raise NeedsYou("The site sent a verification email, and the runner has no mailbox access set up.")
+        link = self.mail.verification_link(since=datetime.now() - timedelta(minutes=15))
+        if not link:
+            raise NeedsYou("The verification email didn't arrive in time.")
+        page.goto(link, wait_until="domcontentloaded")
+        self.settle(page)
+        page.goto(self.start_url(job), wait_until="domcontentloaded")
+        self.settle(page)
+
+    # ---- finishing ----
+    def done(self, app_id, page, body: str, m) -> str:
+        self.api.report(app_id, "submitted", "confirmation", "Submitted, and the site confirmed it.", [self.shot(page)],
+                        confirmation=body[max(0, m.start() - 200):m.end() + 300])
+        self.log("  submitted")
+        return "submitted"
 
     def stop(self, app_id, page, status, step, detail):
         self.api.report(app_id, status, step, detail, [self.shot(page)])
@@ -360,154 +581,6 @@ class Runner:
             return base64.b64encode(page.screenshot(full_page=True, type="jpeg", quality=55)).decode()
         except Exception:
             return ""
-
-    def confirm(self, app_id, page) -> str:
-        for _ in range(20):
-            time.sleep(1)
-            body = page.inner_text("body") if page else ""
-            if CONFIRMED.search(body):
-                m = CONFIRMED.search(body)
-                self.api.report(app_id, "submitted", "confirmation", "Submitted, and the site confirmed it.", [self.shot(page)],
-                                confirmation=body[max(0, m.start() - 200):m.end() + 300])
-                return "submitted"
-        return self.stop(app_id, page, "needs_you", "after Submit", "Clicked Submit but didn't see a confirmation. Check your email or the site.")
-
-    # ---- getting to the form ----
-    def to_form(self, page, job: dict, profile: dict) -> None:
-        ats = job.get("ats")
-        if ats == "lever" and "/apply" not in page.url:
-            page.goto(page.url.rstrip("/") + "/apply", wait_until="domcontentloaded")
-        elif ats == "ashby" and "/application" not in page.url:
-            page.goto(page.url.rstrip("/") + "/application", wait_until="domcontentloaded")
-        elif ats == "greenhouse":
-            b = self.button(page, re.compile(r"^\s*apply( for this job| now)?\s*$", re.I))
-            if b:
-                b.click()
-                self.pause()
-        elif ats in ("workday", "icims"):
-            self.account_flow(page, job, profile)
-
-    def account_flow(self, page, job: dict, profile: dict) -> None:
-        """Workday/iCIMS: Apply → (apply manually) → sign in, or create an account and verify the email."""
-        for pattern in (r"^\s*apply\s*$", r"apply manually|apply for this job online|^\s*apply now\s*$"):
-            b = self.button(page, re.compile(pattern, re.I))
-            if b:
-                b.click()
-                page.wait_for_load_state("domcontentloaded")
-                self.pause()
-        site = re.sub(r"^https?://", "", page.url).split("/")[0]
-        pw, new = self.keys.password_for(site, self.email)
-        started = datetime.now()
-        if new:
-            create = self.button(page, re.compile(r"create (an )?account|sign up|new user", re.I))
-            if create:
-                create.click()
-                self.pause()
-        self.fill_credentials(page, pw, confirm=new)
-        if self.captcha(page):
-            raise CaptchaShown()
-        b = self.button(page, re.compile(r"^\s*(create account|sign up|register|sign in|log in|submit|continue)\s*$", re.I))
-        if b:
-            b.click()
-            page.wait_for_load_state("domcontentloaded")
-            self.pause(1, 2)
-        body = page.inner_text("body")
-        if re.search(r"verify your (email|account)|verification (email|link)|check your email", body, re.I):
-            if not self.mail:
-                raise NeedsYou("The site sent a verification email, and the runner has no mailbox access set up.")
-            link = self.mail.verification_link(since=started)
-            if not link:
-                raise NeedsYou("The verification email didn't arrive in time.")
-            page.goto(link, wait_until="domcontentloaded")
-            self.pause(1, 2)
-            page.goto(job["url"], wait_until="domcontentloaded")
-            self.account_flow(page, job, profile)   # now it signs in
-
-    def fill_credentials(self, page, pw: str, confirm: bool) -> None:
-        for sel in ('input[type=email]', 'input[autocomplete=username]', 'input[name*=email i]', 'input[data-automation-id=email]'):
-            e = page.query_selector(sel)
-            if e and e.is_visible():
-                e.fill(self.email)
-                break
-        pws = [e for e in page.query_selector_all("input[type=password]") if e.is_visible()]
-        for i, e in enumerate(pws if confirm else pws[:1]):
-            e.fill(pw)
-        for c in page.query_selector_all("input[type=checkbox]"):
-            lab = (c.get_attribute("aria-label") or "") + " " + (page.evaluate("(e)=>{const l=e.closest('label')||document.querySelector(`label[for='${e.id}']`);return l?l.innerText:''}", c) or "")
-            if re.search(r"agree|terms|privacy|consent", lab, re.I) and c.is_visible() and not c.is_checked():
-                c.check()
-
-    # ---- filling one page ----
-    def fill_page(self, page, app_id: str, resume: Path) -> list[str]:
-        fields = page.evaluate(SCAN_JS)
-        for f in fields:
-            if f["type"] == "file" and re.search(r"cover\s*letter|transcript|portfolio|writing\s+sample", f.get("label", ""), re.I):
-                continue                    # only the résumé is ever uploaded
-            if f["type"] == "file":
-                el = page.query_selector(f'[data-jp="{f["n"]}"]')
-                if el and not el.evaluate("e => e.files && e.files.length"):
-                    el.set_input_files(str(resume))
-                    self.pause()
-        todo = [f for f in fields if f["type"] != "file" and not f.get("filled") and f["label"]]
-        if not todo:
-            return []
-        answers = self.api.answers(app_id, [{"label": f["label"], "type": f["type"], "options": f["options"], "required": f["required"]} for f in todo])
-        by_label = {a["label"]: a for a in answers}
-        unresolved = []
-        for f in todo:
-            a = by_label.get(f["label"][:400]) or {}
-            v = a.get("value")
-            if v in (None, ""):
-                if f["required"]:
-                    unresolved.append(f["label"][:120])
-                continue
-            self.set_value(page, f, str(v))
-            self.pause(0.2, 0.7)
-        return unresolved
-
-    def set_value(self, page, f: dict, v: str) -> None:
-        sel = f'[data-jp="{f["n"]}"]'
-        t = f["type"]
-        if t == "select":
-            page.select_option(sel, label=v)
-        elif t == "radio":
-            radios = page.query_selector_all(f'input[type=radio][name="{f["name"]}"]')
-            for r in radios:
-                lab = page.evaluate("(e)=>{const l=e.closest('label')||document.querySelector(`label[for='${e.id}']`);return l?l.innerText.trim():(e.value||'')}", r)
-                if lab.strip().lower() == v.strip().lower():
-                    r.check()
-                    return
-        elif t == "checkbox":
-            if v.strip().lower() in ("yes", "true", "1", "i agree", "agree"):
-                page.check(sel)
-        elif t == "listbox":   # Workday-style dropdown: open it, pick the option by its text
-            page.click(sel)
-            self.pause(0.3, 0.8)
-            opt = page.query_selector(f'[role=option]:has-text("{v}")')
-            if opt:
-                opt.click()
-        else:
-            page.fill(sel, v)
-
-    # ---- helpers ----
-    def button(self, page, pattern: re.Pattern):
-        for b in page.query_selector_all("button, a[role=button], input[type=submit], a"):
-            try:
-                if not b.is_visible():
-                    continue
-                label = (b.inner_text() or b.get_attribute("value") or b.get_attribute("aria-label") or "").strip()
-            except Exception:
-                continue
-            if label and pattern.search(label):
-                return b
-        return None
-
-    def captcha(self, page) -> bool:
-        try:
-            frames = " ".join(f.url for f in page.frames)
-            return bool(CAPTCHA.search(frames)) or bool(page.query_selector("[class*=captcha i], [id*=captcha i], iframe[title*=challenge i]"))
-        except Exception:
-            return False
 
     # ---- replies from employers ----
     def check_outcomes(self) -> dict:
@@ -526,7 +599,7 @@ class Runner:
                 self.log(f"Done: {nxt.get('reason', 'nothing left')}")
                 break
             self.log(f"{job['title']} at {job['company']} ({job['ats']})")
-            status = self.apply(job, nxt.get("dry_run", True), nxt.get("profile") or {})
+            status = self.apply(job, nxt.get("dry_run", False), nxt.get("profile") or {})
             done[status] = done.get(status, 0) + 1
             time.sleep(random.uniform(*between))    # pacing, so it reads like a person, not a burst
         try:
@@ -534,10 +607,6 @@ class Runner:
         except Exception as e:
             self.log(f"Couldn't check the inbox for replies ({type(e).__name__})")
         return done
-
-
-class CaptchaShown(Exception):
-    pass
 
 
 class NeedsYou(Exception):
