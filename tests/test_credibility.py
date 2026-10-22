@@ -385,3 +385,37 @@ def test_out_of_credit_stops_the_run_with_a_clear_message():
     res = pilot.run_night(Broke(), "main", "helper", "today", {"user_id": u.id, "base": base(), "rules": {}, "sheet": {}}, store,
                           fetcher=js.Fetcher(Opener({})), web=True)
     assert "out of API credit" in res["stopped"] and len(res["errors"]) == 1
+
+
+def test_untrue_rewrites_fall_back_to_his_own_words_instead_of_blocking():
+    b = base()
+    cv = tailored()
+    cv["summary"] = "BS-trained product manager with 9+ years of experience."
+    cv["skills"] = cv["skills"] + ["Kubernetes"]
+    cv["experience"][0]["bullets"][2]["text"] = "Cut case resolution time 11→3 minutes across 5 teams with triage rules"
+    cv["experience"][1]["bullets"][1]["text"] = "Accelerated release cadence 25% across five releases by restructuring the backlog"
+    cv = {**cv, "experience": [{**e, **{k: b["experience"][i][k] for k in ("company", "location", "start", "end")}} for i, e in enumerate(cv["experience"])]}
+    saved = rs.full_cv(b, cv)
+    out = rs.finalize_saved(b, saved, RULES)
+    assert out["ok"] and out["truth"]["passed"] and out["ats"]["passed"] and out["pages"] == 1
+    assert out["cv"]["summary"] == b["summary"] and "Kubernetes" not in out["cv"]["skills"]
+    assert "11→3" not in out["text"] and "five releases" not in out["text"]
+
+
+def test_held_back_resumes_are_rescued_on_the_next_run_without_model_calls():
+    from agent import jobsearch as js
+    store, u = setup_store()
+    b = base()
+    cv = tailored()
+    cv["summary"] = "BS in product with 9+ years."
+    cv = {**cv, "experience": [{**e, **{k: b["experience"][i][k] for k in ("company", "location", "start", "end")}} for i, e in enumerate(cv["experience"])]}
+    j = js.Job("ashby", "ocra", "1", "Ocra", "Technical Product Owner", "Austin, TX", "u", "Requirements: 3+ years of product experience. " * 8)
+    store.save_app(u.id, {"key": j.key, "status": "needs_you", "job": j.to_dict(), "screen": {"years": 3}, "brief": {"years_required": 3},
+                          "resume": {"cv": rs.full_cv(b, cv), "text": "x"}, "check": {"truth": {"passed": False}},
+                          "why": ["The résumé didn't pass its checks: Not in your résumé: BS."]})
+    client = JobsClient(bad_first=False)
+    res = pilot.run_night(client, "main", "helper", "today", {"user_id": u.id, "base": b, "rules": {"nightly_cap": 1}, "sheet": {}}, store,
+                          fetcher=js.Fetcher(Opener({})), web=False)
+    assert res["rescued"] == 1
+    a = store.app_bodies(u.id, "ready")[0]
+    assert a["resume"]["cv"]["summary"] == b["summary"] and store.app_file(u.id, a["id"], "pdf")[:5] == b"%PDF-"

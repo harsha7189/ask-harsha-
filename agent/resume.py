@@ -661,17 +661,94 @@ def repair_format(base: dict, cv: dict, rules: dict, replaced: list) -> bool:
 
 
 def _restore(base: dict, cv: dict, where: tuple, used_note: str, replaced: list) -> None:
-    """Put one of his own bullets back in place of a bullet that went too far."""
+    """Put one of his own résumé bullets back in place of a bullet that went too far. His résumé bullets (E…) and the
+    bank (K…) come first, preferring one metric; raw evidence notes (N…) are never pasted in as bullets."""
     x, y = where
     e = cv["experience"][x]
+    if y >= len(e["bullets"]):
+        return
     srcs = sources_for(base, e["id"])
-    used = {squash(b["text"]) for b in e["bullets"]}
-    cited = [k for k in (e["bullets"][y].get("sources") or []) if k in srcs] if y < len(e["bullets"]) else []
-    spare = next((srcs[k] for k in cited if squash(srcs[k]) not in used), None) \
-        or next((t for t in srcs.values() if squash(t) not in used), None) or next(iter(srcs.values()), "")
-    if y < len(e["bullets"]) and spare:
-        e["bullets"][y] = {"text": spare, "sources": [k for k, t in srcs.items() if t == spare][:1], "covers": [], "original": True}
-        replaced.append(used_note)
+    used = {squash(b["text"]) for k, b in enumerate(e["bullets"]) if k != y}
+    cited = [k for k in (e["bullets"][y].get("sources") or []) if k in srcs]
+    real = [k for k in srcs if not k.startswith("N")]
+    order = [k for k in cited if k in real] + [k for k in real if k not in cited]
+    pick = next((k for k in order if squash(srcs[k]) not in used and metric_count(srcs[k]) <= 1), None) \
+        or next((k for k in order if squash(srcs[k]) not in used), None)
+    if pick is None:
+        del e["bullets"][y]            # nothing true left to put there: a shorter job beats a false bullet
+        replaced.append(used_note.replace("replaced with your original bullet", "removed"))
+        return
+    e["bullets"][y] = {"text": srcs[pick], "sources": [pick], "covers": [], "original": True}
+    replaced.append(used_note)
+
+
+def truthful_fallback(base: dict, cv: dict, rules: dict, replaced: list) -> "Check":
+    """Whatever still fails the truth check after the rewrites goes back to his own words, so a true résumé always ships:
+    bullets to his original bullets, headline and summary to his own, skills to the ones on his résumé, titles to approved ones."""
+    rules = {**DEFAULT_RULES, **(rules or {})}
+    base_lower = " ".join([base.get("summary", ""), base.get("headline", ""), " ".join(base.get("skills", []))]
+                          + [b["text"] for e in base["experience"] for b in e["bullets"]] + [b["text"] for b in base.get("bank", [])]
+                          + [b["text"] for b in base.get("notes_bank", [])]).lower()
+    c = check_truth(None, "", base, cv, rules, Usage(), judge=False)
+    for _ in range(4):
+        if c.passed:
+            break
+        for i in sorted(c.issues, key=lambda i: (i["bullet"] or (-1, -1)), reverse=True):   # back to front, so deletions don't shift
+            if i["bullet"] is not None:
+                _restore(base, cv, i["bullet"], f"{i['where']}: replaced with your original bullet ({i['detail']})", replaced)
+            elif i["where"] in ("headline", "summary"):
+                cv[i["where"]] = base.get(i["where"], "")
+                replaced.append(f"{i['where'].title()}: your own {i['where']} used ({i['detail']})")
+            elif i["where"] == "skills":
+                cv["skills"] = [s for s in cv.get("skills", []) if s.lower() in base_lower] or base.get("skills", [])[:16]
+            elif i["rule"] == "title":
+                k = next((n for n, e in enumerate(cv["experience"]) if e["company"] == i["where"]), None)
+                if k is not None:
+                    cv["experience"][k]["title"] = base["experience"][k]["title"]
+            elif i["rule"] in ("status", "banned"):
+                cv["headline"], cv["summary"] = base.get("headline", ""), base.get("summary", "")
+                cv["skills"] = [s for s in cv.get("skills", []) if s.lower() in base_lower]
+        c = check_truth(None, "", base, cv, rules, Usage(), judge=False)
+    return c
+
+
+def fit_to_page(base: dict, cv: dict, rules: dict) -> tuple[bytes, bytes, int]:
+    """Render; if it runs past one page, shorten (summary to his own, then the last job's bullets, never below 3)."""
+    full = full_cv(base, cv)
+    pdf = render_pdf(full)
+    pages = page_count(pdf)
+    if (rules or {}).get("one_page", True):
+        steps = 0
+        while pages > 1 and steps < 8:
+            steps += 1
+            if steps == 1 and len(cv.get("summary", "")) > len(base.get("summary", "")) > 0:
+                cv["summary"] = base["summary"]
+            else:
+                longest = max(range(len(cv["experience"])), key=lambda k: (len(cv["experience"][k]["bullets"]), k))
+                if len(cv["experience"][longest]["bullets"]) <= 3:
+                    break
+                cv["experience"][longest]["bullets"].pop()
+            full = full_cv(base, cv)
+            pdf = render_pdf(full)
+            pages = page_count(pdf)
+    return pdf, render_docx(full), pages
+
+
+def finalize_saved(base: dict, saved_cv: dict, rules: dict) -> dict:
+    """Takes a résumé that was held back by a check and makes it shippable in code alone (no model calls)."""
+    cv = {k: saved_cv.get(k) for k in ("headline", "summary", "skills")}
+    cv["experience"] = [{k: e.get(k) for k in ("id", "company", "location", "start", "end", "title", "bullets")} for e in saved_cv.get("experience", [])]
+    replaced: list = []
+    rules = {**DEFAULT_RULES, **(rules or {})}
+    repair_format(base, cv, rules, replaced)
+    truth = truthful_fallback(base, cv, rules, replaced)
+    pdf, docx, pages = fit_to_page(base, cv, rules)
+    from . import credibility as cr
+    full = full_cv(base, cv)
+    ats = cr.ats_check(full, pdf, docx)
+    ok = truth.passed and ats["passed"] and pages == 1
+    return {"ok": ok, "cv": full, "text": cv_text(full), "pdf": pdf, "docx": docx, "pages": pages, "replaced": replaced,
+            "truth": {"passed": truth.passed, "issues": truth.issues}, "ats": ats}
 
 
 def tailor_and_check(client, model: str, helper: str, base: dict, brief: dict, job: dict, rules: dict, usage: Usage,
@@ -714,11 +791,9 @@ def tailor_and_check(client, model: str, helper: str, base: dict, brief: dict, j
         _restore(base, cv, c["bullet"], f"{c['where']}: replaced with your original bullet (goes beyond what you can back up: “{c['evidence'][:100]}”)", replaced)
     # small format rules are repaired here instead of blocking the application
     fixed_format = repair_format(base, cv, rules, replaced)
-    if replaced:
-        truth = check_truth(client, helper, base, cv, rules, usage, judge=False)
+    truth = truthful_fallback(base, cv, rules, replaced)          # anything still untrue goes back to his own words
+    pdf, docx, pages = fit_to_page(base, cv, rules)
     full = full_cv(base, cv)
-    pdf, docx = render_pdf(full), render_docx(full)
-    pages = page_count(pdf)
     fit_final = check_fit(client, helper, base, cv, brief, rules, usage, pages) if (replaced or fixed_format) else fit
     style_final = cr.style_check(cv, brief)
     if recruiter is None or revised_after_review or replaced:

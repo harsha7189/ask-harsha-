@@ -134,6 +134,34 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
         j = js.Job(**jd)
         candidates.append((a.get("priority") or js.priority(j, a["screen"]), j, a["screen"]))
         carried += 1
+    # résumés held back by a check are made shippable in code (his own words where a rewrite failed): no model calls
+    summary["rescued"] = 0
+    for a in store.app_bodies(profile["user_id"], "needs_you", 80) if hasattr(store, "app_bodies") else []:
+        why = " ".join(a.get("why") or [])
+        cv = (a.get("resume") or {}).get("cv")
+        if "didn't pass its checks" not in why or not cv or still_eligible(a, rules):
+            continue
+        try:
+            out = rs.finalize_saved(base, cv, {**profile.get("resume_rules", {}), "allowed_titles": rules.get("titles")})
+        except Exception as e:
+            summary["errors"].append(f"rescue {a.get('job', {}).get('company')}: {type(e).__name__}")
+            continue
+        if not out["ok"]:
+            continue
+        check = {**(a.get("check") or {}), "truth": out["truth"], "ats": out["ats"],
+                 "replaced": (a.get("check") or {}).get("replaced", []) + out["replaced"]}
+        rest = [w for w in (a.get("why") or []) if "didn't pass its checks" not in w]
+        upd = {"key": a["key"], "resume": {"cv": out["cv"], "text": out["text"], "pages": out["pages"]}, "check": check,
+               "files": {"pdf": out["pdf"], "docx": out["docx"]}, "force": True}
+        if a.get("questions"):
+            a["resume"] = upd["resume"]
+            upd["answers"] = prefill(client, helper, a, profile, usage)
+            if any(x["needs_you"] for x in upd["answers"] if x.get("required")):
+                store.save_app(profile["user_id"], {**upd, "status": "needs_you", "why": ["A required question has no supported answer."]})
+                continue
+        store.save_app(profile["user_id"], {**upd, "status": "ready", "why": rest + ["Fixed: anything a rewrite got wrong now uses your own words."]})
+        summary["rescued"] += 1
+
     # applications that waited only on a question get another try with the current answer sheet and rules
     summary["unblocked"] = 0
     for a in store.app_bodies(profile["user_id"], "needs_you", 60) if hasattr(store, "app_bodies") else []:
