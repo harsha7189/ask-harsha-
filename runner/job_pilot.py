@@ -384,7 +384,7 @@ CONSENT_JS = r"""
 class Runner:
     """Each page is read into a short list of fields and buttons; Ask Harsha decides what to fill and click (values come
     only from his answer sheet and the job's résumé, checked on the server); the runner does it here."""
-    MAX_STEPS = 32
+    MAX_STEPS = 45
     SETTLE_MS = 7000
 
     def __init__(self, api: Api, keys: Keys, mailbox: Mailbox | None, email_addr: str, page_factory, pause=human_pause, log=print):
@@ -431,7 +431,12 @@ class Runner:
                 sig = snap["url"] + "|" + "|".join(f"{e.get('label', e.get('text', ''))}={e.get('value', '')}" for e in snap["elements"])
                 stuck = stuck + 1 if sig == last_sig else 0
                 last_sig = sig
-                if stuck >= 3:
+                if stuck == 2 and not any(h == "reloaded the page" for h in history):
+                    page.reload(wait_until="domcontentloaded")
+                    self.settle(page)
+                    history.append("reloaded the page")
+                    continue
+                if stuck >= 4:
                     return self.stop(app_id, page, "needs_you", f"page {step}", "Stuck on this page" + (": " + "; ".join(snap["errors"][:3]) if snap["errors"] else "."))
                 plan = self.api.step(app_id, {**snap, "step": step, "stuck": stuck, "history": history[-12:], "dry_run": dry_run})
                 self.record(job, step, page, snap, plan, history)

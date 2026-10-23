@@ -341,11 +341,10 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         n = 0
         for b in accounts.app_bodies(user.id, "needs_you", 200) + accounts.app_bodies(user.id, "failed", 200):
             detail = " ".join([str(b.get("detail") or "")] + [str(w) for w in (b.get("why") or [])[-1:]])
-            if not b.get("resume") or re.search(r"captcha|clicked submit|didn't pass its checks|no supported answer|budget", detail, re.I):
+            if not b.get("resume") or re.search(r"captcha|clicked submit|didn't pass its checks", detail, re.I):
                 continue
-            if re.search(r"next or submit|stuck|more steps|more pages|couldn't select|failed|error|timeout|couldn't find|couldn't finish", detail, re.I):
-                accounts.set_app_status(user.id, b["id"], "ready", detail="sent back to the laptop after the runner update")
-                n += 1
+            accounts.set_app_status(user.id, b["id"], "ready", detail="sent back to the laptop after the runner update")
+            n += 1
         return {"requeued": n}
 
     @app.post("/api/jobs/apps/{app_id}/action")
@@ -565,16 +564,24 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
                 "stuck": int(body.get("stuck") or 0), "history": [str(x)[:120] for x in (body.get("history") or [])[:12]]}
         usage = rs.Usage()
         answers = {x["label"]: x for x in answers_for(p, a, nav.fields_needing_answers(snap), usage)}
-        model = settings.model if (snap["stuck"] or snap["step"] >= 12) else settings.assist_model    # a stronger model when stuck
+        model = settings.model if (snap["stuck"] or snap["step"] >= 8) else settings.assist_model    # a stronger model when stuck
+        resume_text = (a.get("resume") or {}).get("text", "")
+        sheet = p["sheet"]
+        profile = {k: sheet.get(k, "") for k in ("first_name", "last_name", "email", "phone", "address", "city", "state", "zip", "country",
+                                                 "linkedin", "website", "how_heard", "start_date", "notice")}
+        base_full = rs.with_notes(p.get("base") or {"experience": []}, p.get("evidence_notes", ""))
+        allowed_text = "\n".join([resume_text, base_full.get("source_text", ""), json.dumps(sheet), (a.get("job") or {}).get("description", ""),
+                                   snap["text"]])
         try:
-            plan = nav.plan_step(get_client(), model, snap, answers, a.get("job") or {}, usage, dry_run=bool(body.get("dry_run")))
+            plan = nav.plan_step(get_client(), model, snap, answers, a.get("job") or {}, usage, dry_run=bool(body.get("dry_run")),
+                                 profile=profile, resume_text=resume_text)
         except Exception as e:
             upstream_failed(e)
             budget.add(usage.input_tokens, usage.output_tokens)
             msg = pilot.fatal(e) or f"Couldn't reach Claude for this page ({type(e).__name__}); it'll be retried."
             return {"status": "needs_you", "actions": [], "reason": msg}
         budget.add(usage.input_tokens, usage.output_tokens)
-        out = nav.validate(plan, snap, answers, allow_submit=not bool(body.get("dry_run")))
+        out = nav.validate(plan, snap, answers, allow_submit=not bool(body.get("dry_run")), allowed_text=allowed_text)
         if out["status"] == "needs_you" and not out["reason"]:
             out["reason"] = "It couldn't finish this page."
         accounts.save_app(p["user_id"], {"key": a["key"], "answers": a.get("answers", []), "status": a["status"], "force": True})

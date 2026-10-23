@@ -382,6 +382,7 @@ def test_invisible_spam_check_is_not_a_captcha(browser, site):
 
 
 def test_server_never_lets_the_model_choose_values():
+    """Open by design, with hard lines: his sheet data and protected answers win, no made-up numbers, no social sign-in."""
     from agent import navigator as nav
     snap = {"text": "Apply", "elements": [
         {"i": 0, "kind": "text", "label": "First Name", "value": "", "required": True},
@@ -390,20 +391,21 @@ def test_server_never_lets_the_model_choose_values():
         {"i": 3, "kind": "button", "text": "Yes", "context": "Are you authorized to work in the US?"},
         {"i": 4, "kind": "button", "text": "Apply with LinkedIn"},
         {"i": 5, "kind": "file", "label": "Cover Letter", "value": ""},
-        {"i": 6, "kind": "text", "label": "Favorite color", "value": ""},
-        {"i": 7, "kind": "button", "text": "Submit Application"}]}
-    answers = {"First Name": {"value": "Harsha"}, "Will you require sponsorship?": {"value": "Yes"},
-               "Are you authorized to work in the US?": {"value": "Yes"}, "Favorite color": {"value": None}}
+        {"i": 6, "kind": "text", "label": "How did you hear about us?", "value": ""},
+        {"i": 7, "kind": "textarea", "label": "Tell us about a product you shipped", "value": ""},
+        {"i": 8, "kind": "button", "text": "Submit Application"}]}
+    answers = {"First Name": {"value": "Harsha", "source": "sheet"}, "Will you require sponsorship?": {"value": "Yes", "source": "sheet"},
+               "Are you authorized to work in the US?": {"value": "Yes", "source": "sheet"}}
     plan = {"status": "continue", "actions": [{"op": "fill", "i": 0, "value": "Bob"}, {"op": "choose", "i": 1, "value": "No"},
                                              {"op": "click", "i": 2}, {"op": "click", "i": 3}, {"op": "click", "i": 4},
-                                             {"op": "upload", "i": 5}, {"op": "fill", "i": 6, "value": "blue"}, {"op": "click", "i": 7}]}
-    out = nav.validate(plan, snap, answers)
+                                             {"op": "upload", "i": 5}, {"op": "fill", "i": 6, "value": "Company careers site"},
+                                             {"op": "fill", "i": 7, "value": "I grew revenue 900% at IBM."}, {"op": "click", "i": 8}]}
+    out = nav.validate(plan, snap, answers, allowed_text="Harsha Reddy IBM Product Manager Cut resolution time 11 to 4 minutes")
     assert out["actions"] == [{"op": "fill", "i": 0, "value": "Harsha"}, {"op": "choose", "i": 1, "value": "Yes"},
-                              {"op": "click", "i": 3}, {"op": "click", "i": 7}]
-    assert len(out["dropped"]) == 4
+                              {"op": "click", "i": 3}, {"op": "fill", "i": 6, "value": "Company careers site"}, {"op": "click", "i": 8}]
+    assert len(out["dropped"]) == 4                     # wrong Yes/No, social sign-in, cover letter upload, made-up number
     assert nav.validate({"status": "submitted", "actions": []}, snap, answers)["status"] == "continue"     # no confirmation on the page
     assert nav.validate(plan, snap, answers, allow_submit=False)["status"] == "filled"
-
 
 def test_upload_through_the_sites_own_button(browser, site):
     """No visible file box: the runner clicks "Upload File" and the file picker gets the résumé."""

@@ -16,6 +16,7 @@ Application states:
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from typing import Any, Callable
 
@@ -156,7 +157,7 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
         if a.get("questions"):
             a["resume"] = upd["resume"]
             upd["answers"] = prefill(client, helper, a, profile, usage)
-            if any(x["needs_you"] for x in upd["answers"] if x.get("required")):
+            if blocking_questions(upd["answers"]):
                 store.save_app(profile["user_id"], {**upd, "status": "needs_you", "why": ["A required question has no supported answer."]})
                 continue
         store.save_app(profile["user_id"], {**upd, "status": "ready", "why": rest + ["Fixed: anything a rewrite got wrong now uses your own words."]})
@@ -166,11 +167,11 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
     summary["unblocked"] = 0
     for a in store.app_bodies(profile["user_id"], "needs_you", 60) if hasattr(store, "app_bodies") else []:
         why = " ".join(a.get("why") or [])
-        if "question" not in why or "didn't pass its checks" in why or not a.get("resume") or still_eligible(a, rules):
+        if not re.search(r"question|no supported answer|has no answer", why) or "didn't pass its checks" in why or not a.get("resume") or still_eligible(a, rules):
             continue
         if a.get("questions"):
             a["answers"] = prefill(client, helper, a, profile, usage)
-            if any(x["needs_you"] for x in a["answers"] if x.get("required")):
+            if blocking_questions(a["answers"]):
                 continue
         store.save_app(profile["user_id"], {"key": a["key"], "answers": a.get("answers", []), "status": "ready",
                                             "why": ["Re-answered with your updated answer sheet."], "force": True})
@@ -241,9 +242,9 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
                     [i["detail"] for i in ch["truth"]["issues"] + ch["fit"]["issues"]][:2] + ch["ats"]["issues"][:1])]
             if app.get("questions"):
                 app["answers"] = prefill(client, helper, app, profile, usage)
-                if any(a["needs_you"] for a in app["answers"] if a.get("required")):
+                if blocking_questions(app["answers"]):
                     app["status"] = "needs_you"
-                    app["why"] = app.get("why", []) + ["A required question has no supported answer."]
+                    app["why"] = app.get("why", []) + ["A required question has no supported answer: " + blocking_questions(app["answers"])[0]]
             history.append(app)
             summary["prepared"] += 1
             summary["ready" if app["status"] == "ready" else "needs_you"] += 1
@@ -254,6 +255,13 @@ def run_night(client, model: str, helper: str, today: str, profile: dict, store,
     summary.update(seconds=round(time.monotonic() - started, 1), input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
                    web_searches=usage.web_searches, ok=True, learning=learned["verdict"]["message"])
     return summary
+
+
+def blocking_questions(answers: list[dict]) -> list[str]:
+    """Only an unanswered required *protected* question (work authorization, sponsorship, salary, EEO…) holds an application
+    back; everything else is worked out on the page."""
+    from .navigator import PROTECTED
+    return [a["label"] for a in answers if a.get("required") and a.get("needs_you") and PROTECTED.search(a.get("label", ""))]
 
 
 def prefill(client, helper: str, app: dict, profile: dict, usage: rs.Usage) -> list[dict]:
