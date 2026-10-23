@@ -1005,6 +1005,71 @@ def _written_ok(text: str, allowed_text: str) -> bool:
             and not {t for t in _terms(text) if t.lower() not in allowed_text.lower()})
 
 
+# ---------------------------------------------------------------- salary: from the posted range, or his number for the city
+PAY_RANGE = re.compile(r"(?:US\$|USD\s*|\$)\s?(\d{2,3}(?:,\d{3})|\d{2,3}(?:\.\d)?\s?[kK])\s*(?:-|–|—|to|and)\s*(?:US\$|USD\s*|\$)?\s?(\d{2,3}(?:,\d{3})|\d{2,3}(?:\.\d)?\s?[kK])")
+# Geographic pay tiers relative to Austin/Dallas (how most companies set location-based pay). Never below his number.
+PAY_TIERS = [(1.15, r"san francisco|bay area|san jose|palo alto|mountain view|sunnyvale|menlo park|redwood city|oakland|new york|nyc|brooklyn|manhattan|seattle|bellevue|redmond"),
+             (1.08, r"los angeles|santa monica|san diego|irvine|boston|cambridge|washington,? d\.?c|arlington|reston|mclean|jersey city|hoboken"),
+             (1.04, r"chicago|denver|boulder|portland|miami|atlanta|minneapolis|philadelphia|raleigh|durham")]
+
+
+def _money(x: str) -> int:
+    x = x.replace(",", "").replace(" ", "").lower()
+    return int(float(x[:-1]) * 1000) if x.endswith("k") else int(float(x))
+
+
+def posted_range(text: str) -> tuple[int, int] | None:
+    """The posting's annual base pay range, e.g. '$150,000 - $190,000' or '$150K–$190K'. Hourly rates are ignored."""
+    best = None
+    for m in PAY_RANGE.finditer(text or ""):
+        lo, hi = _money(m.group(1)), _money(m.group(2))
+        before = text[max(0, m.start() - 50):m.start()].lower()
+        after = text[m.end():m.end() + 25].lower()
+        around = before + after
+        if lo < 30000 or hi < lo or hi > 1_500_000 or re.search(r"per\s+hour|/\s*h(ou)?r|hourly|an\s+hour", after) \
+                or re.search(r"(bonus|equity|stipend|commission|ote)\W*(range|target|of|is|:)?\W*$", before):
+            continue
+        if best is None or "base" in around or "salary" in around:
+            best = (lo, hi)
+    return best
+
+
+def salary_answer(label: str, options: list[str], sheet: dict, job: dict) -> dict:
+    floor_raw = re.sub(r"[^\d.kK]", "", str(sheet.get("salary") or ""))
+    try:
+        floor = _money(floor_raw) if floor_raw else None
+    except ValueError:
+        floor = None
+    loc = f"{job.get('location', '')} {job.get('title', '')}".lower()
+    rng = posted_range(job.get("description", ""))
+    if rng:
+        lo, hi = rng
+        target = lo + 0.6 * (hi - lo)                       # upper-middle of what they posted
+        if floor:
+            target = max(target, min(floor, hi))
+        why = f"From the posting's range (${lo:,}–${hi:,})."
+        top = hi
+    elif floor:
+        mult = next((m for m, pat in PAY_TIERS if re.search(pat, loc)), 1.0)
+        target = floor * mult
+        top = target * 1.12
+        why = f"Your number (${floor:,}) adjusted for {job.get('location', 'this location')}" + (f" (+{round((mult - 1) * 100)}%)." if mult > 1 else ".")
+    else:
+        return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": "Add your salary expectation to the answer sheet."}
+    target = int(round(target / 5000) * 5000)
+    top = int(round(max(top, target) / 5000) * 5000)
+    if options:
+        chosen = number_option(target, options) or pick_option(f"{target}", options)
+        if chosen is None:
+            return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": f"No option fits ${target:,}: {', '.join(options[:6])}."}
+        return {"value": chosen, "source": "sheet", "quote": "", "needs_you": False, "why": why}
+    if re.search(r"range|min(imum)?\s*(and|/|-)\s*max", label, re.I) and top > target:
+        value = f"${target:,} - ${top:,}"
+    else:
+        value = f"${target:,}"
+    return {"value": value, "source": "sheet", "quote": "", "needs_you": False, "why": why}
+
+
 def answer_question(client, helper: str, q: dict, sheet: dict, tailored_text: str, base_text: str, usage: Usage, ctx: dict | None = None) -> dict:
     """{"value", "source": sheet|derived|tailored|base|written|not_in_resume|none, "quote", "needs_you": bool, "why"}.
     ctx (optional): {"base": his résumé, "job": the posting, "brief": the role brief} for derived and written answers."""
@@ -1013,6 +1078,8 @@ def answer_question(client, helper: str, q: dict, sheet: dict, tailored_text: st
     kind, key = classify(label)
     if kind == "legal" and key in ("authorized", "sponsorship") or re.search(r"visa\s+status|immigration\s+status|work\s+(permit|visa)\s+(status|type)", label, re.I):
         return legal_answer(client, helper, label, options, sheet, usage)
+    if kind == "legal" and key == "salary":
+        return salary_answer(label, options, sheet, ctx.get("job") or {})
     if kind in ("profile", "legal"):
         v = sheet.get(key)
         if key == "full_name" and not v:

@@ -479,3 +479,21 @@ def test_retry_sends_back_only_what_a_website_stopped():
         ids[k] = store.save_app(u.id, {"key": k, "status": "needs_you", "job": {"company": k}, "resume": {"text": "x"}, "detail": d, "why": [d]})
     assert c.post("/api/jobs/apps/retry-site", headers={"X-Owner-Passcode": "pw"}).json()["requeued"] == 1
     assert store.app(u.id, ids["nobtn"])["status"] == "ready" and store.app(u.id, ids["clicked"])["status"] == "needs_you"
+
+
+def test_salary_follows_the_posting_and_the_city():
+    sheet = {"salary": "130000"}
+    job = lambda loc, d="": {"location": loc, "title": "Product Manager", "description": d}
+    sf = rs.salary_answer("What are your salary expectations?", [], sheet, job("San Francisco, CA"))
+    assert sf["value"] == "$150,000" and "+15%" in sf["why"]
+    assert rs.salary_answer("Desired salary", [], sheet, job("Austin, TX"))["value"] == "$130,000"
+    posted = rs.salary_answer("Salary expectations", [], sheet, job("New York, NY", "The base salary range for this role is $160,000 - $200,000 plus equity."))
+    assert posted["value"] == "$185,000" and "posting's range" in posted["why"]
+    low = rs.salary_answer("Salary", [], sheet, job("Remote", "Pay: $110K–$140K"))
+    assert low["value"] == "$130,000"                                   # never below his number when it fits the range
+    rng = rs.salary_answer("Desired salary range", [], sheet, job("Seattle, WA"))
+    assert rng["value"] == "$150,000 - $165,000"
+    opt = rs.salary_answer("Salary expectations", ["$100k-$120k", "$120k-$140k", "$140k-$160k", "$160k+"], sheet, job("Austin, TX"))
+    assert opt["value"] == "$120k-$140k"
+    assert rs.posted_range("Compensation: $45 - $60 per hour") is None
+    assert rs.salary_answer("Salary", [], {}, job("Austin, TX"))["needs_you"]
