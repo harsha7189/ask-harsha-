@@ -604,6 +604,20 @@ def install(app, *, accounts, telemetry, budget, get_client, settings, require_o
         accounts.save_app(p["user_id"], {**a, "force": True})
         return {"answers": out}
 
+    @app.post("/api/jobs/runner/requeue")
+    async def runner_requeue(request: Request):
+        """Assist mode: applications that stopped at a CAPTCHA go back in line, because he's at the laptop to solve it."""
+        p = runner(request)
+        if isinstance(p, JSONResponse):
+            return p
+        n = 0
+        for b in accounts.app_bodies(p["user_id"], "needs_you", 200):
+            detail = " ".join([str(b.get("detail") or "")] + [str(w) for w in (b.get("why") or [])[-1:]])
+            if b.get("resume") and re.search(r"captcha", detail, re.I):
+                accounts.set_app_status(p["user_id"], b["id"], "ready", detail="assist mode: back in line for you to solve the CAPTCHA")
+                n += 1
+        return {"requeued": n}
+
     @app.get("/api/jobs/runner/watch")
     def runner_watch(request: Request):
         """Submitted applications from the last 90 days, so the laptop can match replies in his inbox to them locally."""

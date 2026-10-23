@@ -117,6 +117,17 @@ class Site:
                     return self.send(GH_FORM.format(slug="why", extra='<label for="w">Why do you want to work here?</label><textarea id="w" name="w" required></textarea>'))
                 if p == "/gh/captcha":
                     return self.send(GH_FORM.format(slug="captcha", extra=VISIBLE))
+                if p == "/gh/frame":
+                    inner = GH_FORM.format(slug="frame", extra="").replace('"', "&quot;")
+                    return self.send(f'<h1>Careers</h1><iframe src="/gh/frameinner" style="width:900px;height:900px"></iframe>')
+                if p == "/gh/frameinner":
+                    return self.send(GH_FORM.format(slug="frame", extra=""))
+                if p == "/gh/terms":
+                    return self.send(GH_FORM.format(slug="terms", extra='<label class="cb"><input type="checkbox" name="agree" value="1" required '
+                                                    'style="position:absolute;opacity:0;width:1px;height:1px"><span>I agree to the terms and conditions</span></label>'))
+                if p == "/gh/solve":
+                    return self.send(GH_FORM.format(slug="solve", extra=VISIBLE + '<textarea name="g-recaptcha-response" style="display:none"></textarea>'
+                                                    '<script>setTimeout(()=>{document.querySelector("[name=g-recaptcha-response]").value="x".repeat(40)},2500)</script>'))
                 if p == "/gh/invisible":
                     return self.send(GH_FORM.format(slug="invisible", extra=INVISIBLE))
                 if p == "/ashby/job/application":
@@ -231,7 +242,9 @@ class FakeApi:
             btn = next(e for e in els if e["kind"] == "button" and re.search(r"create account|sign in", e["text"], re.I))
             return nav.validate({"status": "continue", "actions": acts + [{"op": "click", "i": btn["i"]}]}, snap, answers)
         for e in els:
-            if e["kind"] in nav.FILLABLE and not e.get("value") and e.get("label"):
+            if e["kind"] == "checkbox" and not e.get("value"):
+                acts.append({"op": "check", "i": e["i"]})
+            elif e["kind"] in nav.FILLABLE and not e.get("value") and e.get("label"):
                 acts.append({"op": "choose" if e["kind"] in ("select", "radio", "combobox") else "fill", "i": e["i"]})
             if e["kind"] == "file" and re.search(r"resume|cv", e.get("label", ""), re.I) and not e.get("value"):
                 acts.append({"op": "upload", "i": e["i"]})
@@ -460,3 +473,26 @@ def test_numbers_only_into_number_boxes():
     snap = {"text": "", "elements": [{"i": 0, "kind": "number", "label": "Salary expectations", "value": "", "required": True}]}
     out = nav.validate({"status": "continue", "actions": [{"op": "fill", "i": 0}]}, snap, {"Salary expectations": {"value": "$130,000 - $145,000"}})
     assert out["actions"] == [{"op": "fill", "i": 0, "value": "130000"}]
+
+
+def test_form_inside_a_frame(browser, site):
+    before = len(site.submitted)
+    api = FakeApi([job(site, "/gh/frame", "icims", "f1")], dry_run=False)
+    assert make(browser, api).run(between=(0, 0))["submitted"] == 1, api.reports
+    assert site.submitted[before]["fn"] == "Harsha"
+
+
+def test_styled_terms_checkbox_gets_ticked(browser, site):
+    before = len(site.submitted)
+    api = FakeApi([job(site, "/gh/terms", "greenhouse", "t1")], dry_run=False)
+    assert make(browser, api).run(between=(0, 0))["submitted"] == 1, api.reports
+    assert site.submitted[before]["agree"] == "1"
+
+
+def test_assist_mode_waits_while_you_solve_the_captcha(browser, site):
+    api = FakeApi([job(site, "/gh/solve", "greenhouse", "s1")], dry_run=False)
+    r = make(browser, api)
+    r.assist = True
+    assert r.run(between=(0, 0))["submitted"] == 1, api.reports
+    api2 = FakeApi([job(site, "/gh/captcha", "greenhouse", "s2")], dry_run=False)
+    assert make(browser, api2).run(between=(0, 0))["needs_you"] == 1          # unattended: it waits for you, never solves it

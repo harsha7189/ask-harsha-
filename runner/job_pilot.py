@@ -15,7 +15,8 @@ What it does for each ready application, at night:
      turned on in Job Pilot's settings, it stops before Submit and reports "filled" instead.)
   5. After the night's applications, reads your inbox here on the laptop for replies to earlier applications
      (rejections, recruiter replies, interview requests) and sends only "which application, what outcome, when".
-It never solves CAPTCHAs or gets around bot checks: an application that shows one waits for you.
+It never solves CAPTCHAs or gets around bot checks. With --assist (you at the laptop) it beeps at a CAPTCHA, you
+solve it, and it carries on; otherwise the application waits for you.
 
 Setup:
   pip install playwright keyring && python -m playwright install chromium
@@ -80,6 +81,9 @@ class Api:
 
     def step(self, app_id: str, snapshot: dict) -> dict:
         return self._req("POST", "/api/jobs/runner/step", {"app_id": app_id, **snapshot})
+
+    def requeue(self, kind: str) -> dict:
+        return self._req("POST", "/api/jobs/runner/requeue", {"kind": kind})
 
     def watch(self) -> list[dict]:
         return self._req("GET", "/api/jobs/runner/watch").get("apps", [])
@@ -304,17 +308,20 @@ SNAP_JS = r"""
     mark(g, {kind: 'radio', aria: true, label: short(g.getAttribute('aria-label') || byIds(g.getAttribute('aria-labelledby')) || questionOf(g), 300),
              options: opts.map(o => short(txt(o) || o.getAttribute('aria-label'), 120)), value: sel ? txt(sel) : '', required: g.getAttribute('aria-required') === 'true'});
   }
-  for (const e of document.querySelectorAll('input, select, textarea, [role=combobox], [aria-haspopup=listbox], [contenteditable=true]')) {
+  const labelVisible = e => vis(e.closest('label')) || (e.id && vis(document.querySelector(`label[for="${CSS.escape(e.id)}"]`))) || vis(e.parentElement);
+  for (const e of document.querySelectorAll('input, select, textarea, [role=combobox], [aria-haspopup=listbox], [contenteditable=true], [role=checkbox]')) {
     if (e.getAttribute('data-jp') || e.type === 'radio') continue;
     const tag = e.tagName;
-    let kind = tag === 'SELECT' ? 'select' : tag === 'TEXTAREA' ? 'textarea' : (e.getAttribute('role') === 'combobox' || e.getAttribute('aria-haspopup') === 'listbox' || e.getAttribute('aria-autocomplete')) ? 'combobox' : (e.type || 'text').toLowerCase();
+    let kind = tag === 'SELECT' ? 'select' : tag === 'TEXTAREA' ? 'textarea' : e.getAttribute('role') === 'checkbox' && tag !== 'INPUT' ? 'checkbox' :
+      (e.getAttribute('role') === 'combobox' || e.getAttribute('aria-haspopup') === 'listbox' || e.getAttribute('aria-autocomplete')) ? 'combobox' : (e.type || 'text').toLowerCase();
     if (['hidden', 'submit', 'button', 'image', 'reset'].includes(kind)) continue;
-    if (kind !== 'file' && !vis(e)) continue;
+    if (/recaptcha|captcha-response/i.test(e.name || e.id || '')) continue;
+    if (kind !== 'file' && !vis(e) && !(kind === 'checkbox' && labelVisible(e))) continue;   // styled checkboxes hide the real box
     if (kind === 'combobox' && tag !== 'INPUT' && e.querySelector('input[role=combobox]')) continue;
     const label = short(labelOf(e), 300);
     let options = [], value = '';
     if (kind === 'select') { options = [...e.options].map(o => o.text.trim()).filter(t => t && !/^(select|choose|--|please)/i.test(t)).slice(0, 60); value = e.selectedIndex > 0 ? e.options[e.selectedIndex].text.trim() : ''; }
-    else if (kind === 'checkbox') value = e.checked ? 'checked' : '';
+    else if (kind === 'checkbox') value = (e.checked || e.getAttribute('aria-checked') === 'true') ? 'checked' : '';
     else if (kind === 'file') value = (e.files && e.files.length) ? e.files[0].name : '';
     else if (kind === 'combobox' && tag !== 'INPUT') value = /^(select|choose)/i.test(txt(e)) ? '' : txt(e);
     else value = kind === 'password' ? (e.value ? '••••' : '') : (e.value || '');
@@ -347,6 +354,8 @@ SNAP_JS = r"""
     if (/hcaptcha\.com/.test(src) || /challenges\.cloudflare\.com/.test(src)) captcha = true;
   }
   if (/verify you are human|are you a robot|complete the security check/i.test(txt(document.body).slice(0, 4000))) captcha = true;
+  const solved = [...document.querySelectorAll('[name="g-recaptcha-response"], [name="h-captcha-response"], [name="cf-turnstile-response"]')].some(x => (x.value || '').length > 20);
+  if (solved) captcha = false;
   return {url: location.href, title: document.title, text: txt(document.body).slice(0, 3500), elements: out, errors, captcha};
 }
 """
@@ -387,9 +396,11 @@ class Runner:
     MAX_STEPS = 45
     SETTLE_MS = 7000
 
-    def __init__(self, api: Api, keys: Keys, mailbox: Mailbox | None, email_addr: str, page_factory, pause=human_pause, log=print):
+    def __init__(self, api: Api, keys: Keys, mailbox: Mailbox | None, email_addr: str, page_factory, pause=human_pause, log=print,
+                 assist: bool = False):
         self.api, self.keys, self.mail, self.email = api, keys, mailbox, email_addr
         self.page_factory, self.pause, self.log = page_factory, pause, log
+        self.assist, self.frame = assist, None
 
     # ---- one application ----
     def apply(self, job: dict, dry_run: bool, profile: dict) -> str:
@@ -419,15 +430,21 @@ class Runner:
                     self.settle(page)
                     history.append("went back to the posting (signed in)")
                     continue
-                try:
-                    if page.evaluate(CONSENT_JS):
-                        history.append("accepted the cookie/privacy notice")
-                        self.settle(page)
-                except Exception:
-                    pass
-                snap = page.evaluate(SNAP_JS)
+                for fr in page.frames:
+                    try:
+                        if fr.evaluate(CONSENT_JS):
+                            history.append("accepted the cookie/privacy notice")
+                            self.settle(page)
+                            break
+                    except Exception:
+                        continue
+                snap = self.snapshot(page)
                 if snap["captcha"]:
-                    return self.stop(app_id, page, "needs_you", f"page {step}", "This site showed a CAPTCHA puzzle. Finish this one yourself; the posting link is in the tracker.")
+                    if not self.assist or not self.wait_for_you(page):
+                        return self.stop(app_id, page, "needs_you", f"page {step}",
+                                         "This site showed a CAPTCHA puzzle. Run `py job_pilot.py run --assist` and solve it when the laptop beeps (about 10 seconds).")
+                    history.append("you solved the CAPTCHA")
+                    snap = self.snapshot(page)
                 sig = snap["url"] + "|" + "|".join(f"{e.get('label', e.get('text', ''))}={e.get('value', '')}" for e in snap["elements"])
                 stuck = stuck + 1 if sig == last_sig else 0
                 last_sig = sig
@@ -476,6 +493,53 @@ class Runner:
             except Exception:
                 pass
 
+    def snapshot(self, page) -> dict:
+        """Reads the page, including forms inside frames (iCIMS and some Workday sites put the form in one). Waits a little
+        for pages that are still drawing themselves."""
+        best = None
+        for attempt in range(6):
+            best, self.frame = None, None
+            captcha = False
+            for fr in page.frames:
+                try:
+                    snap = fr.evaluate(SNAP_JS)
+                except Exception:
+                    continue
+                captcha = captcha or snap["captcha"]
+                if best is None or len(snap["elements"]) > len(best["elements"]):
+                    best, self.frame = snap, fr
+            if best is None:
+                best = {"url": page.url, "title": "", "text": "", "elements": [], "errors": [], "captcha": False}
+            best["captcha"] = captcha
+            if best["elements"] or len(best["text"]) > 200 or captcha:
+                break
+            time.sleep(2.5)                     # still loading
+        if self.frame is not None and self.frame != page.main_frame:
+            best["url"] = page.url
+            best["text"] = (self.body(page)[:1200] + "\n" + best["text"])[:3500]
+        return best
+
+    def wait_for_you(self, page, timeout_s: int = 300) -> bool:
+        """Assist mode: brings the window forward, beeps, and waits while you solve the puzzle. Nothing else is touched."""
+        self.log("  CAPTCHA: solve it in the browser window; the runner continues by itself once it's done.")
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+        try:
+            import winsound
+            for _ in range(3):
+                winsound.MessageBeep()
+                time.sleep(0.3)
+        except Exception:
+            print("\a", end="", flush=True)
+        end = time.time() + timeout_s
+        while time.time() < end:
+            time.sleep(2)
+            if not self.snapshot(page)["captcha"]:
+                return True
+        return False
+
     def record(self, job: dict, step: int, page, snap: dict, plan: dict, history: list) -> None:
         """Keeps what the runner saw and decided on each page (no passwords), so a problem can be fixed from the facts.
         `python job_pilot.py debug` zips the latest run for you to send."""
@@ -504,17 +568,22 @@ class Runner:
         self.pause(0.6, 1.2)
 
     def body(self, page) -> str:
-        try:
-            return page.inner_text("body")
-        except Exception:
-            return ""
+        """Visible text of the page and its frames (a confirmation can appear inside the form's frame)."""
+        parts = []
+        for fr in page.frames:
+            try:
+                parts.append(fr.inner_text("body", timeout=3000))
+            except Exception:
+                continue
+        return "\n".join(parts)
 
     # ---- doing one action ----
     def do(self, page, act: dict, snap: dict, resume: Path) -> str:
         op, i = act.get("op"), act.get("i")
         el_info = next((e for e in snap["elements"] if e["i"] == i), {}) if i is not None else {}
         what = el_info.get("label") or el_info.get("text") or ""
-        el = page.query_selector(f'[data-jp="{i}"]') if i is not None else None
+        root = self.frame or page
+        el = root.query_selector(f'[data-jp="{i}"]') if i is not None else None
         try:
             if op == "wait":
                 time.sleep(2)
@@ -583,7 +652,7 @@ class Runner:
             el.select_option(label=label)
             return
         if kind == "radio" and not info.get("aria"):
-            for r in page.query_selector_all(f'input[type=radio][name="{info.get("name")}"]'):
+            for r in (self.frame or page).query_selector_all(f'input[type=radio][name="{info.get("name")}"]'):
                 lab = r.evaluate("e => { const l = e.closest('label') || (e.id && document.querySelector(`label[for='${e.id}']`)); return (l ? l.innerText : e.value || '').trim(); }")
                 if lab.lower() == v.lower() or v.lower() in lab.lower():
                     try:
@@ -607,7 +676,7 @@ class Runner:
                 time.sleep(0.9)
         except Exception:
             pass
-        options = [o for o in page.query_selector_all("[role=option]") if o.is_visible()]
+        options = [o for o in (self.frame or page).query_selector_all("[role=option]") if o.is_visible()]
         best = next((o for o in options if (o.inner_text() or "").strip().lower() == v.lower()), None) \
             or next((o for o in options if v.lower() in (o.inner_text() or "").lower()), None)
         if best:
@@ -717,9 +786,12 @@ def cmd_run(args) -> None:
     imap = keys.get("imap_password")
     api = Api(cfg["server"], token)
     with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(str(HOME / "browser"), headless=not args.show, viewport={"width": 1280, "height": 900},
+        ctx = p.chromium.launch_persistent_context(str(HOME / "browser"), headless=not (args.show or args.assist), viewport={"width": 1280, "height": 900},
                                                    locale="en-US", timezone_id="America/Chicago")
-        runner = Runner(api, keys, Mailbox(cfg["email"], imap) if imap else None, cfg["email"], page_factory=lambda: ctx.new_page(), log=log)
+        runner = Runner(api, keys, Mailbox(cfg["email"], imap) if imap else None, cfg["email"], page_factory=lambda: ctx.new_page(), log=log,
+                        assist=args.assist)
+        if args.assist:
+            log(f"Assist mode: {api.requeue('captcha').get('requeued', 0)} application(s) that stopped at a CAPTCHA are back in line.")
         log(f"=== Job Pilot run {datetime.now():%Y-%m-%d %H:%M} ===")
         try:
             log(str(runner.run(max_apps=args.max, between=(5, 15) if args.fast else (90, 240))))
@@ -795,6 +867,7 @@ def main(argv=None) -> None:
     r.add_argument("--show", action="store_true", help="show the browser window")
     r.add_argument("--max", type=int, default=15)
     r.add_argument("--fast", action="store_true", help="short pauses (for testing)")
+    r.add_argument("--assist", action="store_true", help="you're at the laptop: it pauses and beeps at a CAPTCHA for you to solve, then carries on")
     sub.add_parser("schedule")
     sub.add_parser("outcomes", help="match employer replies in your inbox to applications (runs after every night too)")
     sub.add_parser("debug", help="zip the latest run's page records to send for troubleshooting")
