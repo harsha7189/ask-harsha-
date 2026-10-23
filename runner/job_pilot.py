@@ -362,7 +362,7 @@ BLOCKED_CLICKS = re.compile(r"(with|via)\s+(linkedin|indeed|google|facebook|appl
 CONSENT_JS = r"""
 () => {
   const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && s.display !== 'none'; };
-  const ok = /^\s*(accept( all)?( cookies)?|allow( all)?( cookies)?|i agree|agree( and continue)?|ok(ay)?|got it|accept and continue|continue)\s*$/i;
+  const ok = /^\s*(accept( all)?( cookies)?|allow( all)?( cookies)?|i agree|agree( and continue)?|ok(ay)?|got it|accept and continue)\s*$/i;
   const boxSel = '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [id*="onetrust" i], [class*="onetrust" i], ' +
                  '[data-automation-id*="legalNotice" i], [data-automation-id*="cookie" i], [aria-label*="cookie" i], #truste-consent-track, #CybotCookiebotDialog';
   for (const box of document.querySelectorAll(boxSel)) {
