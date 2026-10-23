@@ -14,6 +14,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runner"))
 import build_sponsor_index as bsi  # noqa: E402
 import job_pilot as jp  # noqa: E402
+import tempfile as _tf  # noqa: E402
+jp.DEBUG = __import__("pathlib").Path(_tf.mkdtemp())
 
 pw_sync = pytest.importorskip("playwright.sync_api")
 
@@ -417,3 +419,13 @@ def test_upload_through_the_sites_own_button(browser, site):
     api.step = step
     make(browser, api).run(between=(0, 0))
     assert site.submitted[before]["file"] == "1"
+
+
+def test_each_page_is_recorded_for_troubleshooting(browser, site):
+    api = FakeApi([job(site, "/gh/basic", "greenhouse", "rec1")], dry_run=False)
+    make(browser, api).run(between=(0, 0))
+    folder = next(p for p in jp.DEBUG.rglob("*rec1*") if p.is_dir())
+    files = sorted(p.name for p in folder.iterdir())
+    assert "step01.json" in files and "step01.jpg" in files
+    rec = (folder / "step01.json").read_text()
+    assert "First Name" in rec and "plan" in rec

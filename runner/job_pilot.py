@@ -45,6 +45,8 @@ from email.header import decode_header
 from pathlib import Path
 
 HOME = Path(os.environ.get("JOB_PILOT_HOME", Path.home() / ".job_pilot"))
+DEBUG = HOME / "debug"
+RUN_STAMP = datetime.now().strftime("%Y-%m-%d_%H%M")
 CONFIG = HOME / "config.json"
 SERVICE = "ask-harsha-job-pilot"
 
@@ -398,6 +400,7 @@ class Runner:
                 if stuck >= 3:
                     return self.stop(app_id, page, "needs_you", f"page {step}", "Stuck on this page" + (": " + "; ".join(snap["errors"][:3]) if snap["errors"] else "."))
                 plan = self.api.step(app_id, {**snap, "step": step, "stuck": stuck, "history": history[-12:], "dry_run": dry_run})
+                self.record(job, step, page, snap, plan, history)
                 status, reason = plan.get("status", "continue"), plan.get("reason", "")
                 if status == "submitted":
                     m = CONFIRMED.search(body) or re.search(r"thank|received|submitted|success", body, re.I)
@@ -425,6 +428,18 @@ class Runner:
                 page.close()
             except Exception:
                 pass
+
+    def record(self, job: dict, step: int, page, snap: dict, plan: dict, history: list) -> None:
+        """Keeps what the runner saw and decided on each page (no passwords), so a problem can be fixed from the facts.
+        `python job_pilot.py debug` zips the latest run for you to send."""
+        try:
+            d = DEBUG / RUN_STAMP / re.sub(r"[^\w.-]+", "_", f"{job.get('company', '')}_{job.get('id', '')}")[:80]
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"step{step:02d}.json").write_text(json.dumps({"job": {k: job.get(k) for k in ("company", "title", "url", "ats")}, "step": step,
+                                                                "page": snap, "plan": plan, "history": history[-15:]}, indent=1)[:400000], encoding="utf-8")
+            page.screenshot(path=str(d / f"step{step:02d}.jpg"), type="jpeg", quality=50)
+        except Exception:
+            pass
 
     def start_url(self, job: dict) -> str:
         u = job["url"]
@@ -572,6 +587,14 @@ class Runner:
         return "submitted"
 
     def stop(self, app_id, page, status, step, detail):
+        try:
+            d = DEBUG / RUN_STAMP
+            d.mkdir(parents=True, exist_ok=True)
+            with open(d / "results.txt", "a", encoding="utf-8") as fh:
+                fh.write(f"{app_id}\t{status}\t{step}\t{detail}\t{page.url if page else ''}\n")
+            page.screenshot(path=str(d / f"final_{app_id}.jpg"), type="jpeg", quality=50, full_page=True)
+        except Exception:
+            pass
         self.api.report(app_id, status, step, detail, [self.shot(page)])
         self.log(f"  {status}: {detail}")
         return status
@@ -671,6 +694,20 @@ def log(line: str) -> None:
         pass
 
 
+def cmd_debug(args) -> None:
+    """Zips the most recent run's page records so you can send them (passwords are never recorded)."""
+    import shutil
+    runs = sorted([p for p in DEBUG.glob("*") if p.is_dir()]) if DEBUG.exists() else []
+    if not runs:
+        sys.exit("No run recorded yet. Run: py job_pilot.py run --show --max 1 --fast")
+    for old in runs[:-5]:                       # keep the last 5 runs
+        shutil.rmtree(old, ignore_errors=True)
+    desktop = next((p for p in (Path.home() / "OneDrive" / "Desktop", Path.home() / "Desktop") if p.exists()), HOME)
+    out = shutil.make_archive(str(desktop / f"job_pilot_debug_{runs[-1].name}"), "zip", str(runs[-1]))
+    print(f"Saved {out}\nAttach that file in the chat. It has screenshots and what the runner saw on each page "
+          f"(your name, email and answers are in it; passwords are not).")
+
+
 def cmd_outcomes(args) -> None:
     cfg, keys = load_config(), Keys()
     imap = keys.get("imap_password")
@@ -713,8 +750,9 @@ def main(argv=None) -> None:
     r.add_argument("--fast", action="store_true", help="short pauses (for testing)")
     sub.add_parser("schedule")
     sub.add_parser("outcomes", help="match employer replies in your inbox to applications (runs after every night too)")
+    sub.add_parser("debug", help="zip the latest run's page records to send for troubleshooting")
     args = ap.parse_args(argv)
-    {"setup": cmd_setup, "run": cmd_run, "schedule": cmd_schedule, "outcomes": cmd_outcomes}[args.cmd](args)
+    {"setup": cmd_setup, "run": cmd_run, "schedule": cmd_schedule, "outcomes": cmd_outcomes, "debug": cmd_debug}[args.cmd](args)
 
 
 if __name__ == "__main__":
