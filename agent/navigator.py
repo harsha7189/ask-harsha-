@@ -20,7 +20,7 @@ from . import speed
 from .resume import _tool_input, pick_option, squash
 
 FILLABLE = {"text", "email", "tel", "number", "url", "date", "textarea", "select", "radio", "checkbox", "combobox", "search", "month"}
-SOCIAL = re.compile(r"(with|via|using)\s+(linkedin|indeed|google|facebook|apple|seek|glassdoor|github)|withdraw|delete|sign\s*out|log\s*out|unsubscribe|decline", re.I)
+SOCIAL = re.compile(r"(with|via|using)\s+(linkedin|indeed|google|facebook|apple|seek|glassdoor|github)|withdraw|delete|sign\s*out|log\s*out|unsubscribe", re.I)
 YESNOISH = re.compile(r"^\s*(yes|no|true|false|i do|i don't|i do not|i will|i will not|i am|i am not|male|female|decline.*|prefer not.*)\s*$", re.I)
 CONFIRMISH = re.compile(r"thank|received|submitted|success|confirm", re.I)
 
@@ -48,6 +48,7 @@ question's answer.
 - Sign-in or create-account pages: use credential (email / password) for those boxes, tick the terms box, then click \
 Create Account or Sign In. Prefer creating an account / applying manually; never use LinkedIn, Indeed, Google or other \
 social sign-in, and never "Autofill with résumé/LinkedIn" if a manual option exists.
+- Cookie or privacy notices covering the page: click Accept (or Accept Cookies / I Agree / OK) so the page can be used.
 - On a job posting page, click Apply / Apply for this job / Apply manually.
 - After filling, click the button that moves forward: Next, Continue, Save and Continue, Review, or Submit / Submit Application.
 - Skip optional questions that have no answer. If a REQUIRED field has no answer (ANSWERS says NO ANSWER), status \

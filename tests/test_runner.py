@@ -125,7 +125,10 @@ class Site:
                     site.submitted.append({"ashby": True, **q})
                     return self.send("ok")
                 if p == "/wd/job":
-                    return self.send('<h1>Senior Product Manager</h1><a href="/wd/choice">Apply</a>')
+                    return self.send('<div data-automation-id="legalNotice" style="position:fixed;inset:0;background:#fff;z-index:9">'
+                                     '<p>We use cookies.</p><button data-automation-id="legalNoticeAcceptButton" '
+                                     'onclick="this.parentNode.remove()">Accept Cookies</button></div>'
+                                     '<h1>Senior Product Manager</h1><a href="/wd/choice">Apply</a>')
                 if p == "/wd/choice":
                     return self.send('<a href="/wd/signin">Apply Manually</a><a href="/wd/signin">Use My Last Application</a>')
                 if p == "/wd/signin":

@@ -358,6 +358,28 @@ def human_pause(a: float = 0.4, b: float = 1.4) -> None:
 
 BLOCKED_CLICKS = re.compile(r"(with|via)\s+(linkedin|indeed|google|facebook|apple|seek|glassdoor)|withdraw|delete|sign\s*out|log\s*out|unsubscribe", re.I)
 
+# Cookie / privacy notices that cover the page (OneTrust, Workday's legal notice, TrustArc, Cookiebot…): accepted so the page can be used
+CONSENT_JS = r"""
+() => {
+  const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  const ok = /^\s*(accept( all)?( cookies)?|allow( all)?( cookies)?|i agree|agree( and continue)?|ok(ay)?|got it|accept and continue|continue)\s*$/i;
+  const boxSel = '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [id*="onetrust" i], [class*="onetrust" i], ' +
+                 '[data-automation-id*="legalNotice" i], [data-automation-id*="cookie" i], [aria-label*="cookie" i], #truste-consent-track, #CybotCookiebotDialog';
+  for (const box of document.querySelectorAll(boxSel)) {
+    if (!vis(box)) continue;
+    for (const b of box.querySelectorAll('button, [role=button], a, input[type=button], input[type=submit]')) {
+      const t = (b.innerText || b.value || b.getAttribute('aria-label') || '').trim();
+      if (vis(b) && ok.test(t)) { b.click(); return t; }
+    }
+  }
+  for (const id of ['onetrust-accept-btn-handler', 'truste-consent-button', 'CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll']) {
+    const b = document.getElementById(id); if (b && vis(b)) { b.click(); return id; }
+  }
+  const wd = document.querySelector('[data-automation-id="legalNoticeAcceptButton"]'); if (wd && vis(wd)) { wd.click(); return 'workday'; }
+  return '';
+}
+"""
+
 
 class Runner:
     """Each page is read into a short list of fields and buttons; Ask Harsha decides what to fill and click (values come
@@ -397,6 +419,12 @@ class Runner:
                     self.settle(page)
                     history.append("went back to the posting (signed in)")
                     continue
+                try:
+                    if page.evaluate(CONSENT_JS):
+                        history.append("accepted the cookie/privacy notice")
+                        self.settle(page)
+                except Exception:
+                    pass
                 snap = page.evaluate(SNAP_JS)
                 if snap["captcha"]:
                     return self.stop(app_id, page, "needs_you", f"page {step}", "This site showed a CAPTCHA puzzle. Finish this one yourself; the posting link is in the tracker.")
