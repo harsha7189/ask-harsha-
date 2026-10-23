@@ -1034,6 +1034,24 @@ def posted_range(text: str) -> tuple[int, int] | None:
     return best
 
 
+def money_option(value: int, options: list[str]) -> str | None:
+    """'$120k-$140k' style brackets, read as dollars."""
+    for o in options:
+        nums = []
+        for m in re.finditer(r"\$?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?([kK])?", o):
+            n = float(m.group(1).replace(",", ""))
+            nums.append(n * 1000 if (m.group(2) or n < 1000) else n)
+        if not nums:
+            continue
+        if len(nums) >= 2 and nums[0] <= value <= nums[1]:
+            return o
+        if len(nums) == 1 and re.search(r"\+|or\s+more|above|over|more\s+than", o, re.I) and value >= nums[0]:
+            return o
+        if len(nums) == 1 and re.search(r"less|under|below|up\s+to", o, re.I) and value <= nums[0]:
+            return o
+    return None
+
+
 def salary_answer(label: str, options: list[str], sheet: dict, job: dict) -> dict:
     floor_raw = re.sub(r"[^\d.kK]", "", str(sheet.get("salary") or ""))
     try:
@@ -1059,7 +1077,7 @@ def salary_answer(label: str, options: list[str], sheet: dict, job: dict) -> dic
     target = int(round(target / 5000) * 5000)
     top = int(round(max(top, target) / 5000) * 5000)
     if options:
-        chosen = number_option(target, options) or pick_option(f"{target}", options)
+        chosen = money_option(target, options)
         if chosen is None:
             return {"value": None, "source": "none", "quote": "", "needs_you": True, "why": f"No option fits ${target:,}: {', '.join(options[:6])}."}
         return {"value": chosen, "source": "sheet", "quote": "", "needs_you": False, "why": why}
