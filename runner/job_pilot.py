@@ -391,6 +391,12 @@ class Runner:
                 m = CONFIRMED.search(body)
                 if m and step > 1:
                     return self.done(app_id, page, body, m)
+                if job.get("ats") == "workday" and re.search(r"/userHome|/candidateHome|/myAccount|/settings", page.url, re.I) and \
+                        sum(1 for h in history if h.startswith("went back to the posting")) < 2:
+                    page.goto(self.start_url(job), wait_until="domcontentloaded")
+                    self.settle(page)
+                    history.append("went back to the posting (signed in)")
+                    continue
                 snap = page.evaluate(SNAP_JS)
                 if snap["captcha"]:
                     return self.stop(app_id, page, "needs_you", f"page {step}", "This site showed a CAPTCHA puzzle. Finish this one yourself; the posting link is in the tracker.")
@@ -413,6 +419,14 @@ class Runner:
                 if status == "verify_email":
                     self.verify_email(page, job)
                     history.append("opened the email verification link")
+                    continue
+                if status == "reopen_job":
+                    reopened = sum(1 for h in history if h.startswith("went back to the posting"))
+                    if reopened >= 2:
+                        return self.stop(app_id, page, "needs_you", f"page {step}", "Signed in, but the site keeps showing the account page instead of the application.")
+                    page.goto(self.start_url(job), wait_until="domcontentloaded")
+                    self.settle(page)
+                    history.append("went back to the posting (signed in)")
                     continue
                 for act in plan.get("actions", [])[:30]:
                     history.append(self.do(page, act, snap, resume))

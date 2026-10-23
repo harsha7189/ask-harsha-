@@ -429,3 +429,29 @@ def test_each_page_is_recorded_for_troubleshooting(browser, site):
     assert "step01.json" in files and "step01.jpg" in files
     rec = (folder / "step01.json").read_text()
     assert "First Name" in rec and "plan" in rec
+
+
+def test_signed_in_on_the_account_page_goes_back_to_the_job(browser, site):
+    """Workday sometimes lands on Candidate Home after sign-in; the runner returns to the posting instead of re-creating the account."""
+    api = FakeApi([job(site, "/wd/job", "workday", "w2")], dry_run=False)
+    real, seen = api.step, {"home": 0}
+
+    def step(app_id, snap):
+        if "/wd/step1" in snap["url"] and not seen["home"]:
+            seen["home"] = 1
+            return {"status": "reopen_job", "actions": []}       # as if it had landed on Candidate Home
+        return real(app_id, snap)
+    api.step = step
+    keys = DictKeys()
+    ctx = browser.new_context()
+    r = jp.Runner(api, jp.Keys(keys), FakeMail(site, "harsha@example.com"), "harsha@example.com", page_factory=ctx.new_page,
+                  pause=lambda *a: None, log=lambda *a: None)
+    r.SETTLE_MS = 1500
+    assert r.run(between=(0, 0))["submitted"] == 1, api.reports
+
+
+def test_numbers_only_into_number_boxes():
+    from agent import navigator as nav
+    snap = {"text": "", "elements": [{"i": 0, "kind": "number", "label": "Salary expectations", "value": "", "required": True}]}
+    out = nav.validate({"status": "continue", "actions": [{"op": "fill", "i": 0}]}, snap, {"Salary expectations": {"value": "$130,000 - $145,000"}})
+    assert out["actions"] == [{"op": "fill", "i": 0, "value": "130000"}]
